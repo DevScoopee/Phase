@@ -164,37 +164,25 @@ export const phaseCopy: Record<
     forge: {
       exit: string
       title: string
+      oracleBadge: string
       market: string
       chamber: string
       intro: string
-      uploadUnavailableTitle: string
-      uploadUnavailableBody: string
-      imageSource: string
-      paint: string
-      upload: string
-      url: string
+      anomalyLabel: string
       collectionName: string
       fusionPrice: string
       readout: string
-      metadataUrl: string
-      urlHelp: string
-      fileIpfs: string
-      waitingDesign: string
-      previewHint: string
-      designArtifact: string
-      reopenDesigner: string
-      studioBlurb: string
       linkWallet: string
       linking: string
       walletLabel: string
+      initiateAgent: string
       forgeCollection: string
       deploying: string
       disconnect: string
       artPreview: string
+      lorePreview: string
       awaitingFeed: string
-      urlHint: string
-      uploadHint: string
-      paintHint: string
+      oracleHint: string
       collectionLive: string
       magicLink: string
       copy: string
@@ -203,21 +191,31 @@ export const phaseCopy: Record<
       collectionIdLabel: string
       registerTitle: string
       deployStatus: string
+      agentDeployStatus: string
       deployTickers: readonly [string, string, string, string, string]
+      agentProcessTickers: readonly [string, string, string]
+      signingPayment: string
+      paywallNegotiating: string
+      ipfsOracleHint: string
       errors: {
         connectWallet: string
         nameShort: string
         priceInvalid: string
-        selectFile: string
-        sealPaint: string
         collectionIdRead: string
         creatorAlreadyHasCollection: string
         clipboard: string
+        anomalyShort: string
+        agentRequest: string
+        agentPay: string
+        agentNot402: string
+        fetchAgentImage: string
+        finalUri: string
+        lowEnergyAgent: string
       }
       placeholders: {
         collectionName: string
         price: string
-        imageUrl: string
+        anomaly: string
       }
     }
     chamber: {
@@ -302,7 +300,7 @@ export const phaseCopy: Record<
       freighterManualAddTitle: string
       freighterManualAddBody: string
       protocolStackLabel: string
-      /** Subtítulo bajo saldo PHASER_LIQ — liquidez SEP-41. */
+      /** Subtítulo bajo saldo PHASERLIQ — liquidez SEP-41. */
       tokenStandardSep41Note: string
       rewardsLiquidityLaneTitle: string
       rewardsMissionChainTitle: string
@@ -322,7 +320,7 @@ export const phaseCopy: Record<
     dashboard: {
       title: "On-chain collections",
       subtitle:
-        "Each card is a PHASE collection. Mint opens the fusion chamber for that collection: pay the listed PHASER_LIQ via initiate_phase and receive the utility NFT.",
+        "Each card is a PHASE collection. Mint opens the fusion chamber for that collection: pay the listed PHASERLIQ via initiate_phase and receive the utility NFT.",
       shieldBlurb:
         "A screenshot is just a poster — it is not the contract. Your PHASE utility NFT is the on-chain key; previews here stay low-trust until you verify in the Reactor.",
       refresh: "Refresh ledger",
@@ -334,10 +332,10 @@ export const phaseCopy: Record<
       empty: "No collections yet — forge one first.",
       noPreview: "No image URL",
       creator: "Creator",
-      mint: "Mint NFT — pay PHASER_LIQ",
+      mint: "Mint NFT — pay PHASERLIQ",
       openChamber: "Open chamber",
       id: "ID",
-      priceSuffix: "PHASER_LIQ",
+      priceSuffix: "PHASERLIQ",
       previewPendingFusion: "[ PENDING_FUSION ]",
       previewUnverifiedCopy: "[ UNVERIFIED_COPY ]",
       previewChainVerified: "[ CHAIN_VERIFIED ]",
@@ -348,8 +346,8 @@ export const phaseCopy: Record<
       sellModalTitle: "Sell / transfer NFT",
       buyerAddressLabel: "Buyer Stellar address (G…)",
       buyerHint:
-        "Agree PHASER_LIQ payment with the buyer off-wallet, then transfer the on-chain NFT here. Requires deployed contract with transfer_phase_nft.",
-      listingPriceLabel: "List price (PHASER_LIQ)",
+        "Agree PHASERLIQ payment with the buyer off-wallet, then transfer the on-chain NFT here. Requires deployed contract with transfer_phase_nft.",
+      listingPriceLabel: "List price (PHASERLIQ)",
       listingPublish: "[ PUBLISH_LISTING ]",
       listingHint: "Listing is visible on this market; payment is peer-to-peer.",
       transferNft: "[ TRANSFER_ON_CHAIN ]",
@@ -407,46 +405,36 @@ export const phaseCopy: Record<
     },
     forge: {
       exit: "◄ Exit",
-      title: "PHASE Forge · Multimodal",
+      title: "PHASE Forge · The Oracle",
+      oracleBadge: "◈ AGENT_IA // THE_ORACLE",
       market: "Market",
       chamber: "Chamber",
-      intro: "Register a collection: choose image source, set name and PHASER_LIQ mint price, then forge.",
-      uploadUnavailableTitle: "Paint / upload unavailable",
-      uploadUnavailableBody: "This deployment does not accept sealed file uploads. Use URL mode with a direct image link.",
-      imageSource: "Image source",
-      paint: "Paint",
-      upload: "Upload",
-      url: "URL",
+      intro:
+        "The Oracle compiles your anomaly into solid-state art + SEP-20 lore. x402 settlement in PHASERLIQ unlocks the model; then the protocol mints your collection on-chain.",
+      anomalyLabel: "[ ENTER_ANOMALY_DESCRIPTION ]",
       collectionName: "Collection name",
-      fusionPrice: "Fusion price (PHASER_LIQ)",
+      fusionPrice: "Fusion price (PHASERLIQ)",
       readout: "READOUT",
-      metadataUrl: "Metadata image URL",
-      urlHelp: "If set: https:// or ipfs:// — max 256 chars, no quotes or backslashes.",
-      fileIpfs: "Image file (sealed on deploy)",
-      waitingDesign: "Waiting for artwork",
-      previewHint: "Preview active — you can reopen the studio",
-      designArtifact: "Design artifact",
-      reopenDesigner: "Reopen studio",
-      studioBlurb: "Built-in editor (JSPaint-style): 1024×768 canvas, zoom, palette — seal before forge.",
       linkWallet: "Link wallet",
       linking: "Linking…",
       walletLabel: "Wallet",
+      initiateAgent: "[ INITIATE_AGENT_PROTOCOL // x402_PAYMENT_REQUIRED ]",
       forgeCollection: "Forge new collection",
       deploying: "Deploying on-chain…",
       disconnect: "Disconnect",
       artPreview: "Art preview",
-      awaitingFeed: "Awaiting visual",
-      urlHint: "HTTPS or IPFS URI",
-      uploadHint: "Choose a file",
-      paintHint: "Design artifact — left panel",
+      lorePreview: "ARTIFACT_LORE // SEP-20",
+      awaitingFeed: "AWAITING_ORACLE_SIGNAL",
+      oracleHint: "Describe the artifact to forge. Payment opens in Freighter when the protocol returns 402.",
       collectionLive: "Collection live",
       magicLink: "Share link",
       copy: "Copy link",
       copied: "Copied",
       openChamber: "Open chamber",
       collectionIdLabel: "Collection ID",
-      registerTitle: "Register collection",
+      registerTitle: "Oracle channel",
       deployStatus: "CONTRACT_DEPLOY",
+      agentDeployStatus: "ORACLE_PIPELINE",
       deployTickers: [
         "WRITING_LEDGER_ENTRY…",
         "BROADCASTING_INVOKE_HOST_FN…",
@@ -454,20 +442,34 @@ export const phaseCopy: Record<
         "LINKING_CREATOR_ADDRESS…",
         "EMITTING_COLLECTION_CREATED…",
       ],
+      agentProcessTickers: [
+        "[ SYSTEM: AGENT_PROCESSING... ]",
+        "[ SYSTEM: COMPILING_LORE... ]",
+        "[ SYSTEM: FORGING_MATTER... ]",
+      ],
+      signingPayment: "[ X402 ] OPENING_FREIGHTER — PHASERLIQ_SETTLE…",
+      paywallNegotiating: "[ X402 ] NEGOTIATING_PAYWALL…",
+      ipfsOracleHint:
+        "Tip: configure PINATA_JWT on the server so long DALL·E URLs are sealed to ipfs:// before mint (256-char on-chain limit).",
       errors: {
         connectWallet: "Connect your wallet first.",
         nameShort: "Collection name is too short (min. 2 characters).",
-        priceInvalid: "Invalid PHASER_LIQ price.",
-        selectFile: "Select an image file.",
-        sealPaint: "Seal your design in the studio (PAINT mode) before forging.",
+        priceInvalid: "Invalid PHASERLIQ price.",
         collectionIdRead: "Could not read collection_id on-chain.",
         creatorAlreadyHasCollection: "This wallet already has a collection (#{id}). Open the chamber for that collection instead of creating a new one.",
         clipboard: "Could not copy to clipboard.",
+        anomalyShort: "Anomaly description is too short (min. 4 characters).",
+        agentRequest: "Oracle request failed.",
+        agentPay: "Settlement transaction failed or was rejected.",
+        agentNot402: "Unexpected response from forge-agent (expected 402 then paid run).",
+        fetchAgentImage: "Could not download generated image for mint.",
+        finalUri: "Could not produce a valid on-chain image URI (try enabling IPFS upload).",
+        lowEnergyAgent: "Insufficient PHASERLIQ for Oracle x402 settlement (see balance).",
       },
       placeholders: {
         collectionName: "Crypto-Art 2026",
         price: "5.0",
-        imageUrl: "Image URL (optional)",
+        anomaly: "Describe the artifact to forge…",
       },
     },
     chamber: {
@@ -490,7 +492,7 @@ export const phaseCopy: Record<
       reqLiqPrefix: "REQ ≥",
       wallet: "Wallet",
       offline: "— OFFLINE —",
-      liqBalance: "PHASER_LIQ_BALANCE",
+      liqBalance: "PHASERLIQ_BALANCE",
       collectionId: "Collection_ID",
       collectionIdProtocol: "0 (protocol)",
       x402Price: "X402_Price",
@@ -537,14 +539,14 @@ export const phaseCopy: Record<
       pedestalDefault: "PROTOCOL_DEFAULT · CORE_LIQUIDITY_POOL",
       collectionLine: "Collection #{id} · {name}",
       collectionLinkTitle: "Collection #{id}",
-      faucetButton: "[ ⚡ RECHARGE_PHASER_LIQ ]",
+      faucetButton: "[ ⚡ RECHARGE_PHASERLIQ ]",
       rewardsSectionTitle: "[ LIQ_REWARDS ]",
-      rewardsHelpAria: "Help: PHASER_LIQ and reward programs",
+      rewardsHelpAria: "Help: PHASERLIQ and reward programs",
       rewardsHelpClose: "Close",
-      rewardsHelpModalTitle: "PHASER_LIQ & rewards",
+      rewardsHelpModalTitle: "PHASERLIQ & rewards",
       rewardsHelpLiqTitle: "What is LIQ?",
       rewardsHelpLiqBody:
-        "LIQ is the short name we show in the UI for PHASER_LIQ, the Soroban testnet utility token for PHASE. You use it to pay mint prices (initiate_phase / x402 settlement) and to experiment with the reactor. Balances use seven decimals like other Stellar assets. This is testnet liquidity—not real money.",
+        "LIQ is the short name we show in the UI for PHASERLIQ, the Soroban testnet utility token for PHASE. You use it to pay mint prices (initiate_phase / x402 settlement) and to experiment with the reactor. Balances use seven decimals like other Stellar assets. This is testnet liquidity—not real money.",
       rewardsHelpQuestsTitle: "Genesis, daily, and quests",
       rewardsHelpQuestsBody:
         "Genesis is a one-time starting grant for new wallets. Daily recharge refills on a 24-hour timer. Quests are one-time missions (connect wallet, forge a collection, complete a settlement). Progress bars show eligibility; Claim requests a server-signed mint when requirements are met.",
@@ -556,8 +558,8 @@ export const phaseCopy: Record<
       freighterManualAddBody:
         "If it does not appear automatically: Freighter -> Collectibles -> Add manually -> paste contract + token ID.",
       protocolStackLabel:
-        "x402 · PHASER_LIQ = Soroban fungible (SEP-41) · forged artifact = immutable utility NFT (metadata SEP-20)",
-      tokenStandardSep41Note: "PHASER_LIQ adheres to SEP-41 (Soroban token interface).",
+        "x402 · PHASERLIQ = Soroban fungible (SEP-41) · forged artifact = immutable utility NFT (metadata SEP-20)",
+      tokenStandardSep41Note: "PHASERLIQ adheres to SEP-41 (Soroban token interface).",
       rewardsLiquidityLaneTitle: "LIQUIDITY_BOOTSTRAP",
       rewardsMissionChainTitle: "OPERATOR_QUEST_CHAIN",
       logs: {
@@ -585,10 +587,10 @@ export const phaseCopy: Record<
         decrypting: "[ DECRYPTING_PROTECTED_DATA... ]",
         x402Ok: "[ X402_PIPELINE_OK ] ENERGY_ROUTED",
         forgedOnSettle: "[ PHASE_NFT_FORGED_ON_SETTLE ] CHECK_PEDESTAL",
-        faucetEmitting: "[ EMITTING_PHASER_LIQ_FOR_OPERATOR... ]",
+        faucetEmitting: "[ EMITTING_PHASERLIQ_FOR_OPERATOR... ]",
         faucetLoadingSupply: "[ LOADING_SUPPLY... ]",
-        faucetOk: "[ PHASER_LIQ_MINT_CONFIRMED ] BALANCE_REFRESHED",
-        faucetReceived: "[ +{amount} PHASER_LIQ RECEIVED ]",
+        faucetOk: "[ PHASERLIQ_MINT_CONFIRMED ] BALANCE_REFRESHED",
+        faucetReceived: "[ +{amount} PHASERLIQ RECEIVED ]",
         faucetFailPrefix: "[ FAUCET_FAULT ]",
         genesisSupplyRequested: "[ SOLICITANDO_ENERGÍA_AL_NÚCLEO... ]",
         genesisTransferComplete: "[ GENESIS_SUPPLY_TRANSFER_OK ] REACTOR_CHARGED",
@@ -641,7 +643,7 @@ export const phaseCopy: Record<
     dashboard: {
       title: "Colecciones on-chain",
       subtitle:
-        "Cada tarjeta es una colección PHASE. Mint abre la cámara de fusión: pagas el PHASER_LIQ indicado con initiate_phase y recibes el NFT de utilidad.",
+        "Cada tarjeta es una colección PHASE. Mint abre la cámara de fusión: pagas el PHASERLIQ indicado con initiate_phase y recibes el NFT de utilidad.",
       shieldBlurb:
         "Un pantallazo es solo un póster — no es el contrato. Tu NFT de utilidad PHASE es la llave on-chain; aquí las vistas son de baja confianza hasta que verifiques en el Reactor.",
       refresh: "Actualizar ledger",
@@ -653,10 +655,10 @@ export const phaseCopy: Record<
       empty: "Aún no hay colecciones — crea una en la forja.",
       noPreview: "Sin URL de imagen",
       creator: "Creador",
-      mint: "Acuñar NFT — pagar PHASER_LIQ",
+      mint: "Acuñar NFT — pagar PHASERLIQ",
       openChamber: "Abrir cámara",
       id: "ID",
-      priceSuffix: "PHASER_LIQ",
+      priceSuffix: "PHASERLIQ",
       previewPendingFusion: "[ PENDING_FUSION ]",
       previewUnverifiedCopy: "[ COPIA_NO_VERIFICADA ]",
       previewChainVerified: "[ VERIFICADO_EN_CADENA ]",
@@ -667,8 +669,8 @@ export const phaseCopy: Record<
       sellModalTitle: "Vender / transferir NFT",
       buyerAddressLabel: "Dirección Stellar del comprador (G…)",
       buyerHint:
-        "Acordá el pago en PHASER_LIQ con el comprador (transferencia directa), luego transferí el NFT on-chain aquí. Requiere contrato PHASE con transfer_phase_nft desplegado.",
-      listingPriceLabel: "Precio de venta (PHASER_LIQ)",
+        "Acordá el pago en PHASERLIQ con el comprador (transferencia directa), luego transferí el NFT on-chain aquí. Requiere contrato PHASE con transfer_phase_nft desplegado.",
+      listingPriceLabel: "Precio de venta (PHASERLIQ)",
       listingPublish: "[ PUBLICAR_ANUNCIO ]",
       listingHint: "El anuncio se ve en este mercado; el cobro es P2P entre wallets.",
       transferNft: "[ TRANSFERIR_ON_CHAIN ]",
@@ -726,46 +728,36 @@ export const phaseCopy: Record<
     },
     forge: {
       exit: "◄ Salir",
-      title: "PHASE Forja · Multimodal",
+      title: "PHASE Forja · El Oráculo",
+      oracleBadge: "◈ AGENTE_IA // EL_ORÁCULO",
       market: "Mercado",
       chamber: "Cámara",
-      intro: "Registra una colección: elige origen de imagen, nombre y precio de mint en PHASER_LIQ, luego forja.",
-      uploadUnavailableTitle: "Pintar / subida no disponible",
-      uploadUnavailableBody: "Este despliegue no acepta subida de archivos sellados. Usa modo URL con un enlace directo a la imagen.",
-      imageSource: "Origen de imagen",
-      paint: "Pintar",
-      upload: "Subir",
-      url: "URL",
+      intro:
+        "El Oráculo compila tu anomalía en arte de estado sólido + lore SEP-20. La liquidación x402 en PHASERLIQ desbloquea el modelo; luego el protocolo acuña tu colección on-chain.",
+      anomalyLabel: "[ ENTER_ANOMALY_DESCRIPTION ]",
       collectionName: "Nombre de colección",
-      fusionPrice: "Precio de fusión (PHASER_LIQ)",
+      fusionPrice: "Precio de fusión (PHASERLIQ)",
       readout: "LECTURA",
-      metadataUrl: "URL imagen (metadata)",
-      urlHelp: "Si no está vacío: https:// o ipfs:// — máx. 256 caracteres, sin comillas ni \\.",
-      fileIpfs: "Archivo de imagen (sellado al desplegar)",
-      waitingDesign: "Esperando diseño",
-      previewHint: "Vista previa activa — puedes reabrir el estudio",
-      designArtifact: "Diseñar artefacto",
-      reopenDesigner: "Reabrir estudio",
-      studioBlurb: "Editor integrado (estilo JSPaint): lienzo 1024×768, zoom, paleta — sellar antes de forjar.",
       linkWallet: "Vincular wallet",
       linking: "Vinculando…",
       walletLabel: "Wallet",
+      initiateAgent: "[ INITIATE_AGENT_PROTOCOL // x402_PAYMENT_REQUIRED ]",
       forgeCollection: "Forjar colección nueva",
       deploying: "Desplegando on-chain…",
       disconnect: "Desconectar",
       artPreview: "Vista previa",
-      awaitingFeed: "Esperando imagen",
-      urlHint: "URI HTTPS o IPFS",
-      uploadHint: "Elige archivo",
-      paintHint: "Diseña en el panel izquierdo",
+      lorePreview: "LORE_ARTEFACTO // SEP-20",
+      awaitingFeed: "ESPERANDO_SEÑAL_ORÁCULO",
+      oracleHint: "Describe el artefacto a forjar. El pago se abre en Freighter cuando el protocolo responde 402.",
       collectionLive: "Colección en vivo",
       magicLink: "Enlace para compartir",
       copy: "Copiar enlace",
       copied: "Copiado",
       openChamber: "Abrir cámara",
       collectionIdLabel: "ID de colección",
-      registerTitle: "Registrar colección",
+      registerTitle: "Canal Oráculo",
       deployStatus: "DESPLIEGUE_CONTRATO",
+      agentDeployStatus: "TUBERÍA_ORÁCULO",
       deployTickers: [
         "ESCRIBIENDO_ENTRADA_LEDGER…",
         "DIFUSIÓN_INVOKE_HOST_FN…",
@@ -773,20 +765,34 @@ export const phaseCopy: Record<
         "ENLACE_DIRECCIÓN_CREADOR…",
         "EMITIENDO_COLLECTION_CREATED…",
       ],
+      agentProcessTickers: [
+        "[ SYSTEM: AGENT_PROCESSING... ]",
+        "[ SYSTEM: COMPILING_LORE... ]",
+        "[ SYSTEM: FORGING_MATTER... ]",
+      ],
+      signingPayment: "[ X402 ] ABRIENDO_FREIGHTER — SETTLE_PHASERLIQ…",
+      paywallNegotiating: "[ X402 ] NEGOCIANDO_PAYWALL…",
+      ipfsOracleHint:
+        "Tip: configurá PINATA_JWT en el servidor para sellar URLs largas de DALL·E a ipfs:// antes del mint (límite 256 caracteres on-chain).",
       errors: {
         connectWallet: "Conecta la wallet primero.",
         nameShort: "Nombre de colección demasiado corto (mín. 2 caracteres).",
-        priceInvalid: "Precio PHASER_LIQ inválido.",
-        selectFile: "Selecciona un archivo de imagen.",
-        sealPaint: "Sellá el diseño en el estudio (modo PAINT) antes de forjar.",
+        priceInvalid: "Precio PHASERLIQ inválido.",
         collectionIdRead: "No se pudo leer collection_id on-chain.",
         creatorAlreadyHasCollection: "Esta wallet ya tiene una colección (#{id}). Abre la cámara de esa colección en lugar de crear otra.",
         clipboard: "No se pudo copiar al portapapeles.",
+        anomalyShort: "La descripción de la anomalía es demasiado corta (mín. 4 caracteres).",
+        agentRequest: "Falló la petición al Oráculo.",
+        agentPay: "La transacción de liquidación falló o fue rechazada.",
+        agentNot402: "Respuesta inesperada de forge-agent (se esperaba 402 y luego ejecución pagada).",
+        fetchAgentImage: "No se pudo descargar la imagen generada para el mint.",
+        finalUri: "No se pudo obtener una URI de imagen válida on-chain (probá habilitar subida IPFS).",
+        lowEnergyAgent: "PHASERLIQ insuficiente para la liquidación x402 del Oráculo (revisá el saldo).",
       },
       placeholders: {
         collectionName: "Cripto-Arte 2026",
         price: "5.0",
-        imageUrl: "URL de imagen (opcional)",
+        anomaly: "Describe el artefacto a forjar…",
       },
     },
     chamber: {
@@ -809,7 +815,7 @@ export const phaseCopy: Record<
       reqLiqPrefix: "REQ ≥",
       wallet: "Wallet",
       offline: "— DESCONECTADO —",
-      liqBalance: "SALDO_PHASER_LIQ",
+      liqBalance: "SALDO_PHASERLIQ",
       collectionId: "ID_Colección",
       collectionIdProtocol: "0 (protocolo)",
       x402Price: "Precio_X402",
@@ -856,14 +862,14 @@ export const phaseCopy: Record<
       pedestalDefault: "PROTOCOLO_POR_DEFECTO · POOL_LIQUIDEZ_CENTRAL",
       collectionLine: "Colección #{id} · {name}",
       collectionLinkTitle: "Colección #{id}",
-      faucetButton: "[ ⚡ SOLICITAR_PHASER_LIQ ]",
+      faucetButton: "[ ⚡ SOLICITAR_PHASERLIQ ]",
       rewardsSectionTitle: "[ RECOMPENSAS_LIQ ]",
-      rewardsHelpAria: "Ayuda: PHASER_LIQ y recompensas",
+      rewardsHelpAria: "Ayuda: PHASERLIQ y recompensas",
       rewardsHelpClose: "Cerrar",
-      rewardsHelpModalTitle: "PHASER_LIQ y recompensas",
+      rewardsHelpModalTitle: "PHASERLIQ y recompensas",
       rewardsHelpLiqTitle: "¿Qué es LIQ?",
       rewardsHelpLiqBody:
-        "LIQ es la etiqueta corta que ves en la interfaz para PHASER_LIQ, el token de utilidad Soroban en testnet de PHASE. Sirve para pagar precios de mint (initiate_phase / liquidación x402) y para probar el reactor. Los saldos usan siete decimales como otros assets Stellar. Es liquidez de testnet, no dinero real.",
+        "LIQ es la etiqueta corta que ves en la interfaz para PHASERLIQ, el token de utilidad Soroban en testnet de PHASE. Sirve para pagar precios de mint (initiate_phase / liquidación x402) y para probar el reactor. Los saldos usan siete decimales como otros assets Stellar. Es liquidez de testnet, no dinero real.",
       rewardsHelpQuestsTitle: "Genesis, diaria y misiones",
       rewardsHelpQuestsBody:
         "Genesis es un fondo inicial único para wallets nuevas. La recarga diaria se reinicia cada 24 horas. Las quests son misiones de una sola vez (vincular wallet, crear colección, completar una liquidación). Las barras muestran el avance; Reclamar pide un mint firmado por el servidor cuando cumples los requisitos.",
@@ -875,8 +881,8 @@ export const phaseCopy: Record<
       freighterManualAddBody:
         "Si no aparece automático: Freighter -> Collectibles -> Add manually -> pega contrato + token ID.",
       protocolStackLabel:
-        "x402 · PHASER_LIQ = fungible Soroban (SEP-41) · artefacto forjado = NFT de utilidad inmutable (metadata SEP-20)",
-      tokenStandardSep41Note: "PHASER_LIQ cumple SEP-41 (interfaz de token Soroban).",
+        "x402 · PHASERLIQ = fungible Soroban (SEP-41) · artefacto forjado = NFT de utilidad inmutable (metadata SEP-20)",
+      tokenStandardSep41Note: "PHASERLIQ cumple SEP-41 (interfaz de token Soroban).",
       rewardsLiquidityLaneTitle: "ARRANQUE_LIQUIDEZ",
       rewardsMissionChainTitle: "CADENA_MISIONES_OPERADOR",
       logs: {
@@ -904,10 +910,10 @@ export const phaseCopy: Record<
         decrypting: "[ DESCIFRANDO_DATOS_PROTEGIDOS... ]",
         x402Ok: "[ X402_PIPELINE_OK ] ENERGÍA_ENRUTADA",
         forgedOnSettle: "[ NFT_FASE_FORJADO_AL_LIQUIDAR ] REVISAR_PEDESTAL",
-        faucetEmitting: "[ EMITIENDO_PHASER_LIQ_PARA_OPERADOR... ]",
+        faucetEmitting: "[ EMITIENDO_PHASERLIQ_PARA_OPERADOR... ]",
         faucetLoadingSupply: "[ SUMINISTRO_EN_CURSO... ]",
-        faucetOk: "[ PHASER_LIQ_MINT_CONFIRMADO ] SALDO_ACTUALIZADO",
-        faucetReceived: "[ +{amount} PHASER_LIQ RECIBIDOS ]",
+        faucetOk: "[ PHASERLIQ_MINT_CONFIRMADO ] SALDO_ACTUALIZADO",
+        faucetReceived: "[ +{amount} PHASERLIQ RECIBIDOS ]",
         faucetFailPrefix: "[ FALLO_FAUCET ]",
         genesisSupplyRequested: "[ SOLICITANDO_ENERGÍA_AL_NÚCLEO... ]",
         genesisTransferComplete: "[ GENESIS_SUPPLY_TRANSFER_OK ] REACTOR_CARGADO",

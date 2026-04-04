@@ -30,7 +30,7 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
   es: {
     pageTitle: "Documentación PHASE",
     pageSubtitle:
-      "PHASE (P H A S E   P R O T O C O L) es una app web cyber-brutalista para crear colecciones on-chain, mercado, forja y cámara de fusión en Soroban testnet con PHASER_LIQ y flujos x402. Incluye activos de marca, contratos de referencia y flujos detallados.",
+      "PHASE (P H A S E   P R O T O C O L) es una app web cyber-brutalista para crear colecciones on-chain, mercado, forja y cámara de fusión en Soroban testnet con PHASERLIQ y flujos x402. Incluye activos de marca, contratos de referencia y flujos detallados.",
     tocLabel: "Índice",
     sections: [
       {
@@ -39,11 +39,11 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
         blocks: [
           {
             type: "p",
-            text: "PHASE conecta tres piezas: una landing de presentación, un mercado donde se ven colecciones creadas por la comunidad, una forja donde el creador registra nombre, precio en PHASER_LIQ e imagen del artefacto, y una cámara de fusión donde el usuario conecta Freighter, paga el precio de la colección y el contrato Soroban actualiza el estado y puede acuñar un NFT de utilidad tipo SEP-20 asociado a esa fase.",
+            text: "PHASE conecta tres piezas: una landing de presentación, un mercado donde se ven colecciones creadas por la comunidad, una forja donde el creador registra nombre, precio en PHASERLIQ e imagen del artefacto, y una cámara de fusión donde el usuario conecta Freighter, paga el precio de la colección y el contrato Soroban actualiza el estado y puede acuñar un NFT de utilidad tipo SEP-20 asociado a esa fase.",
           },
           {
             type: "p",
-            text: "El flujo de pago en la UI sigue una narrativa tipo “settlement / x402”: primero aseguras liquidez en PHASER_LIQ (balance on-chain), luego firmas la transacción que el protocolo construye. Todo corre sobre red de prueba; no es asesoría financiera ni producto de inversión.",
+            text: "El flujo de pago en la UI sigue una narrativa tipo “settlement / x402”: primero aseguras liquidez en PHASERLIQ (balance on-chain), luego firmas la transacción que el protocolo construye. Todo corre sobre red de prueba; no es asesoría financiera ni producto de inversión.",
           },
           {
             type: "p",
@@ -64,7 +64,7 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
               {
                 label: "Mercado",
                 href: "/dashboard",
-                description: "Catálogo de colecciones, precios en PHASER_LIQ y acceso a la cámara por colección.",
+                description: "Catálogo de colecciones, precios en PHASERLIQ y acceso a la cámara por colección.",
               },
               {
                 label: "Forja",
@@ -111,7 +111,7 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
               {
                 label: "/phaser-liq-token.png",
                 href: "/phaser-liq-token.png",
-                description: "Icono del token PHASER_LIQ en la UI y en `stellar.toml` (bloque CURRENCIES) para exploradores.",
+                description: "Icono del token PHASERLIQ en la UI y en `stellar.toml` (bloque CURRENCIES) para exploradores.",
               },
               {
                 label: "/.well-known/stellar.toml",
@@ -134,7 +134,7 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
             type: "ul",
             items: [
               "PHASE Protocol (núcleo): colecciones, initiate_phase, NFT de utilidad alineado a SEP-20 en metadatos, settlement x402 en cadena según despliegue.",
-              "PHASER_LIQ (token Soroban): liquidez de prueba, 7 decimales, nombre típico «Phase Liquidity Token», símbolo PHASER_LIQ; usado para precios de mint y transferencias en el flujo de fase.",
+              "PHASERLIQ (token Soroban): liquidez de prueba, 7 decimales, nombre típico «Phase Liquidity Token», símbolo PHASERLIQ; usado para precios de mint y transferencias en el flujo de fase.",
             ],
           },
           {
@@ -147,9 +147,9 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
                 description: "ID por defecto CDXZ2…FDRGP (ver env si redesplegaste).",
               },
               {
-                label: "Contrato token PHASER_LIQ",
-                href: "https://stellar.expert/explorer/testnet/contract/CDW3T2DXLNGMQDZLMINEF3QHXYDB3F4ZJOGQSKW6QYABA4HMUFRG7DXC",
-                description: "ID por defecto CDW3…G7DXC (ver env si usas otro token).",
+                label: "Contrato token PHASERLIQ",
+                href: "https://stellar.expert/explorer/testnet/contract/CDOAXHWC6YJB7U3ELV67HKJY6HEMJFBNRGJK6WZGUAELBWP3WP77RLFD",
+                description: "ID por defecto CDOAX…RLFD — SAC testnet (ver env si usas otro token).",
               },
             ],
           },
@@ -161,7 +161,7 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
         blocks: [
           {
             type: "p",
-            text: "Forja (/forge): el creador conecta Freighter, define nombre de colección, precio en PHASER_LIQ y una imagen (URL https o ipfs, archivo con sellado PHASE, o lienzo del estudio). La app construye y firma create_collection; obtienes un collection_id para compartir.",
+            text: "Forja (/forge): el creador conecta Freighter, define nombre de colección, precio en PHASERLIQ y una imagen (URL https o ipfs, archivo con sellado PHASE, o lienzo del estudio). La app construye y firma create_collection; obtienes un collection_id para compartir.",
           },
           {
             type: "p",
@@ -169,7 +169,7 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
           },
           {
             type: "p",
-            text: "Cámara (/chamber): monitor de wallet, saldo PHASER_LIQ, precio x402 de la colección y estado de fase (has_phased, NFT utilitario). El usuario puede solicitar genesis supply si la política del contrato lo permite, ejecutar settlement (flujo x402 + transacción Soroban) y ver el artefacto con verificación de titularidad cuando la UI lo resuelve on-chain.",
+            text: "Cámara (/chamber): monitor de wallet, saldo PHASERLIQ, precio x402 de la colección y estado de fase (has_phased, NFT utilitario). El usuario puede solicitar genesis supply si la política del contrato lo permite, ejecutar settlement (flujo x402 + transacción Soroban) y ver el artefacto con verificación de titularidad cuando la UI lo resuelve on-chain.",
           },
           {
             type: "p",
@@ -181,7 +181,7 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
           },
           {
             type: "p",
-            text: "Asset clásico (opcional): variables CLASSIC_LIQ_* y NEXT_PUBLIC_CLASSIC_* permiten mostrar PHASER_LIQ como asset clásico en Freighter (trustline / bootstrap) además del contrato Soroban.",
+            text: "Asset clásico (opcional): variables CLASSIC_LIQ_* y NEXT_PUBLIC_CLASSIC_* permiten mostrar PHASERLIQ como asset clásico en Freighter (trustline / bootstrap) además del contrato Soroban.",
           },
         ],
       },
@@ -192,9 +192,9 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
           {
             type: "ul",
             items: [
-              "Colección: registro on-chain con nombre, treasury/creador, precio de mint en PHASER_LIQ y URI de imagen para metadatos.",
+              "Colección: registro on-chain con nombre, treasury/creador, precio de mint en PHASERLIQ y URI de imagen para metadatos.",
               "Pool protocolo (colección 0): mint base del ecosistema; otras colecciones son creadas desde la Forja.",
-              "PHASER_LIQ: token de liquidez en testnet usado para mostrar precios y ejecutar pagos en el contrato.",
+              "PHASERLIQ: token de liquidez en testnet usado para mostrar precios y ejecutar pagos en el contrato.",
               "Artefacto / NFT de utilidad: tras el settlement, el contrato puede reflejar estado sólido y metadatos enlazados (https o ipfs://).",
               "API x402 del proyecto: `/api/x402` (challenge), `/api/x402/supported`, `/api/x402/verify`, `/api/x402/settle` para compatibilidad y pruebas locales.",
             ],
@@ -260,7 +260,7 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
           },
           {
             type: "p",
-            text: "Participante: entra al Mercado o usa el enlace → abre la Cámara con la colección correcta → conecta la misma red (testnet) → revisa saldo PHASER_LIQ; si hay faucet/recompensas en la UI, úsalos según las reglas mostradas → pulsa la acción de settlement cuando el saldo cubra el precio.",
+            text: "Participante: entra al Mercado o usa el enlace → abre la Cámara con la colección correcta → conecta la misma red (testnet) → revisa saldo PHASERLIQ; si hay faucet/recompensas en la UI, úsalos según las reglas mostradas → pulsa la acción de settlement cuando el saldo cubra el precio.",
           },
           {
             type: "links",
@@ -275,19 +275,19 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
       },
       {
         id: "token",
-        title: "PHASER_LIQ y exploradores",
+        title: "PHASERLIQ y exploradores",
         blocks: [
           {
             type: "p",
-            text: "Los importes en pantalla se expresan en PHASER_LIQ; la conversión a stroops y las llamadas al contrato token las hace el cliente. Símbolo PHASER_LIQ, 7 decimales, nombre on-chain habitual «Phase Liquidity Token». En la Cámara, TOKEN_EXPERT enlaza al contrato del token en Stellar Expert.",
+            text: "Los importes en pantalla se expresan en PHASERLIQ; la conversión a stroops y las llamadas al contrato token las hace el cliente. Símbolo PHASERLIQ, 7 decimales, nombre on-chain habitual «Phase Liquidity Token». En la Cámara, TOKEN_EXPERT enlaza al contrato del token en Stellar Expert.",
           },
           {
             type: "links",
             intro: "Contratos de referencia (testnet) y explorador:",
             items: [
               {
-                label: "Token PHASER_LIQ (contrato)",
-                href: "https://stellar.expert/explorer/testnet/contract/CDW3T2DXLNGMQDZLMINEF3QHXYDB3F4ZJOGQSKW6QYABA4HMUFRG7DXC",
+                label: "Token PHASERLIQ (contrato)",
+                href: "https://stellar.expert/explorer/testnet/contract/CDOAXHWC6YJB7U3ELV67HKJY6HEMJFBNRGJK6WZGUAELBWP3WP77RLFD",
                 description: "ID por defecto del repo; comprobar env si cambiaste TOKEN_CONTRACT_ID.",
               },
               {
@@ -382,7 +382,7 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
   en: {
     pageTitle: "PHASE Documentation",
     pageSubtitle:
-      "PHASE (P H A S E   P R O T O C O L) is a cyber-brutalist web app for on-chain collections, market, forge, and fusion chamber on Soroban testnet with PHASER_LIQ and x402-style settlement. Covers brand assets, default contracts, and detailed flows.",
+      "PHASE (P H A S E   P R O T O C O L) is a cyber-brutalist web app for on-chain collections, market, forge, and fusion chamber on Soroban testnet with PHASERLIQ and x402-style settlement. Covers brand assets, default contracts, and detailed flows.",
     tocLabel: "Contents",
     sections: [
       {
@@ -391,11 +391,11 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
         blocks: [
           {
             type: "p",
-            text: "PHASE ties together a marketing landing, a market for community collections, a forge where creators set name, PHASER_LIQ price, and artwork, and a fusion chamber where users connect Freighter, pay the collection price, and the Soroban contract updates phase state and can mint a SEP-20-style utility NFT tied to that phase.",
+            text: "PHASE ties together a marketing landing, a market for community collections, a forge where creators set name, PHASERLIQ price, and artwork, and a fusion chamber where users connect Freighter, pay the collection price, and the Soroban contract updates phase state and can mint a SEP-20-style utility NFT tied to that phase.",
           },
           {
             type: "p",
-            text: "The payment UX follows a settlement-style flow: you hold PHASER_LIQ on-chain, then sign the transaction the protocol builds. Everything runs on testnet—this is not financial advice or an investment product.",
+            text: "The payment UX follows a settlement-style flow: you hold PHASERLIQ on-chain, then sign the transaction the protocol builds. Everything runs on testnet—this is not financial advice or an investment product.",
           },
           {
             type: "p",
@@ -416,7 +416,7 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
               {
                 label: "Market",
                 href: "/dashboard",
-                description: "Collection catalog, PHASER_LIQ prices, and links into the chamber per collection.",
+                description: "Collection catalog, PHASERLIQ prices, and links into the chamber per collection.",
               },
               {
                 label: "Forge",
@@ -462,7 +462,7 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
               {
                 label: "/phaser-liq-token.png",
                 href: "/phaser-liq-token.png",
-                description: "PHASER_LIQ token icon in the UI and in `stellar.toml` (CURRENCIES) for explorers.",
+                description: "PHASERLIQ token icon in the UI and in `stellar.toml` (CURRENCIES) for explorers.",
               },
               {
                 label: "/.well-known/stellar.toml",
@@ -485,7 +485,7 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
             type: "ul",
             items: [
               "PHASE Protocol (core): collections, initiate_phase, SEP-20-aligned utility NFT metadata, on-chain x402 settlement per deployment.",
-              "PHASER_LIQ (Soroban token): testnet liquidity token, 7 decimals, typically named “Phase Liquidity Token”, symbol PHASER_LIQ; used for mint pricing and phase transfers.",
+              "PHASERLIQ (Soroban token): testnet liquidity token, 7 decimals, typically named “Phase Liquidity Token”, symbol PHASERLIQ; used for mint pricing and phase transfers.",
             ],
           },
           {
@@ -498,9 +498,9 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
                 description: "Default ID CDXZ2…FDRGP (check env if you redeployed).",
               },
               {
-                label: "PHASER_LIQ token contract",
-                href: "https://stellar.expert/explorer/testnet/contract/CDW3T2DXLNGMQDZLMINEF3QHXYDB3F4ZJOGQSKW6QYABA4HMUFRG7DXC",
-                description: "Default ID CDW3…G7DXC (check env if you use another token).",
+                label: "PHASERLIQ token contract",
+                href: "https://stellar.expert/explorer/testnet/contract/CDOAXHWC6YJB7U3ELV67HKJY6HEMJFBNRGJK6WZGUAELBWP3WP77RLFD",
+                description: "Default ID CDOAX…RLFD — testnet SAC (check env if you use another token).",
               },
             ],
           },
@@ -512,7 +512,7 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
         blocks: [
           {
             type: "p",
-            text: "Forge (/forge): creator connects Freighter, sets collection name, PHASER_LIQ price, and artwork (https or ipfs URL, sealed file upload when the server allows, or studio canvas). The app builds and signs create_collection; you receive a collection_id to share.",
+            text: "Forge (/forge): creator connects Freighter, sets collection name, PHASERLIQ price, and artwork (https or ipfs URL, sealed file upload when the server allows, or studio canvas). The app builds and signs create_collection; you receive a collection_id to share.",
           },
           {
             type: "p",
@@ -520,7 +520,7 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
           },
           {
             type: "p",
-            text: "Chamber (/chamber): wallet monitor, PHASER_LIQ balance, collection x402 mint price, and phase state (has_phased, utility NFT). Users may request genesis supply when contract policy allows, run settlement (x402 flow + Soroban transaction), and view the artifact with ownership checks when the UI resolves on-chain state.",
+            text: "Chamber (/chamber): wallet monitor, PHASERLIQ balance, collection x402 mint price, and phase state (has_phased, utility NFT). Users may request genesis supply when contract policy allows, run settlement (x402 flow + Soroban transaction), and view the artifact with ownership checks when the UI resolves on-chain state.",
           },
           {
             type: "p",
@@ -532,7 +532,7 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
           },
           {
             type: "p",
-            text: "Classic asset (optional): CLASSIC_LIQ_* and NEXT_PUBLIC_CLASSIC_* let Freighter show a classic trustline asset alongside the Soroban PHASER_LIQ contract.",
+            text: "Classic asset (optional): CLASSIC_LIQ_* and NEXT_PUBLIC_CLASSIC_* let Freighter show a classic trustline asset alongside the Soroban PHASERLIQ contract.",
           },
         ],
       },
@@ -543,9 +543,9 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
           {
             type: "ul",
             items: [
-              "Collection: on-chain record with name, creator/treasury, PHASER_LIQ mint price, and image URI for metadata.",
+              "Collection: on-chain record with name, creator/treasury, PHASERLIQ mint price, and image URI for metadata.",
               "Protocol pool (collection 0): baseline mint path; other collections are created from the Forge.",
-              "PHASER_LIQ: testnet liquidity token used for quoted prices and contract payments.",
+              "PHASERLIQ: testnet liquidity token used for quoted prices and contract payments.",
               "Artifact / utility NFT: after settlement, the contract can reflect solid state and metadata (https or ipfs://).",
               "Project x402 API: `/api/x402` (challenge), `/api/x402/supported`, `/api/x402/verify`, `/api/x402/settle` for local compatibility/testing.",
             ],
@@ -611,7 +611,7 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
           },
           {
             type: "p",
-            text: "Participant: open Market or follow a link → Chamber with the right collection → connect on the same network (testnet) → check PHASER_LIQ balance; use faucet/rewards in the UI if shown → run settlement when balance covers the price.",
+            text: "Participant: open Market or follow a link → Chamber with the right collection → connect on the same network (testnet) → check PHASERLIQ balance; use faucet/rewards in the UI if shown → run settlement when balance covers the price.",
           },
           {
             type: "links",
@@ -626,19 +626,19 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
       },
       {
         id: "token",
-        title: "PHASER_LIQ and explorers",
+        title: "PHASERLIQ and explorers",
         blocks: [
           {
             type: "p",
-            text: "Amounts are shown in PHASER_LIQ; the client converts to stroops and calls the token contract. Symbol PHASER_LIQ, 7 decimals, typical on-chain name “Phase Liquidity Token”. In the Chamber, TOKEN_EXPERT links to the token contract on Stellar Expert.",
+            text: "Amounts are shown in PHASERLIQ; the client converts to stroops and calls the token contract. Symbol PHASERLIQ, 7 decimals, typical on-chain name “Phase Liquidity Token”. In the Chamber, TOKEN_EXPERT links to the token contract on Stellar Expert.",
           },
           {
             type: "links",
             intro: "Default testnet contracts and explorer:",
             items: [
               {
-                label: "PHASER_LIQ token contract",
-                href: "https://stellar.expert/explorer/testnet/contract/CDW3T2DXLNGMQDZLMINEF3QHXYDB3F4ZJOGQSKW6QYABA4HMUFRG7DXC",
+                label: "PHASERLIQ token contract",
+                href: "https://stellar.expert/explorer/testnet/contract/CDOAXHWC6YJB7U3ELV67HKJY6HEMJFBNRGJK6WZGUAELBWP3WP77RLFD",
                 description: "Repository default ID; verify env if you changed TOKEN_CONTRACT_ID.",
               },
               {

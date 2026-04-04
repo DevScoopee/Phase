@@ -349,7 +349,7 @@ export function PhaseArtifactVisualizer({
             onClick={() => void copyContractId().catch(() => {})}
             className="ml-3 shrink-0 rounded border border-cyan-500/40 bg-cyan-950/25 px-1.5 py-0.5 text-[8px] font-bold text-cyan-300/90 transition-colors hover:border-cyan-300 hover:text-white"
             title={copiedContract ? "Copied" : "Copy"}
-            aria-label="Copy PHASER_LIQ contract address"
+            aria-label="Copy PHASERLIQ contract address"
           >
             {copiedContract ? "OK" : "COPY"}
           </button>

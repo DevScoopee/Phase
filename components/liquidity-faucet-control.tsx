@@ -129,8 +129,8 @@ export function LiquidityFaucetControl({
         const amount = formatLiq(data.amountStroops ?? "0")
         const line =
           lang === "es"
-            ? `[ RECOMPENSA_ACREDITADA ] +${amount} PHASER_LIQ`
-            : `[ REWARD_CREDITED ] +${amount} PHASER_LIQ`
+            ? `[ RECOMPENSA_ACREDITADA ] +${amount} PHASERLIQ`
+            : `[ REWARD_CREDITED ] +${amount} PHASERLIQ`
         onNarrativeLog?.(logs.faucetOk)
         onNarrativeLog?.(line)
         if (data.hash) onNarrativeLog?.(`${logs.tracePrefix} ${data.hash}`)

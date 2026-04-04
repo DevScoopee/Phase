@@ -3,7 +3,6 @@
 import Link from "next/link"
 import { useCallback, useEffect, useState } from "react"
 import { signTransaction } from "@stellar/freighter-api"
-import { DesignStudioModal } from "@/components/design-studio-modal"
 import { ArtistAliasControl } from "@/components/artist-alias-control"
 import { LangToggle } from "@/components/lang-toggle"
 import { useLang } from "@/components/lang-context"
@@ -18,7 +17,9 @@ import { LiquidityFaucetControl } from "@/components/liquidity-faucet-control"
 import { TacticalCornerSigil } from "@/components/tactical-corner-sigil"
 import {
   NETWORK_PASSPHRASE,
+  REQUIRED_AMOUNT,
   buildCreateCollectionTransaction,
+  buildSettleTransaction,
   fetchCreatorCollectionId,
   getTokenBalance,
   getTransactionResult,
@@ -33,14 +34,11 @@ import {
   validateFinalContractImageUri,
 } from "@/lib/phase-protocol"
 
-export type ImageSourceMode = "PAINT" | "UPLOAD" | "URL"
-
 function truncateAddress(addr: string) {
   if (!addr || addr.length < 14) return addr
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`
 }
 
-/** Keeps mouse-wheel scrolling inside LIQ_REWARDS instead of the taller form column above. */
 function captureWheelOnRewardsPanel(e: React.WheelEvent<HTMLDivElement>) {
   const el = e.currentTarget
   if (el.scrollHeight <= el.clientHeight + 1) return
@@ -81,7 +79,6 @@ function PhaserLiqExpertLink({
   )
 }
 
-/** Turns any copy containing `PHASER_LIQ` into inline text + expert link. */
 function textWithPhaserLiqLinks(text: string): React.ReactNode {
   if (!text.includes(PHASER_LIQ_SYMBOL)) return text
   const parts = text.split(PHASER_LIQ_SYMBOL)
@@ -96,6 +93,10 @@ function textWithPhaserLiqLinks(text: string): React.ReactNode {
 const forgeNavBtn =
   "tactical-interactive-glitch tactical-phosphor inline-flex min-h-[40px] items-center rounded-sm border-2 border-cyan-400/50 bg-cyan-950/45 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.14)] transition-colors hover:border-cyan-300 hover:bg-cyan-900/35 hover:text-white"
 
+type AgentState = "IDLE" | "AWAITING_PAYMENT" | "PROCESSING_PAYMENT" | "FORGING_MATTER" | "COMPLETE"
+
+const PROTOCOL_HALTED = "[ PROTOCOL_HALTED: ERROR_IN_FUSION_CHAMBER ]"
+
 export default function ForgePage() {
   const { lang } = useLang()
   const f = pickCopy(lang).forge
@@ -103,26 +104,33 @@ export default function ForgePage() {
 
   const { address, connect, disconnect, connecting, refresh, artistAlias } = useWallet()
 
-  const [imageSource, setImageSource] = useState<ImageSourceMode>("URL")
-  const [designStudioOpen, setDesignStudioOpen] = useState(false)
   const [name, setName] = useState("")
   const [priceLiq, setPriceLiq] = useState("1")
-  const [imageUrl, setImageUrl] = useState("")
+  const [anomalyDescription, setAnomalyDescription] = useState("")
 
-  const [uploadFile, setUploadFile] = useState<File | null>(null)
-  const [uploadPreviewUrl, setUploadPreviewUrl] = useState<string | null>(null)
-
-  const [paintBlob, setPaintBlob] = useState<Blob | null>(null)
-  const [paintPreviewUrl, setPaintPreviewUrl] = useState<string | null>(null)
-
-  const [busy, setBusy] = useState(false)
+  const [agentState, setAgentState] = useState<AgentState>("IDLE")
+  const [isMintingCollection, setIsMintingCollection] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [createdId, setCreatedId] = useState<number | null>(null)
   const [copied, setCopied] = useState(false)
   const [tickerIdx, setTickerIdx] = useState(0)
+  const [agentTickerIdx, setAgentTickerIdx] = useState(0)
   const [ipfsConfigured, setIpfsConfigured] = useState<boolean | null>(null)
   const [tokenBalance, setTokenBalance] = useState("0")
+
+  const [agentImageUrl, setAgentImageUrl] = useState<string | null>(null)
+  const [lore, setLore] = useState<string | null>(null)
+
+  const agentFlowBusy =
+    agentState === "AWAITING_PAYMENT" ||
+    agentState === "PROCESSING_PAYMENT" ||
+    agentState === "FORGING_MATTER"
+
+  const busy = isMintingCollection || agentFlowBusy
+
+  const anomalyFieldLocked = agentFlowBusy || agentState === "COMPLETE"
+  const namePriceLocked = agentFlowBusy || isMintingCollection
 
   useEffect(() => {
     void isIpfsUploadConfigured()
@@ -148,97 +156,198 @@ export default function ForgePage() {
     void refreshLiqBalance().catch(() => {})
   }, [refreshLiqBalance])
 
-  const needsServerUpload = imageSource === "PAINT" || imageSource === "UPLOAD"
-  const uploadHostMissing = needsServerUpload && ipfsConfigured === false
-
   useEffect(() => {
-    if (!busy) return
-    const tickers = pickCopy(lang).forge.deployTickers
+    if (!isMintingCollection) return
+    const tickers = f.deployTickers
     const id = window.setInterval(() => {
       setTickerIdx((i) => (i + 1) % tickers.length)
     }, 900)
     return () => window.clearInterval(id)
-  }, [busy, lang])
+  }, [isMintingCollection, f.deployTickers])
 
   useEffect(() => {
-    return () => {
-      if (uploadPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(uploadPreviewUrl)
-      if (paintPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(paintPreviewUrl)
-    }
-  }, [uploadPreviewUrl, paintPreviewUrl])
+    if (agentState !== "FORGING_MATTER") return
+    const tickers = [
+      "[ SYSTEM: AGENT_PROCESSING... COMPILING_LORE... ]",
+      "[ SYSTEM: AGENT_PROCESSING... SYNTHESIZING_VISUAL_MATTER... ]",
+    ]
+    const id = window.setInterval(() => {
+      setAgentTickerIdx((i) => (i + 1) % tickers.length)
+    }, 700)
+    return () => window.clearInterval(id)
+  }, [agentState])
 
-  const revokeUpload = useCallback(() => {
-    if (uploadPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(uploadPreviewUrl)
-    setUploadPreviewUrl(null)
-    setUploadFile(null)
-  }, [uploadPreviewUrl])
+  const previewSrc = agentImageUrl ? ipfsOrHttpsDisplayUrl(agentImageUrl) : ""
 
-  const revokePaint = useCallback(() => {
-    if (paintPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(paintPreviewUrl)
-    setPaintPreviewUrl(null)
-    setPaintBlob(null)
-  }, [paintPreviewUrl])
+  const resolveImageUriForMint = useCallback(
+    async (openAiImageUrl: string): Promise<string> => {
+      const ivm = pickCopy(lang).imageValidation
+      let res: Response
+      try {
+        res = await fetch(openAiImageUrl)
+      } catch {
+        throw new Error(pickCopy(lang).forge.errors.fetchAgentImage)
+      }
+      if (!res.ok) throw new Error(pickCopy(lang).forge.errors.fetchAgentImage)
+      const blob = await res.blob()
+      const sealed = await composeImageWithPhaseForgeSeal(blob)
 
-  useEffect(() => {
-    if (imageSource !== "UPLOAD") revokeUpload()
-  }, [imageSource, revokeUpload])
+      const configured = await isIpfsUploadConfigured().catch(() => false)
+      if (configured) {
+        const uri = await uploadToIPFS(sealed)
+        const v = validateFinalContractImageUri(uri, ivm)
+        if (!v.ok) throw new Error(v.message)
+        return v.value
+      }
 
-  const previewSrc = (() => {
-    if (imageSource === "URL") {
-      const t = imageUrl.trim()
-      return t ? ipfsOrHttpsDisplayUrl(t) : ""
-    }
-    if (imageSource === "UPLOAD") return uploadPreviewUrl?.trim() ?? ""
-    return paintPreviewUrl?.trim() ?? ""
-  })()
-
-  const applySealedDesign = useCallback(
-    (blob: Blob) => {
-      setError(null)
-      revokePaint()
-      const url = URL.createObjectURL(blob)
-      setPaintBlob(blob)
-      setPaintPreviewUrl(url)
+      const vOpen = validateFinalContractImageUri(openAiImageUrl.trim(), ivm)
+      if (vOpen.ok) return vOpen.value
+      throw new Error(pickCopy(lang).forge.errors.finalUri)
     },
-    [revokePaint],
+    [lang],
   )
 
-  const resolveFinalImageUri = useCallback(async (): Promise<string> => {
-    const { forge: ff, imageValidation: ivm } = pickCopy(lang)
-    if (imageSource === "URL") {
-      const v = validateFinalContractImageUri(imageUrl, ivm)
-      if (!v.ok) throw new Error(v.message)
-      return v.value
-    }
-    if (imageSource === "UPLOAD") {
-      if (!uploadFile) throw new Error(ff.errors.selectFile)
-      const sealed = await composeImageWithPhaseForgeSeal(uploadFile)
-      const uri = await uploadToIPFS(sealed)
-      const v = validateFinalContractImageUri(uri, ivm)
-      if (!v.ok) throw new Error(v.message)
-      return v.value
-    }
-    if (!paintBlob) throw new Error(ff.errors.sealPaint)
-    const sealed = await composeImageWithPhaseForgeSeal(paintBlob)
-    const uri = await uploadToIPFS(sealed)
-    const v = validateFinalContractImageUri(uri, ivm)
-    if (!v.ok) throw new Error(v.message)
-    return v.value
-  }, [lang, imageSource, imageUrl, uploadFile, paintBlob])
+  const initiateAgentForge = useCallback(
+    async (userPrompt: string, payerAddress: string): Promise<{ imageUrl: string; lore: string }> => {
+      const ff = pickCopy(lang).forge
+      setAgentState("AWAITING_PAYMENT")
 
-  const runCreate = useCallback(async () => {
+      const probe = await fetch("/api/forge-agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: userPrompt }),
+      })
+
+      if (probe.status !== 402) {
+        const errText = await probe.text().catch(() => "")
+        if (probe.ok) throw new Error(ff.errors.agentNot402)
+        throw new Error(errText || ff.errors.agentRequest)
+      }
+
+      const challengeBody = (await probe.json().catch(() => ({}))) as {
+        challenge?: { amount?: number | string }
+      }
+      const requiredAmount = String(challengeBody.challenge?.amount ?? REQUIRED_AMOUNT)
+
+      setAgentState("PROCESSING_PAYMENT")
+      const invoiceId = Math.floor(Math.random() * 1_000_000)
+      const txEnvelope = await buildSettleTransaction(payerAddress, requiredAmount, invoiceId, 0)
+      const signResult = await signTransaction(txEnvelope, {
+        networkPassphrase: NETWORK_PASSPHRASE,
+        address: payerAddress,
+      })
+      if (signResult.error) {
+        throw new Error("FUSION_ABORTED_BY_USER")
+      }
+      const signedXdr =
+        (signResult as { signedTxXdr?: string }).signedTxXdr ||
+        (signResult as { signedTransaction?: string }).signedTransaction
+      if (!signedXdr) throw new Error("NO_SIGNED_XDR")
+
+      const sendResult = await sendTransaction(signedXdr)
+      await getTransactionResult(sendResult.hash as string)
+      await refreshLiqBalance().catch(() => {})
+
+      setAgentState("FORGING_MATTER")
+      setAgentTickerIdx(0)
+
+      const hash = sendResult.hash as string
+      const x402Proof = btoa(JSON.stringify({ settlementTxHash: hash, payerAddress }))
+
+      const paid = await fetch("/api/forge-agent", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `x402 ${x402Proof}`,
+        },
+        body: JSON.stringify({
+          prompt: userPrompt,
+          settlementTxHash: hash,
+          payerAddress,
+        }),
+      })
+
+      if (paid.status >= 500) {
+        throw new Error("ORACLE_OFFLINE_ENERGY_CONSUMED")
+      }
+      if (!paid.ok) {
+        const t = await paid.text().catch(() => "")
+        throw new Error(t || ff.errors.agentRequest)
+      }
+
+      const data = (await paid.json()) as {
+        success?: boolean
+        imageUrl?: string
+        lore?: string
+        description?: string
+      }
+      if (!data.imageUrl) throw new Error(ff.errors.agentRequest)
+
+      const loreText = data.lore ?? data.description ?? ""
+      setAgentImageUrl(data.imageUrl)
+      setLore(loreText)
+      setAgentState("COMPLETE")
+      return { imageUrl: data.imageUrl, lore: loreText }
+    },
+    [lang, refreshLiqBalance],
+  )
+
+  const handleForgeAgent = useCallback(async () => {
     const ff = pickCopy(lang).forge
     setError(null)
     setShareUrl(null)
     setCreatedId(null)
     setCopied(false)
+    setAgentImageUrl(null)
+    setLore(null)
+    setAgentState("IDLE")
+
     const addr = address ?? (await refresh())
     if (!addr) {
       setError(ff.errors.connectWallet)
       return
     }
-    const trimmed = name.trim()
-    if (trimmed.length < 2) {
+
+    const prompt = anomalyDescription.trim()
+    if (prompt.length < 4) {
+      setError(ff.errors.anomalyShort)
+      return
+    }
+
+    try {
+      const bal = await getTokenBalance(addr)
+      if (BigInt(bal) < BigInt(REQUIRED_AMOUNT)) {
+        setError(ff.errors.lowEnergyAgent)
+        return
+      }
+    } catch {
+      setError(ff.errors.lowEnergyAgent)
+      return
+    }
+
+    try {
+      await initiateAgentForge(prompt, addr)
+    } catch {
+      setAgentState("IDLE")
+      setAgentImageUrl(null)
+      setLore(null)
+      setError(PROTOCOL_HALTED)
+    }
+  }, [address, anomalyDescription, initiateAgentForge, lang, refresh])
+
+  const handleMintArtifact = useCallback(async () => {
+    const ff = pickCopy(lang).forge
+    if (agentState !== "COMPLETE" || !agentImageUrl) return
+
+    setError(null)
+    const addr = address ?? (await refresh())
+    if (!addr) {
+      setError(ff.errors.connectWallet)
+      return
+    }
+
+    const trimmedName = name.trim()
+    if (trimmedName.length < 2) {
       setError(ff.errors.nameShort)
       return
     }
@@ -247,6 +356,7 @@ export default function ForgePage() {
       setError(ff.errors.priceInvalid)
       return
     }
+
     const existingId = await fetchCreatorCollectionId(addr)
     if (existingId != null) {
       setCreatedId(existingId)
@@ -257,22 +367,25 @@ export default function ForgePage() {
       setError(ff.errors.creatorAlreadyHasCollection.replace("{id}", String(existingId)))
       return
     }
-    setBusy(true)
+
+    setIsMintingCollection(true)
     setTickerIdx(0)
+
     try {
-      const finalUri = await resolveFinalImageUri()
-      const txEnvelope = await buildCreateCollectionTransaction(addr, trimmed, stroops, finalUri)
-      const signResult = await signTransaction(txEnvelope, {
+      const finalUri = await resolveImageUriForMint(agentImageUrl)
+      const txEnvelopeCreate = await buildCreateCollectionTransaction(addr, trimmedName, stroops, finalUri)
+      const signCreate = await signTransaction(txEnvelopeCreate, {
         networkPassphrase: NETWORK_PASSPHRASE,
         address: addr,
       })
-      if (signResult.error) throw new Error(signResult.error.message || "SIGN_FAIL")
-      const signedXdr =
-        (signResult as { signedTxXdr?: string }).signedTxXdr ||
-        (signResult as { signedTransaction?: string }).signedTransaction
-      if (!signedXdr) throw new Error("NO_SIGNED_XDR")
-      const sendResult = await sendTransaction(signedXdr)
-      await getTransactionResult(sendResult.hash as string)
+      if (signCreate.error) throw new Error(signCreate.error.message || "SIGN_FAIL")
+      const signedCreate =
+        (signCreate as { signedTxXdr?: string }).signedTxXdr ||
+        (signCreate as { signedTransaction?: string }).signedTransaction
+      if (!signedCreate) throw new Error("NO_SIGNED_XDR")
+      const sendCreate = await sendTransaction(signedCreate)
+      await getTransactionResult(sendCreate.hash as string)
+
       const id = await fetchCreatorCollectionId(addr)
       if (id == null) throw new Error(ff.errors.collectionIdRead)
       setCreatedId(id)
@@ -280,8 +393,10 @@ export default function ForgePage() {
         const path = `/chamber?collection=${id}`
         setShareUrl(`${window.location.origin}${path}`)
       }
+      setAgentState("IDLE")
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
+      setAgentState("COMPLETE")
       if (isCreatorAlreadyHasCollectionError(msg)) {
         const id = await fetchCreatorCollectionId(addr)
         if (id != null) {
@@ -294,11 +409,11 @@ export default function ForgePage() {
           return
         }
       }
-      setError(msg)
+      setError(PROTOCOL_HALTED)
     } finally {
-      setBusy(false)
+      setIsMintingCollection(false)
     }
-  }, [lang, address, name, priceLiq, refresh, resolveFinalImageUri])
+  }, [address, agentImageUrl, agentState, lang, name, priceLiq, refresh, resolveImageUriForMint])
 
   const copyShare = useCallback(async () => {
     if (!shareUrl) return
@@ -313,36 +428,49 @@ export default function ForgePage() {
 
   const shellClass = cn(
     "tactical-cockpit-forge-shell tactical-frame relative flex h-full min-h-0 flex-col overflow-hidden p-4 text-cyan-100 md:p-6",
-    busy && "forge-shell--deploying tactical-btn-forge-primary",
+    isMintingCollection && "forge-shell--deploying tactical-btn-forge-primary",
   )
 
   const inputClass =
     "tactical-frame w-full border-cyan-500/35 bg-black/55 px-3 py-2.5 text-[15px] leading-snug text-cyan-50 placeholder:text-cyan-500/40 focus:border-cyan-400/70 focus:outline-none focus:shadow-[0_0_16px_rgba(0,255,255,0.12)]"
 
+  const textareaClass = cn(
+    inputClass,
+    "min-h-[11rem] resize-y font-mono text-[13px] leading-relaxed sm:min-h-[13rem] sm:text-sm",
+  )
+
   const inputLabelClass =
     "text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-200/90 tactical-phosphor sm:text-[11px]"
 
-  const modeBtn = (mode: ImageSourceMode, label: string) => (
-    <button
-      type="button"
-      disabled={busy}
-      onClick={() => {
-        playTacticalUiClick()
-        setImageSource(mode)
-        setError(null)
-      }}
-      className={cn(
-        "tactical-interactive-glitch tactical-btn flex-1 py-2.5 font-mono text-[10px] uppercase tracking-[0.12em] sm:flex-none sm:min-w-[100px]",
-        imageSource === mode
-          ? "border-cyan-400/70 text-cyan-100 shadow-[0_0_14px_rgba(0,255,255,0.2)]"
-          : "border-cyan-500/25 text-cyan-500/60",
-      )}
-    >
-      <span>{label}</span>
-    </button>
-  )
-
   const priceReadout = stroopsToLiqDisplay(liqToStroops(priceLiq))
+
+  const forgingTerminalLines = [
+    "[ SYSTEM: AGENT_PROCESSING... COMPILING_LORE... ]",
+    "[ SYSTEM: AGENT_PROCESSING... SYNTHESIZING_VISUAL_MATTER... ]",
+  ] as const
+
+  const statusStripActive = agentFlowBusy || isMintingCollection
+
+  const statusLine = isMintingCollection
+    ? f.deployTickers[tickerIdx % f.deployTickers.length]
+    : agentState === "PROCESSING_PAYMENT"
+      ? "[ x402_PAYMENT_REQUIRED // AWAITING_SIGNATURE ]"
+      : agentState === "FORGING_MATTER"
+        ? forgingTerminalLines[agentTickerIdx % forgingTerminalLines.length]
+        : agentState === "AWAITING_PAYMENT"
+          ? "[ CONTACTING_ORACLE... ]"
+          : ""
+
+  const initiatePrimaryLabel =
+    agentState === "IDLE"
+      ? "[ INITIATE_AGENT_PROTOCOL ]"
+      : agentState === "AWAITING_PAYMENT"
+        ? "[ CONTACTING_ORACLE... ]"
+        : agentState === "PROCESSING_PAYMENT"
+          ? "[ x402_PAYMENT_REQUIRED // AWAITING_SIGNATURE ]"
+          : agentState === "FORGING_MATTER"
+            ? forgingTerminalLines[agentTickerIdx % forgingTerminalLines.length]
+            : "[ INITIATE_AGENT_PROTOCOL ]"
 
   return (
     <div className="tactical-command-root tactical-command-root--stable tactical-command-root--cockpit relative flex h-screen max-h-[100dvh] flex-col overflow-hidden font-mono text-foreground antialiased">
@@ -355,7 +483,7 @@ export default function ForgePage() {
         <Link href="/" className={forgeNavBtn} onClick={() => playTacticalUiClick()}>
           {f.exit}
         </Link>
-        <span className="tactical-phosphor max-w-[min(52vw,16rem)] text-center text-[11px] font-bold uppercase tracking-[0.22em] text-cyan-50 sm:text-xs">
+        <span className="tactical-phosphor max-w-[min(52vw,18rem)] text-center text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-50 sm:text-xs">
           {f.title}
         </span>
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -371,35 +499,45 @@ export default function ForgePage() {
 
       <main className="relative z-10 mx-auto min-h-0 w-full max-w-[100rem] flex-1 overflow-hidden px-3 pb-3 pt-1 md:px-5">
         <div className={shellClass}>
-          {busy && (
+          {statusStripActive && (
             <div className="shrink-0">
               <div className="forge-scanline" aria-hidden />
               <div className="pointer-events-none absolute right-3 top-3 flex items-center gap-2 text-[9px] uppercase tracking-widest text-[#00ffff]">
                 <span className="forge-status-led inline-block size-2 rounded-full bg-[#00ffff]" />
-                {f.deployStatus}
+                {isMintingCollection ? f.deployStatus : f.agentDeployStatus}
               </div>
-              <p className="mb-2 border-b border-[#00ffff]/30 pb-2 text-[9px] uppercase tracking-[0.2em] text-[#00ffff]/90">
-                {f.deployTickers[tickerIdx % f.deployTickers.length]}
+              <p
+                className={cn(
+                  "mb-2 border-b border-[#00ffff]/30 pb-2 font-mono text-[9px] uppercase tracking-[0.18em]",
+                  agentState === "PROCESSING_PAYMENT" && "forge-x402-blink",
+                  agentState === "FORGING_MATTER" && "forge-forge-glitch text-[#00ffff]/90",
+                  (agentState === "AWAITING_PAYMENT" || isMintingCollection) && "text-[#00ffff]/90",
+                )}
+              >
+                {statusLine}
               </p>
             </div>
           )}
 
-          {!busy && (
+          {!statusStripActive && (
             <h1 className="tactical-phosphor shrink-0 border-b border-cyan-500/30 pb-2 text-[11px] font-bold uppercase tracking-[0.22em] text-cyan-50 sm:text-xs">
               ◈ {f.registerTitle}
             </h1>
           )}
 
-          {!busy && (
-            <p className="mt-2 line-clamp-3 shrink-0 text-[10px] leading-relaxed text-cyan-100/90 tactical-phosphor sm:text-[11px]">
+          {!statusStripActive && (
+            <p className="mt-1 font-mono text-[9px] font-semibold uppercase tracking-[0.24em] text-cyan-400/90">{f.oracleBadge}</p>
+          )}
+
+          {!statusStripActive && (
+            <p className="mt-2 line-clamp-4 shrink-0 text-[10px] leading-relaxed text-cyan-100/90 tactical-phosphor sm:text-[11px]">
               {f.intro}
             </p>
           )}
 
-          {!busy && uploadHostMissing && (
-            <div className="tactical-frame mt-2 shrink-0 border-amber-500/45 bg-amber-950/20 px-2 py-2 text-[9px] text-amber-100/90 shadow-[0_0_12px_rgba(245,158,11,0.08)]">
-              <p className="font-mono uppercase tracking-widest text-amber-300 tactical-phosphor">⚠ {f.uploadUnavailableTitle}</p>
-              <p className="mt-1 leading-snug text-amber-100/85">{f.uploadUnavailableBody}</p>
+          {ipfsConfigured === false && (
+            <div className="tactical-frame mt-2 shrink-0 border-amber-500/40 bg-amber-950/15 px-2 py-2 text-[9px] text-amber-100/90">
+              <p className="font-mono uppercase tracking-widest text-amber-300/95">{f.ipfsOracleHint}</p>
             </div>
           )}
 
@@ -440,18 +578,27 @@ export default function ForgePage() {
             </div>
           )}
 
-          <div className="mt-3 shrink-0 space-y-2">
-            <p className={inputLabelClass}>▣ {f.imageSource}</p>
-            <div className="flex flex-wrap gap-2">
-              {modeBtn("PAINT", f.paint)}
-              {modeBtn("UPLOAD", f.upload)}
-              {modeBtn("URL", f.url)}
-            </div>
-          </div>
-
           <div className="mt-4 flex min-h-0 flex-1 flex-col gap-5 lg:grid lg:h-full lg:min-h-0 lg:grid-cols-12 lg:gap-8">
             <div className="flex min-h-0 w-full flex-col gap-2 lg:col-span-5 lg:h-full lg:min-h-0">
               <div className="custom-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto pr-0.5 lg:pr-0">
+                <div>
+                  <label htmlFor="forge-anomaly" className={inputLabelClass}>
+                    {f.anomalyLabel}
+                  </label>
+                  <textarea
+                    id="forge-anomaly"
+                    value={anomalyDescription}
+                    onChange={(e) => setAnomalyDescription(e.target.value)}
+                    disabled={anomalyFieldLocked}
+                    placeholder={f.placeholders.anomaly}
+                    rows={6}
+                    className={cn(textareaClass, "mt-1")}
+                    autoComplete="off"
+                    spellCheck={lang === "es"}
+                  />
+                  <p className="mt-1 text-[9px] leading-relaxed text-cyan-400/75 sm:text-[10px]">{f.oracleHint}</p>
+                </div>
+
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
                   <div>
                     <label htmlFor="forge-name" className={inputLabelClass}>
@@ -462,7 +609,7 @@ export default function ForgePage() {
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       maxLength={64}
-                      disabled={busy}
+                      disabled={namePriceLocked}
                       placeholder={f.placeholders.collectionName}
                       className={cn(inputClass, "mt-1")}
                     />
@@ -476,7 +623,7 @@ export default function ForgePage() {
                       value={priceLiq}
                       onChange={(e) => setPriceLiq(e.target.value)}
                       inputMode="decimal"
-                      disabled={busy}
+                      disabled={namePriceLocked}
                       placeholder={f.placeholders.price}
                       className={cn(inputClass, "mt-1")}
                     />
@@ -496,99 +643,31 @@ export default function ForgePage() {
                   </span>
                 </p>
 
-              {imageSource === "URL" && (
-                <div>
-                  <label htmlFor="forge-image-url" className={inputLabelClass}>
-                    {f.metadataUrl}
-                  </label>
-                  <input
-                    id="forge-image-url"
-                    value={imageUrl}
-                    onChange={(e) => setImageUrl(e.target.value)}
-                    maxLength={256}
-                    disabled={busy}
-                    placeholder={f.placeholders.imageUrl}
-                    className={cn(inputClass, "mt-1")}
-                    autoComplete="off"
-                  />
-                  <p className="mt-1 text-[9px] leading-relaxed text-cyan-300/85 sm:text-[10px]">{f.urlHelp}</p>
-                </div>
-              )}
-
-              {imageSource === "UPLOAD" && (
-                <div>
-                  <label htmlFor="forge-file" className={inputLabelClass}>
-                    {f.fileIpfs}
-                  </label>
-                  <input
-                    id="forge-file"
-                    type="file"
-                    accept="image/*"
-                    disabled={busy}
-                    className="tactical-frame mt-1 block w-full border-dashed border-cyan-500/30 bg-black/35 px-2 py-1.5 text-[9px] text-cyan-400/80 file:mr-3 file:border file:border-cyan-500/45 file:bg-transparent file:px-2 file:py-1 file:font-mono file:text-[9px] file:uppercase file:text-cyan-300"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0]
-                      revokeUpload()
-                      if (!f) return
-                      setUploadFile(f)
-                      setUploadPreviewUrl(URL.createObjectURL(f))
-                    }}
-                  />
-                </div>
-              )}
-
-              {imageSource === "PAINT" && (
-                <div className="space-y-2 border-4 border-double border-[#00ffff]/25 bg-black/40 p-3">
-                  <div className="flex min-h-[100px] flex-col items-center justify-center border-4 border-dashed border-[#00ffff]/20 bg-black px-3 py-4">
-                    <span className="text-center font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-cyan-300/90">
-                      {f.waitingDesign}
-                    </span>
-                    {paintPreviewUrl && (
-                      <p className="mt-2 text-center font-mono text-[8px] font-medium uppercase tracking-widest text-emerald-300/85">
-                        {f.previewHint}
-                      </p>
-                    )}
+                {!address ? null : (
+                  <div className="space-y-2 border-t border-cyan-900/40 pt-2">
+                    <p className="text-[10px] text-cyan-100/90 sm:text-[11px]">
+                      {f.walletLabel}: <span className="font-medium text-cyan-50">{truncateAddress(address)}</span>
+                    </p>
+                    <p className="text-[10px] text-cyan-200/88 sm:text-[11px]">
+                      {lang === "es" ? "Artista" : "Artist"}:{" "}
+                      <span className="font-medium text-cyan-100">{artistAlias ?? (lang === "es" ? "sin alias" : "no alias")}</span>
+                    </p>
+                    <div className="rounded border border-cyan-900/50 bg-black/40 p-2">
+                      <ArtistAliasControl compact />
+                    </div>
+                    <p className="font-mono text-[11px] tabular-nums text-cyan-200/95 sm:text-xs">
+                      <span className="text-cyan-300/90">{pickCopy(lang).chamber.liqBalance}</span>
+                      {": "}
+                      <span className="text-cyan-50">
+                        {(() => {
+                          const n = parseInt(tokenBalance, 10) / 10000000
+                          return Number.isFinite(n) ? n.toFixed(2) : "0.00"
+                        })()}{" "}
+                      </span>
+                      <PhaserLiqExpertLink />
+                    </p>
                   </div>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      playTacticalUiClick()
-                      setDesignStudioOpen(true)
-                    }}
-                    className="tactical-interactive-glitch w-full border-4 border-double border-[#00ffff] bg-[#00ffff]/10 py-2.5 font-mono text-[10px] uppercase tracking-[0.18em] text-[#00ffff] shadow-[0_0_16px_rgba(0,255,255,0.12)] transition-all hover:bg-[#00ffff]/18 hover:shadow-[0_0_22px_rgba(0,255,255,0.18)] disabled:opacity-40"
-                  >
-                    {paintPreviewUrl ? f.reopenDesigner : f.designArtifact}
-                  </button>
-                  <p className="text-[8px] leading-snug text-cyan-400/80">{f.studioBlurb}</p>
-                </div>
-              )}
-
-              {!address ? null : (
-                <div className="space-y-2 border-t border-cyan-900/40 pt-2">
-                  <p className="text-[10px] text-cyan-100/90 sm:text-[11px]">
-                    {f.walletLabel}: <span className="font-medium text-cyan-50">{truncateAddress(address)}</span>
-                  </p>
-                  <p className="text-[10px] text-cyan-200/88 sm:text-[11px]">
-                    {lang === "es" ? "Artista" : "Artist"}:{" "}
-                    <span className="font-medium text-cyan-100">{artistAlias ?? (lang === "es" ? "sin alias" : "no alias")}</span>
-                  </p>
-                  <div className="rounded border border-cyan-900/50 bg-black/40 p-2">
-                    <ArtistAliasControl compact />
-                  </div>
-                  <p className="font-mono text-[11px] tabular-nums text-cyan-200/95 sm:text-xs">
-                    <span className="text-cyan-300/90">{pickCopy(lang).chamber.liqBalance}</span>
-                    {": "}
-                    <span className="text-cyan-50">
-                      {(() => {
-                        const n = parseInt(tokenBalance, 10) / 10000000
-                        return Number.isFinite(n) ? n.toFixed(2) : "0.00"
-                      })()}{" "}
-                    </span>
-                    <PhaserLiqExpertLink />
-                  </p>
-                </div>
-              )}
+                )}
               </div>
 
               {address ? (
@@ -622,17 +701,38 @@ export default function ForgePage() {
                   </button>
                 ) : (
                   <>
-                    <button
-                      type="button"
-                      disabled={busy || uploadHostMissing}
-                      onClick={() => {
-                        playTacticalUiClick()
-                        void runCreate().catch(() => {})
-                      }}
-                      className="tactical-interactive-glitch w-full border-4 border-double border-[#00ffff] bg-[#00ffff]/5 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#00ffff] shadow-[0_0_20px_rgba(0,255,255,0.14)] transition-all hover:bg-[#00ffff]/15 hover:shadow-[0_0_28px_rgba(0,255,255,0.2)] disabled:opacity-40"
-                    >
-                      {busy ? f.deploying : f.forgeCollection}
-                    </button>
+                    {agentState === "COMPLETE" ? (
+                      <button
+                        type="button"
+                        disabled={isMintingCollection}
+                        onClick={() => {
+                          playTacticalUiClick()
+                          void handleMintArtifact().catch(() => {})
+                        }}
+                        className={cn(
+                          "tactical-interactive-glitch w-full border-4 border-double border-[#00ffff] bg-[#00ffff]/5 py-3 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[#00ffff] shadow-[0_0_20px_rgba(0,255,255,0.14)] transition-all hover:bg-[#00ffff]/15 hover:shadow-[0_0_28px_rgba(0,255,255,0.2)] disabled:opacity-40 sm:text-[11px]",
+                          isMintingCollection && "forge-forge-glitch",
+                        )}
+                      >
+                        {isMintingCollection ? statusLine || f.deploying : "[ ARTIFACT_READY_FOR_MINT ]"}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => {
+                          playTacticalUiClick()
+                          void handleForgeAgent().catch(() => {})
+                        }}
+                        className={cn(
+                          "tactical-interactive-glitch w-full border-4 border-double border-[#00ffff] bg-[#00ffff]/5 py-3 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[#00ffff] shadow-[0_0_20px_rgba(0,255,255,0.14)] transition-all hover:bg-[#00ffff]/15 hover:shadow-[0_0_28px_rgba(0,255,255,0.2)] disabled:opacity-40 sm:text-[11px]",
+                          agentState === "PROCESSING_PAYMENT" && "forge-x402-blink",
+                          agentState === "FORGING_MATTER" && "forge-forge-glitch",
+                        )}
+                      >
+                        {initiatePrimaryLabel}
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => {
@@ -655,34 +755,27 @@ export default function ForgePage() {
               </p>
               <div className="art-retro-monitor flex min-h-0 flex-1 items-center justify-center overflow-hidden px-2 py-2">
                 {previewSrc ? (
-                  <div className="tactical-holo-wrap relative z-[3] flex h-full max-h-full w-full max-w-full items-center justify-center">
-                    {/* eslint-disable-next-line @next/next/no-img-element -- blob + external URLs */}
+                  <div className="tactical-holo-wrap relative z-[3] flex h-full max-h-full w-full max-w-full flex-col items-center justify-center gap-2">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- OpenAI / IPFS URLs */}
                     <img
                       src={previewSrc}
                       alt=""
-                      className="art-retro-monitor__img tactical-holo-img relative z-[3] max-h-full max-w-full object-contain"
+                      className="art-retro-monitor__img tactical-holo-img relative z-[3] max-h-[min(52vh,420px)] max-w-full object-contain"
                       loading="lazy"
                       referrerPolicy="no-referrer"
                     />
+                    {lore ? (
+                      <div className="custom-scrollbar max-h-28 w-full max-w-lg overflow-y-auto border border-cyan-500/25 bg-black/50 px-2 py-1.5 text-left">
+                        <p className="text-[8px] font-bold uppercase tracking-widest text-cyan-500/80">{f.lorePreview}</p>
+                        <p className="mt-1 whitespace-pre-wrap font-mono text-[10px] leading-snug text-cyan-100/90">{lore}</p>
+                      </div>
+                    ) : null}
                   </div>
                 ) : (
                   <span className="relative z-[3] px-2 text-center font-mono text-[9px] font-medium uppercase leading-relaxed tracking-[0.2em] text-cyan-400/85">
-                    {imageSource === "PAINT" ? (
-                      <>
-                        {f.waitingDesign}
-                        <br />
-                        <span className="text-[8px] tracking-widest text-cyan-500/70">{f.paintHint}</span>
-                      </>
-                    ) : (
-                      <>
-                        {f.awaitingFeed}
-                        <br />
-                        <span className="text-[8px] tracking-widest text-cyan-500/70">
-                          {imageSource === "URL" && f.urlHint}
-                          {imageSource === "UPLOAD" && f.uploadHint}
-                        </span>
-                      </>
-                    )}
+                    {f.awaitingFeed}
+                    <br />
+                    <span className="text-[8px] tracking-widest text-cyan-500/70">{f.oracleHint}</span>
                   </span>
                 )}
               </div>
@@ -690,12 +783,6 @@ export default function ForgePage() {
           </div>
         </div>
       </main>
-
-      <DesignStudioModal
-        open={designStudioOpen}
-        onOpenChange={setDesignStudioOpen}
-        onSeal={applySealedDesign}
-      />
     </div>
   )
 }

@@ -2,7 +2,6 @@
 
 import { useEffect, useRef } from "react"
 import { SplitFlapText, SplitFlapAudioProvider } from "@/components/split-flap-text"
-import { AnimatedNoise } from "@/components/animated-noise"
 import { useWallet } from "@/components/wallet-provider"
 import { useLang, type AppLang } from "@/components/lang-context"
 import { pickLandingCopy } from "@/lib/landing-copy"
@@ -27,7 +26,7 @@ const copy: Record<
   }
 > = {
   en: {
-    body: "The x402 standard integrates SEP-41 ecosystem liquidity with the immutability of non-fungible assets. Maintain pure liquidity through token fractions; when the fusion threshold is reached, the protocol automatically synthesizes a solid-state identifier on Soroban.",
+    body: "The x402 standard powers SEP-20 utility artifact metadata for immutable on-chain identity. Maintain pure liquidity through token fractions; when the fusion threshold is reached, the protocol automatically synthesizes a solid-state identifier on Soroban.",
     accessProtocol: "[ ACCESS_PROTOCOL ]",
     connectWallet: "[ CONNECT_WALLET ]",
     connectingWallet: "[ CONNECTING... ]",
@@ -37,7 +36,7 @@ const copy: Record<
     viewMarket: "[ VIEW_MARKET ]",
   },
   es: {
-    body: "El estándar x402 integra la liquidez del ecosistema SEP-41 con la inmutabilidad de los activos no fungibles. Mantén liquidez pura mediante fracciones de tokens; al alcanzar el umbral de fusión, el protocolo sintetiza automáticamente un identificador de estado sólido en Soroban.",
+    body: "El estándar x402 impulsa metadata de artefactos utilitarios SEP-20 para identidad on-chain inmutable. Mantén liquidez pura mediante fracciones de tokens; al alcanzar el umbral de fusión, el protocolo sintetiza automáticamente un identificador de estado sólido en Soroban.",
     accessProtocol: "[ ACCEDER_AL_PROTOCOLO ]",
     connectWallet: "[ CONECTAR_BILLETERA ]",
     connectingWallet: "[ CONECTANDO... ]",
@@ -82,8 +81,6 @@ export function HeroSection() {
       id="hero"
       className="relative min-h-[100dvh] flex items-center justify-center py-16 md:py-0"
     >
-      <AnimatedNoise opacity={0.03} />
-
       {/* Left vertical labels */}
       <div className="absolute left-0 md:left-1 top-1/2 -translate-y-1/2 hidden sm:block z-[1]">
         <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-muted-foreground -rotate-90 origin-left block whitespace-nowrap">
@@ -103,7 +100,7 @@ export function HeroSection() {
           {landing.studioBrand}
         </p>
         <h2 className="font-[var(--font-bebas)] text-muted-foreground/88 text-center text-[clamp(1.2rem,2.8vw,2rem)] mt-3 md:mt-4 tracking-[0.09em] leading-tight">
-          Standard x402 // SEP-41 Native
+          Standard x402 // SEP-20 Native
         </h2>
 
         <p className="mt-6 md:mt-10 max-w-2xl mx-auto text-center font-mono text-sm text-muted-foreground/90 leading-relaxed">

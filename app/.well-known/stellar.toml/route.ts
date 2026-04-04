@@ -17,9 +17,9 @@ NETWORK_PASSPHRASE="${NETWORK_PASSPHRASE}"
 ACCOUNTS=[]
 [[CURRENCIES]]
 script="${TOKEN_ADDRESS}"
-code="PHASER_LIQ"
+code="PHASERLIQ"
 name="Phase Liquidity"
-desc="PHASER_LIQ utility liquidity token for PHASE settlement flows."
+desc="PHASERLIQ utility liquidity token for PHASE settlement flows."
 image="${icon}"
 display_decimals=7
 # Soroban contract metadata (custom extensions for wallets/indexers)

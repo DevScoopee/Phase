@@ -1,8 +1,8 @@
 {
   "name": "Phase Liquidity",
-  "symbol": "PHASER_LIQ",
+  "symbol": "PHASERLIQ",
   "icon": "/phaser-liq-token.png",
-  "contract": "CDHUO52AF2HEFRSMQA4EMIY7THTTUFL3DCP4NXPA2V3TRFXOPB4DFAOW",
+  "contract": "CDOAXHWC6YJB7U3ELV67HKJY6HEMJFBNRGJK6WZGUAELBWP3WP77RLFD",
   "network": "testnet",
   "updatedAt": "2026-04-04T12:54:38.565Z"
 }

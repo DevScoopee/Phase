@@ -25,6 +25,7 @@ import {
   CONTRACT_ID,
   NETWORK_PASSPHRASE,
   PHASER_LIQ_SYMBOL,
+  displayPhaserLiqSymbol,
   REQUIRED_AMOUNT,
   TOKEN_ADDRESS,
   buildSettleTransaction,
@@ -262,7 +263,7 @@ export function FusionChamber() {
     void fetchTokenSymbol(TOKEN_ADDRESS)
       .then((symbol) => {
         if (!cancelled && symbol && symbol.trim().length > 0) {
-          setChainTokenSymbol(symbol.trim())
+          setChainTokenSymbol(displayPhaserLiqSymbol(symbol))
         }
       })
       .catch(() => {})

@@ -11,6 +11,9 @@ const PRODUCTION_SITE = "https://www.phasee.xyz"
 function siteMetadataBase(): URL {
   const fromEnv = process.env.NEXT_PUBLIC_SITE_URL?.trim()?.replace(/\/+$/, "")
   if (fromEnv) return new URL(fromEnv.includes("://") ? fromEnv : `https://${fromEnv}`)
+  // Production must not use VERCEL_URL for OG/canonical: preview hostnames break crawlers
+  // (e.g. WhatsApp falls back to favicon if og:image is on an unreachable deployment URL).
+  if (process.env.VERCEL_ENV === "production") return new URL(PRODUCTION_SITE)
   const vercel = process.env.VERCEL_URL?.trim()?.replace(/\/+$/, "")
   if (vercel) return new URL(`https://${vercel}`)
   return new URL(PRODUCTION_SITE)
@@ -78,8 +81,8 @@ export const metadata: Metadata = {
     images: [
       {
         url: ogImageUrl(),
-        width: 1200,
-        height: 630,
+        width: 1024,
+        height: 573,
         alt: "PHASE Protocol — x402 settlement on Soroban: liquid energy to solid-state artifacts",
       },
     ],

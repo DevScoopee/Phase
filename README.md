@@ -1,6 +1,6 @@
 # P H A S E   P R O T O C O L
 
-PHASE is a **cyber-brutalist** web application on **Stellar Soroban testnet**: creators **forge** on-chain collections, the **market** lists them, and the **fusion chamber** runs **x402-style settlement** so users pay **PHASER_LIQ** and receive a **utility NFT** (metadata aligned with **SEP-20**). This is experimental software—not financial advice.
+PHASE is a **cyber-brutalist** web application on **Stellar Soroban testnet**: creators **forge** on-chain collections, the **market** lists them, and the **fusion chamber** runs **x402-style settlement** so users pay **PHASERLIQ** and receive a **utility NFT** (metadata aligned with **SEP-20**). This is experimental software—not financial advice.
 
 ---
 
@@ -23,7 +23,7 @@ Served from `public/` at the **site root**. After deploy, prefix with your origi
 |------|------|
 | [`/og-phase.png`](./public/og-phase.png) | Open Graph / Twitter Card preview (social share). |
 | [`/icon-sphere.png`](./public/icon-sphere.png) | Favicon and Apple touch icon (reactor sphere). |
-| [`/phaser-liq-token.png`](./public/phaser-liq-token.png) | PHASER_LIQ icon in UI and [`stellar.toml`](./public/.well-known/stellar.toml) currency metadata. |
+| [`/phaser-liq-token.png`](./public/phaser-liq-token.png) | PHASERLIQ icon in UI and [`stellar.toml`](./public/.well-known/stellar.toml) currency metadata. |
 | [`/.well-known/stellar.toml`](./public/.well-known/stellar.toml) | SEP-0001 file for explorers (static); the app may also expose a dynamic route. |
 
 Metadata defaults live in [`app/layout.tsx`](./app/layout.tsx) (`title.template`, `openGraph`, `twitter`, `icons`).
@@ -37,7 +37,7 @@ Values match [`lib/phase-protocol.ts`](./lib/phase-protocol.ts). Override with e
 | Role | Contract ID | Stellar Expert (testnet) |
 |------|-------------|---------------------------|
 | **PHASE Protocol** (collections, phase, NFT utility) | `CDXZ2HWPSAU3DKACNGTTY3WM6FKN5LPNGMAYFW4KBF74P42RK6SFDRGP` | [Open contract ↗](https://stellar.expert/explorer/testnet/contract/CDXZ2HWPSAU3DKACNGTTY3WM6FKN5LPNGMAYFW4KBF74P42RK6SFDRGP) |
-| **PHASER_LIQ** (Soroban token, 7 decimals) | `CDW3T2DXLNGMQDZLMINEF3QHXYDB3F4ZJOGQSKW6QYABA4HMUFRG7DXC` | [Open contract ↗](https://stellar.expert/explorer/testnet/contract/CDW3T2DXLNGMQDZLMINEF3QHXYDB3F4ZJOGQSKW6QYABA4HMUFRG7DXC) |
+| **PHASERLIQ** (Soroban SAC token, 7 decimals) | `CDOAXHWC6YJB7U3ELV67HKJY6HEMJFBNRGJK6WZGUAELBWP3WP77RLFD` | [Open contract ↗](https://stellar.expert/explorer/testnet/contract/CDOAXHWC6YJB7U3ELV67HKJY6HEMJFBNRGJK6WZGUAELBWP3WP77RLFD) |
 
 **Network**
 
@@ -48,13 +48,13 @@ Values match [`lib/phase-protocol.ts`](./lib/phase-protocol.ts). Override with e
 **Env (client / server)**
 
 - `NEXT_PUBLIC_PHASE_PROTOCOL_ID` / `PHASE_PROTOCOL_ID` — protocol contract
-- `NEXT_PUBLIC_TOKEN_CONTRACT_ID` / `TOKEN_CONTRACT_ID` / `MOCK_TOKEN_ID` — PHASER_LIQ token contract
+- `NEXT_PUBLIC_TOKEN_CONTRACT_ID` / `TOKEN_CONTRACT_ID` / `MOCK_TOKEN_ID` — PHASERLIQ token contract
 
 ---
 
 ## How it works
 
-1. **Forge (`/forge`)** — Connect **Freighter**, set collection name, **PHASER_LIQ** mint price, and image (URL, sealed upload when server upload is enabled, or built-in studio). Submits **`create_collection`**; share `/chamber?collection=<id>`.
+1. **Forge (`/forge`)** — Connect **Freighter**, set collection name, **PHASERLIQ** mint price, and image (URL, sealed upload when server upload is enabled, or built-in studio). Submits **`create_collection`**; share `/chamber?collection=<id>`.
 2. **Market (`/dashboard`)** — Catalog of collections; **collection `0`** is the protocol default pool. Links into the chamber per collection.
 3. **Chamber (`/chamber`)** — Wallet status, balance, x402 price, **settlement** / **initiate_phase**, artifact view, optional **genesis** path, **LIQ rewards** panel (`/api/faucet`).
 4. **x402 API** — `app/api/x402` (`verify`, `settle`, `supported`, challenge) for local compatibility; use a production **facilitator** for real deployments ([Stellar x402 docs](https://developers.stellar.org/docs/build/agentic-payments/x402)).

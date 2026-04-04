@@ -275,7 +275,7 @@ async function markClaim(wallet: string, reward: RewardType) {
 }
 
 /**
- * Acuña PHASER_LIQ vía `mint` del contrato token (firma ADMIN_SECRET_KEY).
+ * Acuña PHASERLIQ vía `mint` del contrato token (firma ADMIN_SECRET_KEY).
  * Body: `{ "walletAddress": "G…", "reward": "genesis|daily|quest_*" }`
  */
 export async function POST(req: NextRequest) {

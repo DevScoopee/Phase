@@ -79,7 +79,7 @@ export function isValidClassicStellarAddress(addr: string): boolean {
   return StrKey.isValidEd25519PublicKey(t)
 }
 
-const DEFAULT_TOKEN_CONTRACT = "CDW3T2DXLNGMQDZLMINEF3QHXYDB3F4ZJOGQSKW6QYABA4HMUFRG7DXC"
+const DEFAULT_TOKEN_CONTRACT = "CDOAXHWC6YJB7U3ELV67HKJY6HEMJFBNRGJK6WZGUAELBWP3WP77RLFD"
 
 /** Contrato del token de liquidez del protocolo (Soroban). */
 export const TOKEN_ADDRESS = (() => {
@@ -94,19 +94,27 @@ export const TOKEN_ADDRESS = (() => {
   )
 })()
 
-/** Marca oficial del combustible x402 (7 decimales, estándar Stellar). */
-export const PHASER_LIQ_SYMBOL = "PHASER_LIQ"
+/** Marca oficial del combustible x402 en UI (7 decimales; alineado al código clásico PHASERLIQ). */
+export const PHASER_LIQ_SYMBOL = "PHASERLIQ"
+
+/** Normaliza el símbolo leído on-chain (p. ej. contratos legacy `PHASER_LIQ`) a la marca UI `PHASERLIQ`. */
+export function displayPhaserLiqSymbol(onChainSymbol: string | null | undefined): string {
+  const s = (onChainSymbol ?? "").trim()
+  if (!s) return PHASER_LIQ_SYMBOL
+  if (s === "PHASER_LIQ") return PHASER_LIQ_SYMBOL
+  return s
+}
 export const PHASER_LIQ_NAME = "Phase Liquidity Token"
 export const PHASER_LIQ_DECIMALS = 7
 export const PHASER_LIQ_ICON_PUBLIC_PATH = "/phaser-liq-token.png"
 
-/** Por debajo de 1.00 PHASER_LIQ el monitor puede ofrecer el faucet. */
+/** Por debajo de 1.00 PHASERLIQ el monitor puede ofrecer el faucet. */
 export const PHASER_FAUCET_THRESHOLD_STROOPS = "10000000"
 
-/** Cantidad que emite el faucet por solicitud (10.00 PHASER_LIQ). */
+/** Cantidad que emite el faucet por solicitud (10.00 PHASERLIQ). */
 export const PHASER_FAUCET_MINT_STROOPS = "100000000"
 
-/** Precio x402 colección 0 (pool protocolo PHASE) — unidades mínimas PHASER_LIQ */
+/** Precio x402 colección 0 (pool protocolo PHASE) — unidades mínimas PHASERLIQ */
 export const REQUIRED_AMOUNT = "10000000"
 
 export function balanceBelowFaucetThreshold(balanceStroops: string): boolean {

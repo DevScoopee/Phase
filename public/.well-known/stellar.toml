@@ -2,9 +2,9 @@ VERSION="2.0.0"
 NETWORK_PASSPHRASE="Test SDF Network ; September 2015"
 
 [[CURRENCIES]]
-script="CDHUO52AF2HEFRSMQA4EMIY7THTTUFL3DCP4NXPA2V3TRFXOPB4DFAOW"
-code="PHASER_LIQ"
+script="CDOAXHWC6YJB7U3ELV67HKJY6HEMJFBNRGJK6WZGUAELBWP3WP77RLFD"
+code="PHASERLIQ"
 name="Phase Liquidity"
-desc="PHASER_LIQ utility liquidity token for PHASE settlement flows."
+desc="PHASERLIQ utility liquidity token for PHASE settlement flows."
 image="/phaser-liq-token.png"
 display_decimals=7
