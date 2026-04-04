@@ -15,7 +15,8 @@
     "setup:token": "tsx setup_token.ts",
     "deploy:phase": "tsx deploy-phase.ts",
     "interact": "tsx interact.ts",
-    "issue:sac": "tsx issue-sac-token.ts"
+    "issue:sac": "tsx issue-sac-token.ts",
+    "set:issuer-home-domain": "tsx set-issuer-home-domain.ts"
   },
   "dependencies": {
     "@stellar/freighter-api": "^6.0.1",

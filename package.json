@@ -7,6 +7,7 @@
     "dev": "next dev",
     "interact": "next dev",
     "lint": "eslint .",
+    "set:issuer-home-domain": "cd scripts && npm run set:issuer-home-domain",
     "start": "next start"
   },
   "dependencies": {
