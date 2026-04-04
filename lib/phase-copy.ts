@@ -65,6 +65,8 @@ export type ArtifactLabelsCopy = {
   accessPrivateMetadata: string
   /** Línea bajo el panel público cuando el canal privado está abierto. */
   privateChannelUnlocked: string
+  /** Artefacto verificado: estándar de metadata (SEP-20). */
+  metadataStandard: string
   /** Vista verificada pero wallet ≠ owner_of(token) — overlay + blur. */
   previewOnly: string
   /** Breve animación al confirmar titular on-chain. */
@@ -300,6 +302,10 @@ export const phaseCopy: Record<
       freighterManualAddTitle: string
       freighterManualAddBody: string
       protocolStackLabel: string
+      /** Subtítulo bajo saldo PHASER_LIQ — liquidez SEP-41. */
+      tokenStandardSep41Note: string
+      rewardsLiquidityLaneTitle: string
+      rewardsMissionChainTitle: string
       logs: ChamberLogsCopy
       artifact: ArtifactLabelsCopy
     }
@@ -549,7 +555,11 @@ export const phaseCopy: Record<
       freighterManualAddTitle: "FREIGHTER_COLLECTIBLE",
       freighterManualAddBody:
         "If it does not appear automatically: Freighter -> Collectibles -> Add manually -> paste contract + token ID.",
-      protocolStackLabel: "x402 · SEP-41 token flows · SEP-20 collectible · SEP-0020 validator metadata",
+      protocolStackLabel:
+        "x402 · PHASER_LIQ = Soroban fungible (SEP-41) · forged artifact = immutable utility NFT (metadata SEP-20)",
+      tokenStandardSep41Note: "PHASER_LIQ adheres to SEP-41 (Soroban token interface).",
+      rewardsLiquidityLaneTitle: "LIQUIDITY_BOOTSTRAP",
+      rewardsMissionChainTitle: "OPERATOR_QUEST_CHAIN",
       logs: {
         chamberOnline: "[ CHAMBER_ONLINE ] AWAITING_OPERATOR_HANDSHAKE…",
         walletRequest: "[ WALLET ] REQUESTING_SIGNER_CHANNEL…",
@@ -607,6 +617,7 @@ export const phaseCopy: Record<
         stateSolid: "SOLID",
         accessPrivateMetadata: "[ ACCESS_PRIVATE_METADATA ]",
         privateChannelUnlocked: "PRIVATE_METADATA_CHANNEL // UNLOCKED",
+        metadataStandard: "METADATA_STANDARD",
         previewOnly: "[ PREVIEW_ONLY ]",
         decryptingImage: "[ DECRYPTING_IMAGE ]",
         monitorCollectionName: "COLLECTION_NAME",
@@ -863,7 +874,11 @@ export const phaseCopy: Record<
       freighterManualAddTitle: "COLECCIONABLE_EN_FREIGHTER",
       freighterManualAddBody:
         "Si no aparece automático: Freighter -> Collectibles -> Add manually -> pega contrato + token ID.",
-      protocolStackLabel: "x402 · flujos token SEP-41 · coleccionable SEP-20 · metadata validador SEP-0020",
+      protocolStackLabel:
+        "x402 · PHASER_LIQ = fungible Soroban (SEP-41) · artefacto forjado = NFT de utilidad inmutable (metadata SEP-20)",
+      tokenStandardSep41Note: "PHASER_LIQ cumple SEP-41 (interfaz de token Soroban).",
+      rewardsLiquidityLaneTitle: "ARRANQUE_LIQUIDEZ",
+      rewardsMissionChainTitle: "CADENA_MISIONES_OPERADOR",
       logs: {
         chamberOnline: "[ CÁMARA_EN_LÍNEA ] ESPERANDO_ENLACE_OPERADOR…",
         walletRequest: "[ WALLET ] SOLICITANDO_CANAL_FIRMANTE…",
@@ -921,6 +936,7 @@ export const phaseCopy: Record<
         stateSolid: "SÓLIDO",
         accessPrivateMetadata: "[ ACCEDER_METADATA_PRIVADA ]",
         privateChannelUnlocked: "CANAL_METADATA_PRIVADA // DESBLOQUEADO",
+        metadataStandard: "ESTÁNDAR_METADATA",
         previewOnly: "[ SOLO_VISTA_PREVIA ]",
         decryptingImage: "[ DESCIFRANDO_IMAGEN ]",
         monitorCollectionName: "NOMBRE_COLECCIÓN",

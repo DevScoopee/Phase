@@ -7,6 +7,7 @@ import { useLang } from "@/components/lang-context"
 import { TokenIcon } from "@/components/token-icon"
 import { pickCopy } from "@/lib/phase-copy"
 import { formatLiq } from "@/lib/phase-protocol"
+import { playTacticalUiClick } from "@/lib/tactical-ui-click"
 import { cn } from "@/lib/utils"
 
 type RewardType = "genesis" | "daily" | "quest_connect_wallet" | "quest_first_collection" | "quest_first_settle"
@@ -84,6 +85,7 @@ export function LiquidityFaucetControl({
   const request = useCallback(
     async (reward: RewardType) => {
       if (!address || loading || loadingReward) return
+      playTacticalUiClick()
       setLoading(true)
       setLoadingReward(reward)
       onNarrativeLog?.(
@@ -172,7 +174,7 @@ export function LiquidityFaucetControl({
     const disabled = loading || loadingReward !== null || !state?.claimable
     const pct = Math.max(0, Math.min(100, state?.claimedAt ? 100 : state?.progressPct ?? 0))
     return (
-      <div className="rounded border border-cyan-400/30 bg-cyan-950/10 p-2.5" key={reward}>
+      <div className="tactical-interactive-glitch rounded border border-cyan-400/30 bg-cyan-950/10 p-2.5 shadow-[inset_0_1px_0_rgba(34,211,238,0.06)]">
         <div className="mb-1.5 flex items-start justify-between gap-2">
           <span className="text-[11px] font-semibold uppercase leading-tight tracking-[0.18em] text-cyan-100/95 sm:text-xs">
             {title}
@@ -285,7 +287,12 @@ export function LiquidityFaucetControl({
       : null
 
   return (
-    <section className={cn("w-full rounded border border-cyan-400/35 bg-slate-950/50 p-3 sm:p-3.5", className)}>
+    <section
+      className={cn(
+        "tactical-quest-flow w-full rounded border border-cyan-400/35 bg-slate-950/40 p-3 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.05)] backdrop-blur-[2px] sm:p-3.5",
+        className,
+      )}
+    >
       {helpModal}
       <header className="mb-2.5">
         <div className="flex items-center justify-between gap-2">
@@ -294,10 +301,13 @@ export function LiquidityFaucetControl({
           </p>
           <button
             type="button"
-            onClick={() => setHelpOpen(true)}
+            onClick={() => {
+              playTacticalUiClick()
+              setHelpOpen(true)
+            }}
             aria-label={ch.rewardsHelpAria}
             title={ch.rewardsHelpAria}
-            className="tactical-phosphor flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-cyan-400/50 bg-cyan-950/40 text-sm font-bold text-cyan-200 transition hover:border-cyan-300 hover:bg-cyan-900/50 hover:text-white"
+            className="tactical-interactive-glitch tactical-phosphor flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-cyan-400/50 bg-cyan-950/40 text-sm font-bold text-cyan-200 transition hover:border-cyan-300 hover:bg-cyan-900/50 hover:text-white"
           >
             ?
           </button>
@@ -319,37 +329,52 @@ export function LiquidityFaucetControl({
           </p>
         </div>
       </header>
-      <div className="grid gap-2.5">
-        {rewardButton(
-          "genesis",
-          "GENESIS SUPPLY",
-          lang === "es" ? "Carga inicial para wallets nuevas." : "Initial bootstrap supply for new wallets.",
-          status?.rewards?.genesis,
-        )}
-        {rewardButton(
-          "daily",
-          "DAILY RECHARGE",
-          lang === "es" ? "Recarga diaria para pruebas en testnet." : "Daily recharge for testnet experimentation.",
-          status?.rewards?.daily,
-        )}
-        {rewardButton(
-          "quest_connect_wallet",
-          "QUEST #1 · CONNECT",
-          lang === "es" ? "Primera conexión de wallet." : "First wallet connection reward.",
-          status?.rewards?.quest_connect_wallet,
-        )}
-        {rewardButton(
-          "quest_first_collection",
-          "QUEST #2 · COLLECTION",
-          lang === "es" ? "Crear tu primera colección." : "Create your first collection.",
-          status?.rewards?.quest_first_collection,
-        )}
-        {rewardButton(
-          "quest_first_settle",
-          "QUEST #3 · SETTLEMENT",
-          lang === "es" ? "Completar tu primer settlement." : "Complete your first settlement.",
-          status?.rewards?.quest_first_settle,
-        )}
+      <div className="tactical-quest-flow__lane">
+        <p className="tactical-quest-flow__lane-title">{ch.rewardsLiquidityLaneTitle}</p>
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          {rewardButton(
+            "genesis",
+            "GENESIS SUPPLY",
+            lang === "es" ? "Carga inicial para wallets nuevas." : "Initial bootstrap supply for new wallets.",
+            status?.rewards?.genesis,
+          )}
+          {rewardButton(
+            "daily",
+            "DAILY RECHARGE",
+            lang === "es" ? "Recarga diaria para pruebas en testnet." : "Daily recharge for testnet experimentation.",
+            status?.rewards?.daily,
+          )}
+        </div>
+      </div>
+      <div className="tactical-quest-flow__missions">
+        <div className="tactical-quest-flow__rail" aria-hidden />
+        <p className="tactical-quest-flow__chain-title pl-5">{ch.rewardsMissionChainTitle}</p>
+        <div className="pl-1">
+          <div className="tactical-quest-step">
+            {rewardButton(
+              "quest_connect_wallet",
+              "QUEST_01 · CONNECT",
+              lang === "es" ? "Primera conexión de wallet." : "First wallet connection reward.",
+              status?.rewards?.quest_connect_wallet,
+            )}
+          </div>
+          <div className="tactical-quest-step">
+            {rewardButton(
+              "quest_first_collection",
+              "QUEST_02 · COLLECTION",
+              lang === "es" ? "Crear tu primera colección." : "Create your first collection.",
+              status?.rewards?.quest_first_collection,
+            )}
+          </div>
+          <div className="tactical-quest-step">
+            {rewardButton(
+              "quest_first_settle",
+              "QUEST_03 · SETTLEMENT",
+              lang === "es" ? "Completar tu primer settlement." : "Complete your first settlement.",
+              status?.rewards?.quest_first_settle,
+            )}
+          </div>
+        </div>
       </div>
     </section>
   )

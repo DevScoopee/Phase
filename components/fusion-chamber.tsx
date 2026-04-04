@@ -50,6 +50,7 @@ import {
 } from "@/lib/phase-protocol"
 import { PhaseArtifactVisualizer, type ArtifactVerificationMode } from "@/components/phase-artifact-visualizer"
 import { TacticalCornerSigil } from "@/components/tactical-corner-sigil"
+import { playTacticalUiClick } from "@/lib/tactical-ui-click"
 
 type PaymentPhase = "idle" | "busy" | "error"
 
@@ -58,10 +59,8 @@ function truncateAddress(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`
 }
 
-const PANEL = "tactical-frame-panel border-2 border-cyan-500/20"
-
 const chamberNavLink =
-  "tactical-phosphor inline-flex min-h-[38px] items-center rounded-sm border-2 border-cyan-400/50 bg-cyan-950/40 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-cyan-100 shadow-[0_0_12px_rgba(34,211,238,0.12)] transition-colors hover:border-cyan-300 hover:bg-cyan-900/35 hover:text-white"
+  "tactical-interactive-glitch tactical-phosphor inline-flex min-h-[38px] items-center rounded-sm border-2 border-cyan-400/50 bg-cyan-950/40 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-cyan-100 shadow-[0_0_12px_rgba(34,211,238,0.12)] transition-colors hover:border-cyan-300 hover:bg-cyan-900/35 hover:text-white"
 
 export function FusionChamber() {
   const { lang } = useLang()
@@ -741,13 +740,14 @@ export function FusionChamber() {
   }, [address, hasPhased, phaseId])
 
   return (
-    <div className="tactical-command-root tactical-command-root--chamber fixed inset-0 z-[100] flex flex-col overflow-hidden font-mono text-foreground">
+    <div className="tactical-command-root tactical-command-root--chamber tactical-command-root--cockpit fixed inset-0 z-[100] flex flex-col overflow-hidden font-mono text-foreground">
       <div className="tactical-film-grain" aria-hidden />
       <div className="tactical-crt-veil" aria-hidden />
+      <div className="tactical-crt-fine" aria-hidden />
       <TacticalCornerSigil className="pointer-events-none fixed bottom-2 left-2 z-[200] hidden opacity-70 sm:block" />
 
       <header className="tactical-header-bar relative z-[102] flex shrink-0 items-center justify-between px-4 py-3 md:px-6">
-        <Link href="/" className={chamberNavLink}>
+        <Link href="/" className={chamberNavLink} onClick={() => playTacticalUiClick()}>
           {ch.exit}
         </Link>
         <span className="max-w-[min(52vw,16rem)] truncate text-center text-[10px] uppercase tracking-[0.35em] text-cyan-300 tactical-phosphor">
@@ -755,15 +755,16 @@ export function FusionChamber() {
         </span>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <LangToggle variant="phosphor" />
-          <Link href="/dashboard" className={chamberNavLink}>
+          <Link href="/dashboard" className={chamberNavLink} onClick={() => playTacticalUiClick()}>
             {ch.market}
           </Link>
-          <Link href="/forge" className={chamberNavLink}>
+          <Link href="/forge" className={chamberNavLink} onClick={() => playTacticalUiClick()}>
             {ch.forge}
           </Link>
           <button
             type="button"
             onClick={() => {
+              playTacticalUiClick()
               void refreshStatus().catch(() => {})
               void refreshClassicStatus().catch(() => {})
             }}
@@ -773,7 +774,10 @@ export function FusionChamber() {
           </button>
           <button
             type="button"
-            onClick={() => setLogsOpen((o) => !o)}
+            onClick={() => {
+              playTacticalUiClick()
+              setLogsOpen((o) => !o)
+            }}
             aria-expanded={logsOpen}
             aria-controls="chamber-logs-panel"
             className={cn(chamberNavLink, "cursor-pointer", logsOpen && "border-cyan-300/80 text-white")}
@@ -783,14 +787,17 @@ export function FusionChamber() {
         </div>
       </header>
 
-      <div className="relative z-[102] grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-hidden lg:grid-cols-[minmax(250px,320px)_minmax(0,1fr)] lg:gap-3 xl:gap-5">
+      <div className="relative z-[102] grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-hidden lg:grid-cols-[minmax(260px,300px)_minmax(0,1fr)]">
         {/* STATUS_MONITOR */}
         <aside
           className={cn(
-            PANEL,
-            "relative z-[102] flex max-h-[min(100dvh,100%)] min-h-0 flex-col overflow-y-auto overscroll-contain border-b-2 border-cyan-500/15 p-3 sm:p-4 lg:max-h-none lg:border-b-0 lg:border-r-2",
+            "tactical-cockpit-aside relative z-[102] flex max-h-[min(100dvh,100%)] min-h-0 flex-col overflow-y-auto overscroll-contain p-3 pl-4 sm:p-4 sm:pl-5 lg:max-h-none lg:pl-7",
+            "max-lg:border-b max-lg:border-cyan-500/15",
           )}
         >
+          <div className="tactical-cockpit-signal" aria-hidden>
+            <span className="tactical-cockpit-signal__label">SIGNAL</span>
+          </div>
           <h2 className="tactical-phosphor mb-2 border-b border-cyan-500/20 pb-1.5 text-[11px] uppercase tracking-[0.28em] text-cyan-400/75">
             ┃ {ch.statusMonitor}
           </h2>
@@ -814,8 +821,11 @@ export function FusionChamber() {
               </p>
               <button
                 type="button"
-                onClick={rebootProcess}
-                className="tactical-btn mt-2 w-full py-1.5 text-[9px] uppercase tracking-widest text-orange-200"
+                onClick={() => {
+                  playTacticalUiClick()
+                  rebootProcess()
+                }}
+                className="tactical-interactive-glitch tactical-btn mt-2 w-full py-1.5 text-[9px] uppercase tracking-widest text-orange-200"
               >
                 <span>⟲ {ch.rebootProcess}</span>
               </button>
@@ -872,6 +882,7 @@ export function FusionChamber() {
                       <TokenIcon className="h-4 w-4" />
                       {chainTokenSymbol}
                     </span>
+                    <p className="mt-1.5 text-[9px] leading-snug tracking-wide text-cyan-500/55">{ch.tokenStandardSep41Note}</p>
                   </dd>
                 </div>
                 {classicAsset && (
@@ -962,8 +973,11 @@ export function FusionChamber() {
             <button
               type="button"
               disabled={connecting}
-              onClick={() => void handleConnect().catch(() => {})}
-              className="tactical-btn tactical-phosphor mt-4 w-full py-2.5 text-[9px] uppercase tracking-widest text-cyan-200 disabled:opacity-50"
+              onClick={() => {
+                playTacticalUiClick()
+                void handleConnect().catch(() => {})
+              }}
+              className="tactical-interactive-glitch tactical-btn tactical-phosphor mt-4 w-full py-2.5 text-[9px] uppercase tracking-widest text-cyan-200 disabled:opacity-50"
             >
               <span>
                 {connecting ? `◌ ${ch.uplinking}` : `▣ ${ch.linkWallet}`}
@@ -973,12 +987,13 @@ export function FusionChamber() {
             <button
               type="button"
               onClick={() => {
+                playTacticalUiClick()
                 disconnect()
                 appendLog(ch.logs.walletUnlink)
                 void refreshStatus().catch(() => {})
                 void refreshClassicStatus().catch(() => {})
               }}
-              className="tactical-btn mt-4 w-full border-red-500/30 py-2 text-[9px] uppercase tracking-widest text-red-400/80 hover:border-red-500/60"
+              className="tactical-interactive-glitch tactical-btn mt-4 w-full border-red-500/30 py-2 text-[9px] uppercase tracking-widest text-red-400/80 hover:border-red-500/60"
             >
               <span>◇ {ch.disconnect}</span>
             </button>
@@ -988,8 +1003,11 @@ export function FusionChamber() {
             <button
               type="button"
               disabled={classicBusy}
-              onClick={() => void enableClassicAssetTrustline().catch(() => {})}
-              className="tactical-btn mt-2 w-full border-cyan-400/55 py-2 text-[9px] uppercase tracking-widest text-cyan-200 disabled:opacity-50"
+              onClick={() => {
+                playTacticalUiClick()
+                void enableClassicAssetTrustline().catch(() => {})
+              }}
+              className="tactical-interactive-glitch tactical-btn mt-2 w-full border-cyan-400/55 py-2 text-[9px] uppercase tracking-widest text-cyan-200 disabled:opacity-50"
             >
               {classicBusy
                 ? lang === "es"
@@ -1005,8 +1023,11 @@ export function FusionChamber() {
             <button
               type="button"
               disabled={classicBusy}
-              onClick={() => void requestClassicBootstrap().catch(() => {})}
-              className="tactical-btn mt-2 w-full border-emerald-500/55 py-2 text-[9px] uppercase tracking-widest text-emerald-200 disabled:opacity-50"
+              onClick={() => {
+                playTacticalUiClick()
+                void requestClassicBootstrap().catch(() => {})
+              }}
+              className="tactical-interactive-glitch tactical-btn mt-2 w-full border-emerald-500/55 py-2 text-[9px] uppercase tracking-widest text-emerald-200 disabled:opacity-50"
             >
               {classicBusy
                 ? lang === "es"
@@ -1035,26 +1056,22 @@ export function FusionChamber() {
         </aside>
 
         {/* THE_REACTOR */}
-        <main
-          className={cn(
-            PANEL,
-            "relative z-[102] flex h-full min-h-0 flex-col items-stretch overflow-y-auto overflow-x-hidden border-b-2 border-cyan-500/15 p-3 sm:p-5 lg:border-b-0 lg:border-r-0",
-          )}
-        >
+        <main className="tactical-cockpit-stage relative z-[102] flex h-full min-h-0 flex-col items-stretch overflow-y-auto overflow-x-hidden max-lg:border-b max-lg:border-cyan-500/15">
           <div
-            className="pointer-events-none absolute inset-3 rounded-lg bg-gradient-to-b from-cyan-500/[0.04] to-transparent shadow-[inset_0_1px_0_rgba(34,211,238,0.06)]"
+            className="pointer-events-none absolute inset-2 rounded-lg bg-gradient-to-b from-cyan-500/[0.045] to-transparent shadow-[inset_0_1px_0_rgba(34,211,238,0.05)] sm:inset-3"
             aria-hidden
           />
 
+          <div className="tactical-cockpit-stage__content relative flex min-h-0 flex-1 flex-col px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-7">
           {/* Exhibition pedestal — NFT de utilidad PHASE (Soroban) */}
-          <div className="relative z-10 mx-auto mb-0 w-full min-h-0 max-w-[min(72rem,100%)] shrink-0">
+          <div className="relative z-10 mx-auto mb-0 w-full min-h-0 max-w-[min(76rem,100%)] shrink-0">
             <p className="tactical-phosphor mb-1 text-center text-[11px] uppercase tracking-[0.32em] text-cyan-500/60 sm:text-xs">
               ◈ {ch.exhibitionPedestal}
             </p>
             <p className="mb-1.5 text-center text-[10px] uppercase tracking-[0.24em] text-cyan-400/85 tactical-phosphor sm:text-[11px]">
               {collectionPedestalLine}
             </p>
-            <div className="tactical-frame flex min-h-[min(22vh,180px)] max-h-[min(58dvh,560px)] flex-col items-stretch gap-2 overflow-y-auto rounded-xl border border-cyan-500/18 bg-[oklch(0.055_0.02_220)]/90 px-3 py-3 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.08),inset_0_0_48px_rgba(0,0,0,0.5)] sm:min-h-[min(24vh,200px)] sm:gap-2.5 sm:px-4 sm:py-3.5">
+            <div className="tactical-frame flex min-h-[min(22vh,180px)] max-h-[min(58dvh,560px)] flex-col items-stretch gap-2 overflow-y-auto rounded-xl border border-cyan-500/18 bg-[oklch(0.055_0.02_220)]/90 px-4 py-4 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.08),inset_0_0_48px_rgba(0,0,0,0.5)] sm:min-h-[min(24vh,200px)] sm:gap-3 sm:px-5 sm:py-4">
               {mintingArtifact ? (
                 <div className="text-center">
                   <div className="mx-auto mb-2 h-12 w-12 border-2 border-cyan-500/60 border-t-transparent animate-spin rounded-full" />
@@ -1155,14 +1172,14 @@ export function FusionChamber() {
             </div>
           </div>
 
-          <p className="tactical-phosphor mb-1 mt-1.5 shrink-0 text-center text-[11px] uppercase tracking-[0.36em] text-cyan-500/55 sm:text-xs">
+          <p className="tactical-phosphor mb-0.5 mt-2 shrink-0 text-center text-[11px] uppercase tracking-[0.36em] text-cyan-500/55 sm:mt-3 sm:text-xs">
             ◇ {ch.theReactor}
           </p>
 
           {!phased ? (
             <div
               className={cn(
-                "relative z-10 mx-auto flex w-full max-w-[min(48rem,100%)] shrink-0 flex-col items-stretch gap-2 px-1",
+                "relative z-10 mx-auto flex w-full max-w-[min(52rem,100%)] shrink-0 flex-col items-stretch gap-1.5 px-1 sm:px-2",
                 genesisLoading && "tactical-reactor-filling",
               )}
             >
@@ -1177,6 +1194,7 @@ export function FusionChamber() {
                   (!canInitializeGenesisSupply && lowEnergy)
                 }
                 onClick={() => {
+                  playTacticalUiClick()
                   if (canInitializeGenesisSupply) {
                     void requestGenesisSupply().catch(() => {})
                     return
@@ -1184,7 +1202,7 @@ export function FusionChamber() {
                   void initiateX402().catch(() => {})
                 }}
                 className={cn(
-                  "tactical-btn tactical-btn-x402 relative py-4 text-xs uppercase tracking-[0.18em] sm:py-5 sm:text-sm",
+                  "tactical-interactive-glitch tactical-btn tactical-btn-x402 relative py-3.5 text-xs uppercase tracking-[0.18em] sm:py-4 sm:text-sm",
                   (!canInitializeGenesisSupply && (lowEnergy || !address))
                     ? "cursor-not-allowed opacity-40"
                     : "text-cyan-100 tactical-btn-x402--armed",
@@ -1214,11 +1232,11 @@ export function FusionChamber() {
               tokenBalance={tokenBalance}
               onNarrativeLog={appendLog}
               onRefreshBalance={refreshStatus}
-              className="relative z-10 mx-auto mt-1.5 w-full max-w-[min(48rem,100%)] px-1"
+              className="relative z-10 mx-auto mt-3 w-full max-w-[min(52rem,100%)] px-1 sm:mt-4"
             />
           ) : null}
 
-          <div className="relative z-10 mt-3 w-full min-h-0 max-w-[min(48rem,100%)] shrink-0 border-t border-cyan-500/15 pt-2">
+          <div className="relative z-10 mt-5 w-full min-h-0 max-w-[min(52rem,100%)] shrink-0 border-t border-cyan-500/15 pt-3">
             <div className="mb-2 flex items-center justify-between gap-2">
               <p className="tactical-phosphor text-[10px] font-semibold uppercase tracking-[0.25em] text-cyan-300/90">
                 ▣ {ch.community}
@@ -1323,6 +1341,7 @@ export function FusionChamber() {
               </div>
             )}
           </div>
+          </div>
         </main>
 
       </div>
@@ -1344,8 +1363,7 @@ export function FusionChamber() {
           >
             <div
               className={cn(
-                PANEL,
-                "flex max-h-[min(42vh,260px)] flex-col overflow-hidden border-2 border-[#39ff14]/45 bg-black/95 shadow-[0_12px_40px_rgba(0,0,0,0.75)] backdrop-blur-sm",
+                "tactical-frame-panel flex max-h-[min(42vh,260px)] flex-col overflow-hidden border-2 border-[#39ff14]/45 bg-black/95 shadow-[0_12px_40px_rgba(0,0,0,0.75)] backdrop-blur-sm",
               )}
               onClick={(e) => e.stopPropagation()}
               onKeyDown={(e) => e.stopPropagation()}

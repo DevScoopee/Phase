@@ -13,6 +13,7 @@ import { pickCopy } from "@/lib/phase-copy"
 import { composeImageWithPhaseForgeSeal } from "@/lib/forge-seal-image"
 import { isIpfsUploadConfigured, uploadToIPFS } from "@/lib/ipfs-upload"
 import { cn } from "@/lib/utils"
+import { playTacticalUiClick } from "@/lib/tactical-ui-click"
 import { LiquidityFaucetControl } from "@/components/liquidity-faucet-control"
 import { TacticalCornerSigil } from "@/components/tactical-corner-sigil"
 import {
@@ -93,7 +94,7 @@ function textWithPhaserLiqLinks(text: string): React.ReactNode {
 }
 
 const forgeNavBtn =
-  "tactical-phosphor inline-flex min-h-[40px] items-center rounded-sm border-2 border-cyan-400/50 bg-cyan-950/45 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.14)] transition-colors hover:border-cyan-300 hover:bg-cyan-900/35 hover:text-white"
+  "tactical-interactive-glitch tactical-phosphor inline-flex min-h-[40px] items-center rounded-sm border-2 border-cyan-400/50 bg-cyan-950/45 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.14)] transition-colors hover:border-cyan-300 hover:bg-cyan-900/35 hover:text-white"
 
 export default function ForgePage() {
   const { lang } = useLang()
@@ -311,7 +312,7 @@ export default function ForgePage() {
   }, [shareUrl, lang])
 
   const shellClass = cn(
-    "tactical-frame relative flex h-full min-h-0 flex-col overflow-hidden p-4 text-cyan-100 md:p-5",
+    "tactical-cockpit-forge-shell tactical-frame relative flex h-full min-h-0 flex-col overflow-hidden p-4 text-cyan-100 md:p-6",
     busy && "forge-shell--deploying tactical-btn-forge-primary",
   )
 
@@ -326,11 +327,12 @@ export default function ForgePage() {
       type="button"
       disabled={busy}
       onClick={() => {
+        playTacticalUiClick()
         setImageSource(mode)
         setError(null)
       }}
       className={cn(
-        "tactical-btn flex-1 py-2.5 font-mono text-[10px] uppercase tracking-[0.12em] sm:flex-none sm:min-w-[100px]",
+        "tactical-interactive-glitch tactical-btn flex-1 py-2.5 font-mono text-[10px] uppercase tracking-[0.12em] sm:flex-none sm:min-w-[100px]",
         imageSource === mode
           ? "border-cyan-400/70 text-cyan-100 shadow-[0_0_14px_rgba(0,255,255,0.2)]"
           : "border-cyan-500/25 text-cyan-500/60",
@@ -343,13 +345,14 @@ export default function ForgePage() {
   const priceReadout = stroopsToLiqDisplay(liqToStroops(priceLiq))
 
   return (
-    <div className="tactical-command-root tactical-command-root--stable relative flex h-screen max-h-[100dvh] flex-col overflow-hidden font-mono text-foreground antialiased">
+    <div className="tactical-command-root tactical-command-root--stable tactical-command-root--cockpit relative flex h-screen max-h-[100dvh] flex-col overflow-hidden font-mono text-foreground antialiased">
       <div className="tactical-film-grain" aria-hidden />
       <div className="tactical-crt-veil" aria-hidden />
+      <div className="tactical-crt-fine" aria-hidden />
       <TacticalCornerSigil className="pointer-events-none fixed bottom-2 left-2 z-50 hidden opacity-70 sm:block" />
 
       <header className="tactical-header-bar relative z-10 flex shrink-0 flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-6">
-        <Link href="/" className={forgeNavBtn}>
+        <Link href="/" className={forgeNavBtn} onClick={() => playTacticalUiClick()}>
           {f.exit}
         </Link>
         <span className="tactical-phosphor max-w-[min(52vw,16rem)] text-center text-[11px] font-bold uppercase tracking-[0.22em] text-cyan-50 sm:text-xs">
@@ -357,10 +360,10 @@ export default function ForgePage() {
         </span>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <LangToggle variant="phosphor" />
-          <Link href="/dashboard" className={forgeNavBtn}>
+          <Link href="/dashboard" className={forgeNavBtn} onClick={() => playTacticalUiClick()}>
             {n.market}
           </Link>
-          <Link href="/chamber" className={forgeNavBtn}>
+          <Link href="/chamber" className={forgeNavBtn} onClick={() => playTacticalUiClick()}>
             {n.chamber}
           </Link>
         </div>
@@ -446,7 +449,7 @@ export default function ForgePage() {
             </div>
           </div>
 
-          <div className="mt-3 flex min-h-0 flex-1 flex-col gap-4 lg:grid lg:h-full lg:min-h-0 lg:grid-cols-12 lg:gap-6">
+          <div className="mt-4 flex min-h-0 flex-1 flex-col gap-5 lg:grid lg:h-full lg:min-h-0 lg:grid-cols-12 lg:gap-8">
             <div className="flex min-h-0 w-full flex-col gap-2 lg:col-span-5 lg:h-full lg:min-h-0">
               <div className="custom-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto pr-0.5 lg:pr-0">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
@@ -549,8 +552,11 @@ export default function ForgePage() {
                   <button
                     type="button"
                     disabled={busy}
-                    onClick={() => setDesignStudioOpen(true)}
-                    className="w-full border-4 border-double border-[#00ffff] bg-[#00ffff]/10 py-2.5 font-mono text-[10px] uppercase tracking-[0.18em] text-[#00ffff] shadow-[0_0_16px_rgba(0,255,255,0.12)] transition-all hover:bg-[#00ffff]/18 hover:shadow-[0_0_22px_rgba(0,255,255,0.18)] disabled:opacity-40"
+                    onClick={() => {
+                      playTacticalUiClick()
+                      setDesignStudioOpen(true)
+                    }}
+                    className="tactical-interactive-glitch w-full border-4 border-double border-[#00ffff] bg-[#00ffff]/10 py-2.5 font-mono text-[10px] uppercase tracking-[0.18em] text-[#00ffff] shadow-[0_0_16px_rgba(0,255,255,0.12)] transition-all hover:bg-[#00ffff]/18 hover:shadow-[0_0_22px_rgba(0,255,255,0.18)] disabled:opacity-40"
                   >
                     {paintPreviewUrl ? f.reopenDesigner : f.designArtifact}
                   </button>
@@ -604,8 +610,13 @@ export default function ForgePage() {
                   <button
                     type="button"
                     disabled={connecting}
-                    onClick={() => void connect().then(() => refresh()).catch(() => {})}
-                    className="w-full border-4 border-double border-[#00ffff]/60 py-2.5 text-[10px] uppercase tracking-widest text-[#00ffff] transition-colors hover:bg-[#00ffff]/10 disabled:opacity-50"
+                    onClick={() => {
+                      playTacticalUiClick()
+                      void connect()
+                        .then(() => refresh())
+                        .catch(() => {})
+                    }}
+                    className="tactical-interactive-glitch w-full border-4 border-double border-[#00ffff]/60 py-2.5 text-[10px] uppercase tracking-widest text-[#00ffff] transition-colors hover:bg-[#00ffff]/10 disabled:opacity-50"
                   >
                     {connecting ? f.linking : f.linkWallet}
                   </button>
@@ -614,18 +625,22 @@ export default function ForgePage() {
                     <button
                       type="button"
                       disabled={busy || uploadHostMissing}
-                      onClick={() => void runCreate().catch(() => {})}
-                      className="w-full border-4 border-double border-[#00ffff] bg-[#00ffff]/5 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#00ffff] shadow-[0_0_20px_rgba(0,255,255,0.14)] transition-all hover:bg-[#00ffff]/15 hover:shadow-[0_0_28px_rgba(0,255,255,0.2)] disabled:opacity-40"
+                      onClick={() => {
+                        playTacticalUiClick()
+                        void runCreate().catch(() => {})
+                      }}
+                      className="tactical-interactive-glitch w-full border-4 border-double border-[#00ffff] bg-[#00ffff]/5 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#00ffff] shadow-[0_0_20px_rgba(0,255,255,0.14)] transition-all hover:bg-[#00ffff]/15 hover:shadow-[0_0_28px_rgba(0,255,255,0.2)] disabled:opacity-40"
                     >
                       {busy ? f.deploying : f.forgeCollection}
                     </button>
                     <button
                       type="button"
                       onClick={() => {
+                        playTacticalUiClick()
                         disconnect()
                         void refresh().catch(() => {})
                       }}
-                      className="w-full border-2 border-cyan-500/35 py-1.5 text-[9px] font-semibold uppercase tracking-widest text-cyan-400/80 hover:border-red-500/50 hover:text-red-300"
+                      className="tactical-interactive-glitch w-full border-2 border-cyan-500/35 py-1.5 text-[9px] font-semibold uppercase tracking-widest text-cyan-400/80 hover:border-red-500/50 hover:text-red-300"
                     >
                       {f.disconnect}
                     </button>

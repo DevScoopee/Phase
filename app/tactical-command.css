@@ -767,3 +767,290 @@
     tactical-reactor-fill 1.1s ease-in-out infinite,
     tactical-x402-mesh 1.8s linear infinite;
 }
+
+/* ═══ Cockpit “búnker” — /chamber + /forge ═══ */
+.tactical-command-root--cockpit.tactical-command-root--chamber {
+  background-color: oklch(0.06 0.02 218);
+}
+
+.tactical-command-root--cockpit.tactical-command-root--chamber::before {
+  opacity: 0.14;
+  background-size: 48px 84px;
+  filter: contrast(0.92);
+}
+
+.tactical-command-root--cockpit.tactical-command-root--chamber::after {
+  opacity: 0.068;
+  background-image:
+    linear-gradient(90deg, rgba(0, 255, 255, 0.028) 1px, transparent 1px),
+    linear-gradient(rgba(0, 255, 255, 0.022) 1px, transparent 1px),
+    radial-gradient(ellipse 52% 95% at 0% 48%, oklch(0.11 0.038 215 / 0.2) 0%, transparent 52%),
+    radial-gradient(ellipse 48% 95% at 100% 52%, oklch(0.078 0.028 218 / 0.14) 0%, transparent 48%),
+    radial-gradient(ellipse 90% 55% at 50% 38%, oklch(0.1 0.032 215 / 0.16) 0%, transparent 58%);
+  background-size: 40px 40px, 40px 40px, 100% 100%, 100% 100%, 100% 100%;
+}
+
+.tactical-command-root--cockpit .tactical-film-grain {
+  opacity: 0.045;
+}
+
+.tactical-command-root--cockpit.tactical-command-root--stable::after {
+  opacity: 0.055;
+  background-image:
+    linear-gradient(90deg, rgba(0, 255, 255, 0.032) 1px, transparent 1px),
+    linear-gradient(rgba(0, 255, 255, 0.024) 1px, transparent 1px),
+    radial-gradient(ellipse 100% 70% at 50% 45%, oklch(0.09 0.03 218 / 0.18) 0%, transparent 55%);
+  background-size: 44px 44px, 44px 44px, 100% 100%;
+}
+
+/* CRT fino adicional (encima del velo base) */
+.tactical-crt-fine {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  opacity: 0.11;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 1px,
+    rgba(0, 0, 0, 0.18) 1px,
+    rgba(0, 0, 0, 0.18) 2px
+  );
+  mix-blend-mode: multiply;
+}
+
+/* Panel izquierdo: vidrio / metal + doble neón (sin “franja pegada”) */
+.tactical-cockpit-aside {
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(
+    118deg,
+    oklch(0.085 0.022 218 / 0.78) 0%,
+    oklch(0.062 0.018 220 / 0.52) 48%,
+    oklch(0.07 0.02 218 / 0.62) 100%
+  );
+  backdrop-filter: blur(16px) saturate(1.12);
+  -webkit-backdrop-filter: blur(16px) saturate(1.12);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 255, 255, 0.1),
+    inset 0 0 50px rgba(0, 0, 0, 0.42),
+    6px 0 32px rgba(0, 0, 0, 0.4);
+  border: 3px double rgba(0, 255, 255, 0.26);
+  border-right: 3px double rgba(0, 255, 255, 0.34);
+}
+
+.tactical-cockpit-aside::before {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.14;
+  background: repeating-linear-gradient(
+    118deg,
+    transparent,
+    transparent 4px,
+    rgba(255, 255, 255, 0.02) 4px,
+    rgba(255, 255, 255, 0.02) 5px
+  );
+  mix-blend-mode: soft-light;
+}
+
+.tactical-cockpit-aside > * {
+  position: relative;
+  z-index: 1;
+}
+
+.tactical-cockpit-signal {
+  pointer-events: none;
+  position: absolute;
+  left: 0.35rem;
+  top: 22%;
+  bottom: 22%;
+  z-index: 2;
+  display: none;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(0, 255, 255, 0.2) 15%,
+    rgba(0, 255, 255, 0.45) 50%,
+    rgba(0, 255, 255, 0.2) 85%,
+    transparent
+  );
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.25);
+}
+
+@media (min-width: 1024px) {
+  .tactical-cockpit-signal {
+    display: block;
+  }
+}
+
+.tactical-cockpit-signal__label {
+  position: absolute;
+  left: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 7px;
+  font-weight: 600;
+  letter-spacing: 0.55em;
+  text-transform: uppercase;
+  color: rgba(34, 211, 238, 0.38);
+  text-shadow: 0 0 12px rgba(0, 255, 255, 0.25);
+  white-space: nowrap;
+}
+
+/* Área principal reactor */
+.tactical-cockpit-stage {
+  position: relative;
+  background: linear-gradient(
+    185deg,
+    oklch(0.07 0.022 218 / 0.94) 0%,
+    oklch(0.052 0.024 220 / 0.9) 55%,
+    oklch(0.06 0.02 218 / 0.92) 100%
+  );
+  border: 3px double rgba(0, 255, 255, 0.22);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 255, 255, 0.07),
+    inset 0 -20px 56px rgba(0, 0, 0, 0.35),
+    0 0 28px rgba(0, 255, 255, 0.05);
+}
+
+.tactical-cockpit-stage::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.35;
+  background: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(0, 255, 255, 0.06), transparent 55%);
+}
+
+.tactical-cockpit-stage__content {
+  position: relative;
+  z-index: 1;
+}
+
+/* Micro-glitch hover (controles tácticos) */
+@keyframes tactical-ui-glitch-hover {
+  0% {
+    transform: translate(0, 0);
+    text-shadow: 0 0 8px rgba(0, 255, 255, 0.2);
+    filter: none;
+  }
+  25% {
+    transform: translate(-0.5px, 0.5px);
+    text-shadow: -1px 0 rgba(0, 255, 255, 0.35), 1px 0 rgba(0, 200, 255, 0.2);
+  }
+  50% {
+    transform: translate(0.5px, -0.5px);
+    filter: hue-rotate(-6deg);
+  }
+  75% {
+    transform: translate(-0.3px, -0.3px);
+  }
+  100% {
+    transform: translate(0, 0);
+    text-shadow: 0 0 8px rgba(0, 255, 255, 0.2);
+    filter: none;
+  }
+}
+
+.tactical-interactive-glitch {
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    color 0.2s ease;
+}
+
+.tactical-interactive-glitch:hover:not(:disabled) {
+  animation: tactical-ui-glitch-hover 0.32s steps(2, end);
+}
+
+/* Forja: shell integrado al cockpit */
+.tactical-cockpit-forge-shell {
+  background: linear-gradient(
+    165deg,
+    oklch(0.072 0.022 218 / 0.88) 0%,
+    oklch(0.055 0.02 220 / 0.82) 100%
+  );
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 3px double rgba(0, 255, 255, 0.24) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 255, 255, 0.06),
+    inset 0 0 40px rgba(0, 0, 0, 0.38),
+    0 0 24px rgba(0, 255, 255, 0.06) !important;
+}
+
+/* Flujo de quests LIQ */
+.tactical-quest-flow {
+  position: relative;
+}
+
+.tactical-quest-flow__lane-title,
+.tactical-quest-flow__chain-title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(165, 243, 252, 0.72);
+  margin-bottom: 0.5rem;
+}
+
+.tactical-quest-flow__lane {
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(34, 211, 238, 0.15);
+}
+
+.tactical-quest-flow__missions {
+  position: relative;
+  padding-left: 0.5rem;
+}
+
+.tactical-quest-flow__rail {
+  pointer-events: none;
+  position: absolute;
+  left: 0.4rem;
+  top: 0.35rem;
+  bottom: 0.35rem;
+  width: 2px;
+  border-radius: 1px;
+  background: linear-gradient(
+    180deg,
+    rgba(34, 211, 238, 0.08),
+    rgba(34, 211, 238, 0.42) 30%,
+    rgba(34, 211, 238, 0.42) 70%,
+    rgba(34, 211, 238, 0.08)
+  );
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.15);
+}
+
+.tactical-quest-step {
+  position: relative;
+  padding-left: 1.15rem;
+  margin-bottom: 0.65rem;
+}
+
+.tactical-quest-step::before {
+  content: "";
+  position: absolute;
+  left: 0.05rem;
+  top: 0.55rem;
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  background: rgba(34, 211, 238, 0.35);
+  border: 1px solid rgba(34, 211, 238, 0.55);
+  box-shadow: 0 0 8px rgba(0, 255, 255, 0.25);
+  z-index: 1;
+}
+
+.tactical-quest-step:last-child {
+  margin-bottom: 0;
+}

@@ -6,12 +6,14 @@ import { AppProviders } from "@/components/app-providers"
 import { SmoothScroll } from "@/components/smooth-scroll"
 import "./globals.css"
 
+const PRODUCTION_SITE = "https://www.phasee.xyz"
+
 function siteMetadataBase(): URL {
   const fromEnv = process.env.NEXT_PUBLIC_SITE_URL?.trim()?.replace(/\/+$/, "")
   if (fromEnv) return new URL(fromEnv.includes("://") ? fromEnv : `https://${fromEnv}`)
   const vercel = process.env.VERCEL_URL?.trim()?.replace(/\/+$/, "")
   if (vercel) return new URL(`https://${vercel}`)
-  return new URL("https://your-domain.com")
+  return new URL(PRODUCTION_SITE)
 }
 
 const ibmPlexSans = IBM_Plex_Sans({
@@ -35,27 +37,50 @@ const defaultTitle = "P H A S E   P R O T O C O L"
 const defaultDescription =
   "Transform liquid energy into solid-state artifacts. The definitive x402 settlement engine for creators on the Soroban network. Connect your terminal."
 
+const metadataBaseResolved = siteMetadataBase()
+const canonicalUrl = new URL("/", metadataBaseResolved).href
+
+function ogImageUrl(): string {
+  const override = process.env.NEXT_PUBLIC_OG_IMAGE_URL?.trim()
+  if (override) return override
+  return new URL("/og-phase.png", metadataBaseResolved).href
+}
+
 export const metadata: Metadata = {
-  metadataBase: siteMetadataBase(),
+  metadataBase: metadataBaseResolved,
   title: {
     template: "%s | P H A S E",
     default: defaultTitle,
   },
   description: defaultDescription,
-  keywords: ["Stellar", "Soroban", "Web3", "x402", "NFT", "Digital Artifacts", "SEP-20"],
+  keywords: [
+    "Stellar",
+    "Soroban",
+    "Web3",
+    "x402",
+    "NFT",
+    "Digital Artifacts",
+    "SEP-20",
+    "SEP-41",
+    "creators",
+    "PHASE Protocol",
+  ],
+  alternates: {
+    canonical: canonicalUrl,
+  },
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: "/",
+    url: canonicalUrl,
     title: defaultTitle,
     description: defaultDescription,
-    siteName: "P H A S E",
+    siteName: "P H A S E   P R O T O C O L",
     images: [
       {
-        url: "/og-phase.png",
+        url: ogImageUrl(),
         width: 1200,
         height: 630,
-        alt: "PHASE Protocol — A hooded figure forging liquid energy on Stellar",
+        alt: "PHASE Protocol — x402 settlement on Soroban: liquid energy to solid-state artifacts",
       },
     ],
   },
@@ -63,7 +88,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: defaultTitle,
     description: defaultDescription,
-    images: ["/og-phase.png"],
+    images: [ogImageUrl()],
   },
   icons: {
     icon: [{ url: "/icon-sphere.png", type: "image/png" }],

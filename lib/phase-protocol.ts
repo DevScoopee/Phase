@@ -81,10 +81,12 @@ export function isValidClassicStellarAddress(addr: string): boolean {
 
 const DEFAULT_TOKEN_CONTRACT = "CDW3T2DXLNGMQDZLMINEF3QHXYDB3F4ZJOGQSKW6QYABA4HMUFRG7DXC"
 
-/** Contrato del token de liquidez del protocolo (Soroban). Override: `NEXT_PUBLIC_TOKEN_CONTRACT_ID`, `TOKEN_CONTRACT_ID`, o `MOCK_TOKEN_ID`. */
+/** Contrato del token de liquidez del protocolo (Soroban). */
 export const TOKEN_ADDRESS = (() => {
   const e = (typeof process !== "undefined" ? process.env : {}) as NodeJS.ProcessEnv
   return (
+    e.NEXT_PUBLIC_PHASER_TOKEN_ID?.trim() ||
+    e.PHASER_TOKEN_ID?.trim() ||
     e.NEXT_PUBLIC_TOKEN_CONTRACT_ID?.trim() ||
     e.TOKEN_CONTRACT_ID?.trim() ||
     e.MOCK_TOKEN_ID?.trim() ||
