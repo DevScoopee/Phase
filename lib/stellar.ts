@@ -4,7 +4,7 @@
  * la misma resolución que aquí cuando no hay CLASSIC_LIQ_ISSUER_SECRET.
  */
 
-import { Asset, StrKey } from "@stellar/stellar-sdk"
+import { Asset, rpc, StrKey } from "@stellar/stellar-sdk"
 import {
   classicLiqAssetConfigFromPublicEnv,
   classicLiqCodeForStellarToml,
@@ -86,4 +86,21 @@ export function logHorizonSubmitError(tag: string, err: unknown): void {
 
 export function logUnknownStellarError(tag: string, err: unknown): void {
   console.error(`[${tag}]`, err instanceof Error ? err.stack ?? err.message : err)
+}
+
+/** Texto breve para API cuando `getTransaction` devuelve FAILED (mint Soroban). */
+export function summarizeSorobanFailedMint(st: rpc.Api.GetFailedTransactionResponse): string {
+  const parts: string[] = [`ledger=${st.ledger}`]
+  try {
+    const results = st.resultXdr?.result()?.results()
+    const first = results?.[0]
+    if (first) {
+      const tr = first.tr()
+      const sw = tr?.switch()
+      if (sw != null) parts.push(`op=${sw.name}`)
+    }
+  } catch {
+    /* XDR opcional */
+  }
+  return parts.join(" · ")
 }

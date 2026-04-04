@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { serverDataJsonPath } from "@/lib/server-data-paths"
 import { readClassicWalletStatus } from "@/lib/classic-liq"
-import { resolvePhaserLiqClassicAsset } from "@/lib/stellar"
+import { resolvePhaserLiqClassicAsset, summarizeSorobanFailedMint } from "@/lib/stellar"
 import {
   Address,
   BASE_FEE,
@@ -297,21 +297,50 @@ async function clearFaucetPendingOnly(wallet: string) {
   await writeClaims(claims)
 }
 
+type MintPollResult =
+  | { outcome: "SUCCESS" }
+  | { outcome: "FAILED"; failed: rpc.Api.GetFailedTransactionResponse }
+  | { outcome: "PENDING" }
+
 /** A lo sumo ~5s de espera por invocación (compatible con timeout serverless). */
-async function pollSubmittedMint(soroban: rpc.Server, hash: string): Promise<"SUCCESS" | "FAILED" | "PENDING"> {
+async function pollSubmittedMint(soroban: rpc.Server, hash: string): Promise<MintPollResult> {
   for (let i = 0; i < FAUCET_MAX_POLLS_PER_REQUEST; i++) {
     if (i > 0) {
       await new Promise((r) => setTimeout(r, FAUCET_POLL_INTERVAL_MS))
     }
     try {
       const st = await soroban.getTransaction(hash)
-      if (st.status === rpc.Api.GetTransactionStatus.SUCCESS) return "SUCCESS"
-      if (st.status === rpc.Api.GetTransactionStatus.FAILED) return "FAILED"
+      if (st.status === rpc.Api.GetTransactionStatus.SUCCESS) return { outcome: "SUCCESS" }
+      if (st.status === rpc.Api.GetTransactionStatus.FAILED) {
+        return { outcome: "FAILED", failed: st as rpc.Api.GetFailedTransactionResponse }
+      }
     } catch {
       // RPC intermitente: seguir intentando dentro del presupuesto de polls
     }
   }
-  return "PENDING"
+  return { outcome: "PENDING" }
+}
+
+function faucetMintLedgerFailedResponse(
+  hash: string,
+  failed: rpc.Api.GetFailedTransactionResponse,
+): NextResponse {
+  const sorobanSummary = summarizeSorobanFailedMint(failed)
+  console.error("[faucet] Soroban mint FAILED (trustline ya verificada en esta petición)", {
+    hash,
+    sorobanSummary,
+    ledger: failed.ledger,
+  })
+  return NextResponse.json(
+    {
+      error: "La transacción falló en el ledger (Soroban).",
+      code: "FAUCET_MINT_LEDGER_FAILED",
+      detail: `En esta petición ya comprobamos en Horizon que tenías trustline PHASERLIQ (mismo code+issuer que la app). El rechazo viene del contrato token o de otra regla on-chain, no de “falta trustline”. Detalle: ${sorobanSummary}. Abre el hash en Stellar Expert (Soroban testnet) para ver el motivo exacto.`,
+      hash,
+      sorobanSummary,
+    },
+    { status: 502 },
+  )
 }
 
 /**
@@ -433,9 +462,6 @@ export async function POST(req: NextRequest) {
   const server = new rpc.Server(RPC_URL)
   const source = adminKp.publicKey()
 
-  const ledgerFailHint =
-    " Suele deberse a trustline PHASERLIQ (mismo code+issuer que en Freighter) sin crear: Forja → INITIALIZE PHASER PROTOCOL, luego reintenta."
-
   try {
     const now = Date.now()
     let liveClaims = await readClaims()
@@ -450,7 +476,7 @@ export async function POST(req: NextRequest) {
     if (row.faucetPending?.reward === reward) {
       const pendingHash = row.faucetPending.hash
       const out = await pollSubmittedMint(server, pendingHash)
-      if (out === "SUCCESS") {
+      if (out.outcome === "SUCCESS") {
         await markClaim(userAddress, reward)
         return NextResponse.json({
           ok: true,
@@ -459,12 +485,9 @@ export async function POST(req: NextRequest) {
           amountStroops: rewardAmountStroops(reward),
         })
       }
-      if (out === "FAILED") {
+      if (out.outcome === "FAILED") {
         await clearFaucetPendingOnly(userAddress)
-        return NextResponse.json(
-          { error: `La transacción falló en ledger.${ledgerFailHint}`, hash: pendingHash },
-          { status: 502 },
-        )
+        return faucetMintLedgerFailedResponse(pendingHash, out.failed)
       }
       return NextResponse.json(
         {
@@ -528,16 +551,13 @@ export async function POST(req: NextRequest) {
     await writeClaims(liveClaims)
 
     const out = await pollSubmittedMint(server, hash)
-    if (out === "SUCCESS") {
+    if (out.outcome === "SUCCESS") {
       await markClaim(userAddress, reward)
       return NextResponse.json({ ok: true, hash, reward, amountStroops: rewardAmountStroops(reward) })
     }
-    if (out === "FAILED") {
+    if (out.outcome === "FAILED") {
       await clearFaucetPendingOnly(userAddress)
-      return NextResponse.json(
-        { error: `La transacción falló en ledger.${ledgerFailHint}`, hash },
-        { status: 502 },
-      )
+      return faucetMintLedgerFailedResponse(hash, out.failed)
     }
     return NextResponse.json(
       {
