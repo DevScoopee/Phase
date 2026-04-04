@@ -8,29 +8,17 @@ function pinataJwt(): string | undefined {
   return undefined
 }
 
-/**
- * Estado de configuración (sin filtrar secretos). Útil para deshabilitar subidas en el cliente.
- */
+/** Returns whether server-side file upload is available (no secrets exposed). */
 export async function GET() {
   const configured = Boolean(pinataJwt())
   return NextResponse.json({ configured })
 }
 
-/**
- * Sube un archivo a Pinata (IPFS). Requiere `PINATA_JWT` o `PINATA_API_JWT` en el entorno del servidor.
- * No expone el JWT al cliente.
- */
+/** Accepts multipart `file`; stores via configured provider. JWT never sent to the client. */
 export async function POST(req: NextRequest) {
   const jwt = pinataJwt()
   if (!jwt) {
-    return NextResponse.json(
-      {
-        error:
-          "Servidor sin PINATA_JWT. Copia `.env.local.example` a `.env.local`, pega tu JWT de Pinata (API Keys) y reinicia `next dev`.",
-        hint: "cp .env.local.example .env.local",
-      },
-      { status: 503 },
-    )
+    return NextResponse.json({ error: "La subida de imágenes no está configurada en el servidor." }, { status: 503 })
   }
 
   let formData: FormData
@@ -45,13 +33,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Falta el campo file." }, { status: 400 })
   }
 
-  const pinataBody = new FormData()
-  pinataBody.append("file", file)
+  const uploadForm = new FormData()
+  uploadForm.append("file", file)
 
   const pinRes = await fetch("https://api.pinata.cloud/pinning/pinFileToIPFS", {
     method: "POST",
     headers: { Authorization: `Bearer ${jwt}` },
-    body: pinataBody,
+    body: uploadForm,
   })
 
   const rawText = await pinRes.text()
@@ -68,13 +56,13 @@ export async function POST(req: NextRequest) {
         ? parsed.error.reason
         : typeof parsed.error === "string"
           ? parsed.error
-          : rawText.slice(0, 200) || `Pinata ${pinRes.status}`
+          : rawText.slice(0, 200) || `Upload service ${pinRes.status}`
     return NextResponse.json({ error: msg }, { status: 502 })
   }
 
   const hash = parsed.IpfsHash
   if (!hash || typeof hash !== "string") {
-    return NextResponse.json({ error: "Pinata no devolvió IpfsHash." }, { status: 502 })
+    return NextResponse.json({ error: "La subida no devolvió un identificador válido." }, { status: 502 })
   }
 
   return NextResponse.json({ uri: `ipfs://${hash}` })

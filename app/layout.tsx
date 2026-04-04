@@ -6,6 +6,14 @@ import { AppProviders } from "@/components/app-providers"
 import { SmoothScroll } from "@/components/smooth-scroll"
 import "./globals.css"
 
+function siteMetadataBase(): URL {
+  const fromEnv = process.env.NEXT_PUBLIC_SITE_URL?.trim()?.replace(/\/+$/, "")
+  if (fromEnv) return new URL(fromEnv.includes("://") ? fromEnv : `https://${fromEnv}`)
+  const vercel = process.env.VERCEL_URL?.trim()?.replace(/\/+$/, "")
+  if (vercel) return new URL(`https://${vercel}`)
+  return new URL("https://your-domain.com")
+}
+
 const ibmPlexSans = IBM_Plex_Sans({
   weight: ["400", "500", "600", "700"],
   subsets: ["latin"],
@@ -23,27 +31,44 @@ const orbitron = Orbitron({
   weight: ["600", "700", "800"],
 })
 
+const defaultTitle = "P H A S E   P R O T O C O L"
+const defaultDescription =
+  "Transform liquid energy into solid-state artifacts. The definitive x402 settlement engine for creators on the Soroban network. Connect your terminal."
+
 export const metadata: Metadata = {
-  title: "PHASE — x402 / SEP-41 Protocol",
-  description:
-    "Protocolo de liquidez fraccionada y transición de estado en Soroban. Estándar x402 con identidad sólida on-chain.",
-  generator: "v0.app",
-  icons: {
-    icon: [
+  metadataBase: siteMetadataBase(),
+  title: {
+    template: "%s | P H A S E",
+    default: defaultTitle,
+  },
+  description: defaultDescription,
+  keywords: ["Stellar", "Soroban", "Web3", "x402", "NFT", "Digital Artifacts", "SEP-20"],
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: "/",
+    title: defaultTitle,
+    description: defaultDescription,
+    siteName: "P H A S E",
+    images: [
       {
-        url: "/icon-light-32x32.png",
-        media: "(prefers-color-scheme: light)",
-      },
-      {
-        url: "/icon-dark-32x32.png",
-        media: "(prefers-color-scheme: dark)",
-      },
-      {
-        url: "/icon.svg",
-        type: "image/svg+xml",
+        url: "/og-phase.png",
+        width: 1200,
+        height: 630,
+        alt: "PHASE Protocol — A hooded figure forging liquid energy on Stellar",
       },
     ],
-    apple: "/apple-icon.png",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: defaultTitle,
+    description: defaultDescription,
+    images: ["/og-phase.png"],
+  },
+  icons: {
+    icon: [{ url: "/icon-sphere.png", type: "image/png" }],
+    apple: [{ url: "/icon-sphere.png", type: "image/png" }],
+    shortcut: "/icon-sphere.png",
   },
 }
 

@@ -49,7 +49,7 @@ const copy: Record<
 }
 
 export function HeroSection() {
-  const { address, connecting, connect, artistAlias } = useWallet()
+  const { address, connecting, connect } = useWallet()
   const { lang } = useLang()
   const t = copy[lang]
   const landing = pickLandingCopy(lang)
@@ -102,12 +102,6 @@ export function HeroSection() {
         <p className="mt-4 text-center font-mono text-[10px] uppercase tracking-[0.35em] text-muted-foreground/70">
           {landing.studioBrand}
         </p>
-        {address && artistAlias ? (
-          <p className="mt-2 text-center font-mono text-[10px] uppercase tracking-[0.22em] text-cyan-300/85">
-            {lang === "es" ? "ARTISTA" : "ARTIST"} · {artistAlias}
-          </p>
-        ) : null}
-
         <h2 className="font-[var(--font-bebas)] text-muted-foreground/88 text-center text-[clamp(1.2rem,2.8vw,2rem)] mt-3 md:mt-4 tracking-[0.09em] leading-tight">
           Standard x402 // SEP-41 Native
         </h2>

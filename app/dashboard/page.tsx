@@ -1,25 +1,31 @@
 "use client"
 
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { signTransaction } from "@stellar/freighter-api"
 import { LangToggle } from "@/components/lang-toggle"
-import { ArtistAliasControl } from "@/components/artist-alias-control"
 import { useLang } from "@/components/lang-context"
 import { PhaseProtectedPreview } from "@/components/phase-protected-preview"
 import { TokenIcon } from "@/components/token-icon"
 import { useWallet } from "@/components/wallet-provider"
 import { pickCopy } from "@/lib/phase-copy"
-import { fetchArtistAlias } from "@/lib/artist-profile-client"
 import { cn } from "@/lib/utils"
 import {
   CONTRACT_ID,
+  NETWORK_PASSPHRASE,
+  buildTransferPhaseNftTransaction,
   checkHasPhased,
   fetchCollectionsCatalog,
   fetchTokenOwnerAddress,
   fetchTokenUriString,
+  getTransactionResult,
   ipfsOrHttpsDisplayUrl,
+  isValidClassicStellarAddress,
+  liqToStroops,
   parseTokenUriMetadata,
   PHASER_LIQ_SYMBOL,
+  sendTransaction,
   stroopsToLiqDisplay,
   type CollectionInfo,
 } from "@/lib/phase-protocol"
@@ -40,13 +46,30 @@ const primaryCardBtn =
 const secondaryCardBtn =
   "flex min-h-[40px] w-full items-center justify-center border-2 border-cyan-500/50 bg-black/50 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wide text-cyan-200/95 transition-colors hover:border-cyan-300 hover:bg-cyan-950/50 hover:text-cyan-50"
 
+type PlatformListing = {
+  id: string
+  seller: string
+  collectionId: number
+  tokenId: number
+  priceStroops: string
+  createdAt: string
+  active: boolean
+}
+
+type SellTarget = {
+  collectionId: number
+  tokenId: number
+  collectionName: string
+}
+
 export default function DashboardPage() {
+  const router = useRouter()
   const { lang } = useLang()
   const t = pickCopy(lang)
   const d = t.dashboard
   const n = t.nav
 
-  const { address, connect, disconnect, connecting, refresh, artistAlias } = useWallet()
+  const { address, connect, disconnect, connecting, refresh } = useWallet()
   const [items, setItems] = useState<CollectionInfo[]>([])
   const [loadState, setLoadState] = useState<"idle" | "loading" | "error" | "done">("idle")
   const [errMsg, setErrMsg] = useState<string | null>(null)
@@ -59,7 +82,13 @@ export default function DashboardPage() {
       imageUrl: string
     }>
   >([])
-  const [creatorAliasByWallet, setCreatorAliasByWallet] = useState<Record<string, string>>({})
+  const [listings, setListings] = useState<PlatformListing[]>([])
+  const [listingsErr, setListingsErr] = useState<string | null>(null)
+  const [sellTarget, setSellTarget] = useState<SellTarget | null>(null)
+  const [buyerAddress, setBuyerAddress] = useState("")
+  const [listPriceLiq, setListPriceLiq] = useState("")
+  const [transferBusy, setTransferBusy] = useState(false)
+  const [sellFeedback, setSellFeedback] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoadState("loading")
@@ -74,9 +103,24 @@ export default function DashboardPage() {
     }
   }, [])
 
+  const loadListings = useCallback(async () => {
+    setListingsErr(null)
+    try {
+      const res = await fetch("/api/nft-listings")
+      const data = (await res.json()) as { listings?: PlatformListing[] }
+      setListings(Array.isArray(data.listings) ? data.listings : [])
+    } catch {
+      setListingsErr(d.listingLoadError)
+    }
+  }, [d.listingLoadError])
+
   useEffect(() => {
     void load().catch(() => {})
   }, [load])
+
+  useEffect(() => {
+    void loadListings().catch(() => {})
+  }, [loadListings])
 
   useEffect(() => {
     if (!address || items.length === 0) {
@@ -105,28 +149,6 @@ export default function DashboardPage() {
       cancelled = true
     }
   }, [address, items])
-
-  useEffect(() => {
-    if (items.length === 0) {
-      setCreatorAliasByWallet({})
-      return
-    }
-    let cancelled = false
-    const uniqueCreators = Array.from(new Set(items.map((i) => i.creator).filter(Boolean)))
-    void Promise.all(uniqueCreators.map(async (wallet) => ({ wallet, alias: await fetchArtistAlias(wallet) })))
-      .then((rows) => {
-        if (cancelled) return
-        const next: Record<string, string> = {}
-        for (const row of rows) {
-          if (row.alias) next[row.wallet] = row.alias
-        }
-        setCreatorAliasByWallet(next)
-      })
-      .catch(() => {})
-    return () => {
-      cancelled = true
-    }
-  }, [items])
 
   useEffect(() => {
     if (!address || items.length === 0) {
@@ -175,17 +197,127 @@ export default function DashboardPage() {
   const inputClass =
     "mt-1 w-full border-4 border-double border-cyan-400/50 bg-black/60 px-3 py-2.5 text-[11px] font-medium text-cyan-50 placeholder:text-cyan-600/80 focus:border-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-400/30"
 
+  const goBack = useCallback(() => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back()
+    } else {
+      router.push("/")
+    }
+  }, [router])
+
+  const closeSellModal = useCallback(() => {
+    setSellTarget(null)
+    setBuyerAddress("")
+    setListPriceLiq("")
+    setSellFeedback(null)
+  }, [])
+
+  const publishListing = useCallback(async () => {
+    if (!address || !sellTarget) return
+    const stroops = liqToStroops(listPriceLiq.trim() || "0")
+    if (stroops === "0") {
+      setSellFeedback(lang === "es" ? "Indicá un precio mayor a 0." : "Enter a price greater than 0.")
+      return
+    }
+    setTransferBusy(true)
+    setSellFeedback(null)
+    try {
+      const res = await fetch("/api/nft-listings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          seller: address,
+          collectionId: sellTarget.collectionId,
+          tokenId: sellTarget.tokenId,
+          priceStroops: stroops,
+        }),
+      })
+      const data = (await res.json()) as { ok?: boolean; error?: string }
+      if (!res.ok || !data.ok) throw new Error(data.error || "LISTING_FAIL")
+      await loadListings()
+      setSellFeedback(lang === "es" ? "Anuncio publicado." : "Listing published.")
+    } catch (e) {
+      setSellFeedback(e instanceof Error ? e.message : String(e))
+    } finally {
+      setTransferBusy(false)
+    }
+  }, [address, sellTarget, listPriceLiq, loadListings, lang])
+
+  const delist = useCallback(
+    async (id: string) => {
+      setTransferBusy(true)
+      setSellFeedback(null)
+      try {
+        const res = await fetch("/api/nft-listings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cancelId: id }),
+        })
+        const data = (await res.json()) as { ok?: boolean }
+        if (!res.ok || !data.ok) throw new Error("DELIST_FAIL")
+        await loadListings()
+      } catch (e) {
+        setSellFeedback(e instanceof Error ? e.message : String(e))
+      } finally {
+        setTransferBusy(false)
+      }
+    },
+    [loadListings],
+  )
+
+  const transferToBuyer = useCallback(async () => {
+    if (!address || !sellTarget) return
+    const to = buyerAddress.trim()
+    if (!isValidClassicStellarAddress(to)) {
+      setSellFeedback(lang === "es" ? "Dirección G… inválida." : "Invalid G… address.")
+      return
+    }
+    if (to === address) {
+      setSellFeedback(lang === "es" ? "No podés transferirte a vos mismo." : "Cannot transfer to yourself.")
+      return
+    }
+    setTransferBusy(true)
+    setSellFeedback(null)
+    try {
+      const txEnvelope = await buildTransferPhaseNftTransaction(address, to, sellTarget.tokenId)
+      const signResult = await signTransaction(txEnvelope, {
+        networkPassphrase: NETWORK_PASSPHRASE,
+        address,
+      })
+      if (signResult.error) throw new Error(signResult.error.message || "SIGN_FAIL")
+      const signedXdr =
+        (signResult as { signedTxXdr?: string }).signedTxXdr ||
+        (signResult as { signedTransaction?: string }).signedTransaction
+      if (!signedXdr) throw new Error("NO_SIGNED_XDR")
+      const sendResult = await sendTransaction(signedXdr)
+      await getTransactionResult(sendResult.hash as string)
+      await load()
+      await loadListings()
+      closeSellModal()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setSellFeedback(`${msg} — ${d.transferWasmHint}`)
+    } finally {
+      setTransferBusy(false)
+    }
+  }, [address, sellTarget, buyerAddress, load, loadListings, closeSellModal, lang, d.transferWasmHint])
+
   return (
     <div className="min-h-screen bg-background font-mono text-foreground">
-      <div className="grid-bg fixed inset-0 opacity-40 pointer-events-none" aria-hidden />
+      <div className="grid-bg pointer-events-none fixed inset-0 opacity-40" aria-hidden />
 
       <header
         className="relative z-10 flex flex-wrap items-center justify-between gap-3 border-b-4 border-double px-4 py-3 md:px-6"
         style={{ borderColor: CYAN }}
       >
-        <Link href="/" className={navLinkClass}>
-          {n.home}
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={() => goBack()} className={navLinkClass}>
+            {d.back}
+          </button>
+          <Link href="/" className={navLinkClass}>
+            {n.home}
+          </Link>
+        </div>
         <span className="max-w-[min(56vw,18rem)] text-center text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-200">
           PHASE · {n.market}
         </span>
@@ -201,7 +333,7 @@ export default function DashboardPage() {
       </header>
 
       <main className="relative z-10 mx-auto max-w-6xl px-4 py-10 md:py-12">
-        <div className="border-4 border-double border-cyan-400/55 bg-[oklch(0.05_0_0)] p-6 md:p-8 shadow-[0_0_32px_rgba(0,255,255,0.06)]">
+        <div className="border-4 border-double border-cyan-400/55 bg-[oklch(0.05_0_0)] p-6 shadow-[0_0_32px_rgba(0,255,255,0.06)] md:p-8">
           <div className="flex flex-col gap-4 border-b border-cyan-400/35 pb-6 md:flex-row md:items-end md:justify-between">
             <div>
               <h1 className="text-[12px] font-bold uppercase tracking-[0.28em] text-cyan-200">{d.title}</h1>
@@ -239,9 +371,6 @@ export default function DashboardPage() {
             ) : (
               <div className="mt-2 flex flex-wrap items-center gap-3">
                 <span className="text-[11px] font-medium text-cyan-50">{truncateAddress(address)}</span>
-                <span className="text-[10px] font-medium uppercase tracking-widest text-cyan-300/85">
-                  {lang === "es" ? "Artista" : "Artist"} · {artistAlias ?? (lang === "es" ? "Sin alias" : "No alias")}
-                </span>
                 <button
                   type="button"
                   onClick={() => {
@@ -254,7 +383,6 @@ export default function DashboardPage() {
                 </button>
               </div>
             )}
-            {address ? <div className="mt-3"><ArtistAliasControl compact /></div> : null}
           </div>
 
           {errMsg && (
@@ -309,11 +437,6 @@ export default function DashboardPage() {
                     <p className="text-[9px] font-medium uppercase tracking-wider text-cyan-400/75">
                       {d.creator} {truncateAddress(c.creator)}
                     </p>
-                    {creatorAliasByWallet[c.creator] ? (
-                      <p className="text-[9px] font-medium uppercase tracking-wider text-cyan-300/85">
-                        {lang === "es" ? "Artista" : "Artist"} · {creatorAliasByWallet[c.creator]}
-                      </p>
-                    ) : null}
                     <div className="mt-auto flex flex-col gap-2 pt-2">
                       <Link href={chamberHref} className={primaryCardBtn}>
                         {d.mint}
@@ -328,11 +451,60 @@ export default function DashboardPage() {
             })}
           </ul>
 
+          <section className="mt-10 border-4 border-double border-cyan-500/35 bg-black/35 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-[10px] font-bold uppercase tracking-[0.28em] text-cyan-300">{d.platformListings}</h2>
+              <button
+                type="button"
+                onClick={() => void loadListings().catch(() => {})}
+                className="rounded border border-cyan-500/50 px-2 py-1 text-[9px] font-bold uppercase text-cyan-200 hover:bg-cyan-950/40"
+              >
+                {d.refresh}
+              </button>
+            </div>
+            {listingsErr ? (
+              <p className="mt-2 text-[10px] text-red-300/90">{listingsErr}</p>
+            ) : listings.length === 0 ? (
+              <p className="mt-3 text-[10px] uppercase tracking-wider text-cyan-200/75">
+                {lang === "es" ? "Sin anuncios activos." : "No active listings."}
+              </p>
+            ) : (
+              <ul className="mt-4 grid gap-3 sm:grid-cols-2">
+                {listings.map((l) => (
+                  <li key={l.id} className="border-2 border-cyan-500/40 bg-black/50 p-3">
+                    <p className="text-[10px] font-semibold uppercase text-cyan-100">
+                      #{l.tokenId} · coll #{l.collectionId}
+                    </p>
+                    <p className="mt-1 text-[9px] text-cyan-300/85">
+                      {d.creator} {truncateAddress(l.seller)}
+                    </p>
+                    <p className="mt-1 text-[10px] text-cyan-200">
+                      {stroopsToLiqDisplay(l.priceStroops)} {PHASER_LIQ_SYMBOL}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Link href={`/chamber?collection=${l.collectionId}`} className={secondaryCardBtn}>
+                        {d.openChamber}
+                      </Link>
+                      {address && l.seller === address ? (
+                        <button
+                          type="button"
+                          disabled={transferBusy}
+                          onClick={() => void delist(l.id).catch(() => {})}
+                          className="rounded border border-orange-500/50 px-2 py-1.5 text-[9px] font-bold uppercase text-orange-200 hover:bg-orange-950/30 disabled:opacity-40"
+                        >
+                          {d.cancelListing}
+                        </button>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
           {address && (
             <section className="mt-10 border-4 border-double border-cyan-500/35 bg-black/35 p-4">
-              <h2 className="text-[10px] font-bold uppercase tracking-[0.28em] text-cyan-300">
-                [ MY_STABILIZED_ARTIFACTS ]
-              </h2>
+              <h2 className="text-[10px] font-bold uppercase tracking-[0.28em] text-cyan-300">{d.myArtifactsSection}</h2>
               {ownedArtifacts.length === 0 ? (
                 <p className="mt-3 text-[10px] uppercase tracking-wider text-cyan-200/75">
                   {lang === "es"
@@ -341,44 +513,124 @@ export default function DashboardPage() {
                 </p>
               ) : (
                 <ul className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {ownedArtifacts.map((a) => {
-                    const img = a.imageUrl ? ipfsOrHttpsDisplayUrl(a.imageUrl) : ""
-                    return (
-                      <li key={`${a.collectionId}-${a.tokenId}`} className="border-2 border-cyan-500/45 bg-black/55 p-2.5">
-                        <div className="aspect-[4/3] overflow-hidden border border-cyan-500/35 bg-black/50">
-                          {img ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={img} alt="" className="h-full w-full object-contain" loading="lazy" />
-                          ) : (
-                            <div className="flex h-full items-center justify-center text-[10px] uppercase tracking-wider text-cyan-500/70">
-                              {lang === "es" ? "Sin visual" : "No visual"}
-                            </div>
-                          )}
-                        </div>
-                        <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-cyan-100">
-                          {a.collectionName}
-                        </p>
-                        <p className="tactical-phosphor mt-1 text-[9px] font-bold uppercase tracking-wider text-cyan-200">
-                          SERIAL_ID #{a.tokenId}
-                        </p>
-                        {img && (
-                          <a
-                            href={img}
-                            download={`phase-artifact-${a.tokenId}.png`}
-                            className="mt-2 inline-flex w-full items-center justify-center border border-cyan-400/55 bg-cyan-950/30 px-2 py-1.5 text-[9px] font-bold uppercase tracking-widest text-cyan-100 transition-colors hover:bg-cyan-900/35"
-                          >
-                            {lang === "es" ? "Descargar hi-res" : "Download hi-res"}
-                          </a>
+                  {ownedArtifacts.map((a) => (
+                    <li key={`${a.collectionId}-${a.tokenId}`} className="border-2 border-cyan-500/45 bg-black/55 p-2.5">
+                      <div className="aspect-[4/3] overflow-hidden border border-cyan-500/35 bg-black/50">
+                        {a.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={ipfsOrHttpsDisplayUrl(a.imageUrl)}
+                            alt=""
+                            className="h-full w-full object-contain"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="flex h-full items-center justify-center text-[10px] uppercase tracking-wider text-cyan-500/70">
+                            {lang === "es" ? "Sin visual" : "No visual"}
+                          </div>
                         )}
-                      </li>
-                    )
-                  })}
+                      </div>
+                      <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-cyan-100">
+                        {a.collectionName}
+                      </p>
+                      <p className="tactical-phosphor mt-1 text-[9px] font-bold uppercase tracking-wider text-cyan-200">
+                        SERIAL_ID #{a.tokenId}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSellTarget({
+                            collectionId: a.collectionId,
+                            tokenId: a.tokenId,
+                            collectionName: a.collectionName,
+                          })
+                          setBuyerAddress("")
+                          setListPriceLiq("")
+                          setSellFeedback(null)
+                        }}
+                        className="mt-2 w-full border-2 border-cyan-400/60 bg-cyan-950/35 py-2 text-[9px] font-bold uppercase tracking-widest text-cyan-100 transition-colors hover:bg-cyan-900/40"
+                      >
+                        {d.sellNft}
+                      </button>
+                    </li>
+                  ))}
                 </ul>
               )}
             </section>
           )}
         </div>
       </main>
+
+      {sellTarget ? (
+        <div
+          className="fixed inset-0 z-[400] flex items-center justify-center bg-black/80 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="sell-modal-title"
+        >
+          <div className="max-h-[90vh] w-full max-w-md overflow-y-auto border-4 border-double border-cyan-400/60 bg-[oklch(0.06_0_0)] p-4 shadow-[0_0_40px_rgba(34,211,238,0.2)]">
+            <h3 id="sell-modal-title" className="text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-200">
+              {d.sellModalTitle}
+            </h3>
+            <p className="mt-2 text-[10px] text-cyan-100/85">
+              {sellTarget.collectionName} · #{sellTarget.tokenId}
+            </p>
+            <p className="mt-3 text-[9px] leading-relaxed text-cyan-300/80">{d.buyerHint}</p>
+            <label className="mt-4 block text-[9px] font-semibold uppercase tracking-wider text-cyan-400">
+              {d.buyerAddressLabel}
+              <input
+                type="text"
+                value={buyerAddress}
+                onChange={(e) => setBuyerAddress(e.target.value)}
+                className={inputClass}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </label>
+            <label className="mt-3 block text-[9px] font-semibold uppercase tracking-wider text-cyan-400">
+              {d.listingPriceLabel}
+              <input
+                type="text"
+                inputMode="decimal"
+                value={listPriceLiq}
+                onChange={(e) => setListPriceLiq(e.target.value)}
+                className={inputClass}
+                placeholder="1.00"
+              />
+            </label>
+            <p className="mt-2 text-[8px] text-cyan-500/80">{d.listingHint}</p>
+            {sellFeedback ? (
+              <p className="mt-3 text-[10px] text-orange-200/95">{sellFeedback}</p>
+            ) : null}
+            <div className="mt-4 flex flex-col gap-2">
+              <button
+                type="button"
+                disabled={transferBusy}
+                onClick={() => void publishListing().catch(() => {})}
+                className={primaryCardBtn}
+              >
+                {transferBusy ? d.transferBusy : d.listingPublish}
+              </button>
+              <button
+                type="button"
+                disabled={transferBusy}
+                onClick={() => void transferToBuyer().catch(() => {})}
+                className={secondaryCardBtn}
+              >
+                {transferBusy ? d.transferBusy : d.transferNft}
+              </button>
+              <button
+                type="button"
+                onClick={closeSellModal}
+                disabled={transferBusy}
+                className="py-2 text-[10px] font-semibold uppercase text-cyan-500 hover:text-cyan-300"
+              >
+                {d.close}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

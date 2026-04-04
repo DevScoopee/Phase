@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import { createPortal } from "react-dom"
 import { toast } from "sonner"
 import { useLang } from "@/components/lang-context"
 import { TokenIcon } from "@/components/token-icon"
@@ -46,11 +47,27 @@ export function LiquidityFaucetControl({
   onRefreshBalance,
 }: Props) {
   const { lang } = useLang()
-  const logs = pickCopy(lang).chamber.logs
+  const ch = pickCopy(lang).chamber
+  const logs = ch.logs
 
   const [status, setStatus] = useState<FaucetStatusResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [loadingReward, setLoadingReward] = useState<RewardType | null>(null)
+  const [helpOpen, setHelpOpen] = useState(false)
+
+  useEffect(() => {
+    if (!helpOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setHelpOpen(false)
+    }
+    window.addEventListener("keydown", onKey)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      window.removeEventListener("keydown", onKey)
+      document.body.style.overflow = prev
+    }
+  }, [helpOpen])
 
   const loadStatus = useCallback(async () => {
     const query = address ? `?walletAddress=${encodeURIComponent(address)}` : ""
@@ -155,39 +172,63 @@ export function LiquidityFaucetControl({
     const disabled = loading || loadingReward !== null || !state?.claimable
     const pct = Math.max(0, Math.min(100, state?.claimedAt ? 100 : state?.progressPct ?? 0))
     return (
-      <div className="rounded border border-cyan-400/30 bg-cyan-950/10 p-2" key={reward}>
-        <div className="mb-1 flex items-center justify-between gap-2 text-[9px] uppercase tracking-[0.24em] text-cyan-100/90">
-          <span>{title}</span>
-          <span className="text-cyan-300/80">{state ? `+${formatLiq(state.amountStroops)} LIQ` : "--"}</span>
+      <div className="rounded border border-cyan-400/30 bg-cyan-950/10 p-2.5" key={reward}>
+        <div className="mb-1.5 flex items-start justify-between gap-2">
+          <span className="text-[11px] font-semibold uppercase leading-tight tracking-[0.18em] text-cyan-100/95 sm:text-xs">
+            {title}
+          </span>
+          <span className="shrink-0 font-mono text-sm font-semibold tabular-nums tracking-tight text-cyan-200/95">
+            {state ? `+${formatLiq(state.amountStroops)}` : "—"}
+            {state ? <span className="ml-1 text-[11px] font-medium text-cyan-400/80">LIQ</span> : null}
+          </span>
         </div>
-        <p className="mb-2 text-[10px] text-cyan-200/65">{description}</p>
+        <p className="mb-2 text-[11px] leading-snug text-cyan-100/60">{description}</p>
         <div className="mb-2">
-          <div className="h-1.5 w-full overflow-hidden rounded bg-cyan-950/70">
+          <div className="h-2 w-full overflow-hidden rounded bg-cyan-950/70">
             <div
               className="h-full bg-cyan-300/75 transition-all"
               style={{ width: `${pct}%` }}
             />
           </div>
-          <p className="mt-1 text-[9px] uppercase tracking-[0.2em] text-cyan-300/60">
-            {lang === "es" ? "PROGRESO" : "PROGRESS"} {pct}%
+          <p className="mt-1.5 text-[10px] uppercase tracking-[0.16em] text-cyan-300/70">
+            {lang === "es" ? "PROGRESO" : "PROGRESS"}{" "}
+            <span className="tabular-nums">{pct}</span>%
           </p>
           {state?.requirementText && !state.claimedAt ? (
-            <p className="mt-1 text-[9px] text-cyan-300/65">{state.requirementText}</p>
+            <p className="mt-1 text-[10px] leading-snug text-gray-400">{state.requirementText}</p>
           ) : null}
         </div>
         <div className="flex items-center justify-between gap-2">
-          <span className="text-[9px] uppercase tracking-[0.22em] text-cyan-300/70">{statusLabel(state)}</span>
+          <span className="text-[10px] uppercase tracking-[0.18em] text-cyan-300/75">{statusLabel(state)}</span>
           <button
             type="button"
             disabled={disabled}
             onClick={() => void request(reward).catch(() => {})}
-            className="tactical-phosphor border border-cyan-400/40 bg-cyan-950/45 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.22em] text-cyan-100 transition hover:border-cyan-300 hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-40"
+            className={cn(
+              "tactical-phosphor text-[10px] font-semibold uppercase tracking-[0.18em] transition-colors",
+              Boolean(state?.claimedAt) &&
+                "cursor-not-allowed border border-gray-800 px-3 py-1 text-gray-600 opacity-50",
+              !state?.claimedAt &&
+                state?.claimable &&
+                loadingReward === null &&
+                !loading &&
+                "cursor-pointer border border-cyan-800 bg-transparent px-3 py-1 text-cyan-100 hover:border-cyan-500 hover:bg-cyan-900/30",
+              !state?.claimedAt &&
+                (!state?.claimable || loading || loadingReward !== null) &&
+                "cursor-not-allowed border border-cyan-950/50 bg-transparent px-3 py-1 text-cyan-600/50 opacity-60",
+            )}
           >
             {loadingReward === reward
               ? lang === "es"
                 ? "PROCESANDO..."
                 : "PROCESSING..."
-              : "CLAIM"}
+              : state?.claimedAt
+                ? lang === "es"
+                  ? "RECLAMADO"
+                  : "CLAIMED"
+                : lang === "es"
+                  ? "RECLAMAR"
+                  : "CLAIM"}
           </button>
         </div>
       </div>
@@ -196,33 +237,89 @@ export function LiquidityFaucetControl({
 
   if (!address || status?.enabled === false) return null
 
+  const helpModal =
+    helpOpen && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            className="fixed inset-0 z-[500] flex items-center justify-center p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="liq-rewards-help-title"
+          >
+            <button
+              type="button"
+              className="absolute inset-0 bg-black/75 backdrop-blur-[2px]"
+              aria-label={ch.rewardsHelpClose}
+              onClick={() => setHelpOpen(false)}
+            />
+            <div className="relative max-h-[min(85vh,32rem)] w-full max-w-md overflow-y-auto rounded-lg border border-cyan-500/45 bg-[oklch(0.078_0.022_218)] p-4 shadow-[0_0_48px_rgba(34,211,238,0.12)] sm:p-5">
+              <div className="mb-3 flex items-start justify-between gap-3 border-b border-cyan-500/20 pb-3">
+                <h2
+                  id="liq-rewards-help-title"
+                  className="tactical-phosphor text-left text-sm font-bold uppercase tracking-[0.2em] text-cyan-100"
+                >
+                  {ch.rewardsHelpModalTitle}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setHelpOpen(false)}
+                  className="tactical-phosphor shrink-0 rounded border border-cyan-500/40 px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-cyan-200 hover:border-cyan-300 hover:text-white"
+                >
+                  {ch.rewardsHelpClose}
+                </button>
+              </div>
+              <div className="space-y-4 text-[13px] leading-relaxed text-cyan-100/88">
+                <div>
+                  <h3 className="mb-1.5 text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">{ch.rewardsHelpLiqTitle}</h3>
+                  <p className="whitespace-pre-line text-cyan-100/82">{ch.rewardsHelpLiqBody}</p>
+                </div>
+                <div>
+                  <h3 className="mb-1.5 text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">{ch.rewardsHelpQuestsTitle}</h3>
+                  <p className="whitespace-pre-line text-cyan-100/82">{ch.rewardsHelpQuestsBody}</p>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null
+
   return (
-    <section className={cn("w-full rounded border border-cyan-400/35 bg-slate-950/50 p-3", className)}>
-      <header className="mb-3">
-        <p className="tactical-phosphor text-[10px] uppercase tracking-[0.26em] text-cyan-100">
-          {lang === "es" ? "[ FORMAS_DE_CONSEGUIR_PHASER_LIQ ]" : "[ WAYS_TO_EARN_PHASER_LIQ ]"}
-        </p>
-        <p className="mt-1 text-[10px] text-cyan-200/65">
-          {lang === "es"
-            ? "Genesis (una vez), Daily (cada 24h), Quests (una vez por misión)."
-            : "Genesis (one-time), Daily (every 24h), Quests (one-time per mission)."}
-        </p>
+    <section className={cn("w-full rounded border border-cyan-400/35 bg-slate-950/50 p-3 sm:p-3.5", className)}>
+      {helpModal}
+      <header className="mb-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <p className="tactical-phosphor min-w-0 flex-1 text-[11px] uppercase tracking-[0.22em] text-cyan-100 sm:text-xs">
+            {ch.rewardsSectionTitle}
+          </p>
+          <button
+            type="button"
+            onClick={() => setHelpOpen(true)}
+            aria-label={ch.rewardsHelpAria}
+            title={ch.rewardsHelpAria}
+            className="tactical-phosphor flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-cyan-400/50 bg-cyan-950/40 text-sm font-bold text-cyan-200 transition hover:border-cyan-300 hover:bg-cyan-900/50 hover:text-white"
+          >
+            ?
+          </button>
+        </div>
         <div className="mt-2">
-          <div className="h-1.5 w-full overflow-hidden rounded bg-cyan-950/70">
+          <div className="h-2 w-full overflow-hidden rounded bg-cyan-950/70">
             <div
               className="h-full bg-cyan-300/80 transition-all"
               style={{ width: `${status?.questOverview?.progressPct ?? 0}%` }}
             />
           </div>
-          <p className="mt-1 text-[9px] uppercase tracking-[0.2em] text-cyan-300/70">
-            {lang === "es" ? "PROGRESO QUESTS" : "QUEST PROGRESS"}{" "}
-            {status?.questOverview
-              ? `${status.questOverview.completed}/${status.questOverview.total}`
-              : "--/--"}
+          <p className="mt-1.5 text-[10px] uppercase tracking-[0.16em] text-cyan-300/75">
+            {ch.rewardsQuestProgress}{" "}
+            <span className="tabular-nums">
+              {status?.questOverview
+                ? `${status.questOverview.completed}/${status.questOverview.total}`
+                : "—/—"}
+            </span>
           </p>
         </div>
       </header>
-      <div className="grid gap-2">
+      <div className="grid gap-2.5">
         {rewardButton(
           "genesis",
           "GENESIS SUPPLY",

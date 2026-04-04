@@ -83,7 +83,7 @@ const landingCopy: Record<LandingLang, LandingCopy> = {
         },
         {
           date: "2026.03.15",
-          title: "NFT Utility SEP-50",
+          title: "NFT Utility SEP-20",
           note: "Implementación de NFTs dinámicos/coleccionables en Soroban con metadatos evolucionables.",
         },
         {
@@ -180,7 +180,7 @@ const landingCopy: Record<LandingLang, LandingCopy> = {
       networkLabel: "Red",
       networkLines: ["Stellar // Soroban (Testnet)"],
       standardLabel: "Estándar",
-      standardLines: ["x402 Híbrido / NFT Utility SEP-50 (+ SEP-0020 para validadores)"],
+      standardLines: ["x402 Híbrido / NFT Utility SEP-20 (+ SEP-0020 para validadores)"],
       docLabel: "Documentación",
       docButton: "[ DOC ]",
       docHref: "/docs",
@@ -216,7 +216,7 @@ const landingCopy: Record<LandingLang, LandingCopy> = {
         },
         {
           date: "2026.03.15",
-          title: "SEP-50 utility NFTs",
+          title: "SEP-20 utility NFTs",
           note: "Implementation of dynamic Soroban collectibles with evolvable metadata.",
         },
         {
@@ -312,7 +312,7 @@ const landingCopy: Record<LandingLang, LandingCopy> = {
       networkLabel: "Network",
       networkLines: ["Stellar // Soroban (Testnet)"],
       standardLabel: "Standard",
-      standardLines: ["x402 Hybrid / SEP-50 utility NFTs (+ SEP-0020 for validators)"],
+      standardLines: ["x402 Hybrid / SEP-20 utility NFTs (+ SEP-0020 for validators)"],
       docLabel: "Documentation",
       docButton: "[ DOC ]",
       docHref: "/docs",

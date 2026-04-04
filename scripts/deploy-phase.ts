@@ -38,7 +38,7 @@ async function main() {
   // Optimize
   log.info('Optimizando WASM...');
   const { stderr: optErr } = await runCommand(
-    `stellar contract optimize --wasm ${PHASE_CONTRACT_PATH} --wasm-out ${OPTIMIZED_PATH}`
+    `stellar contract optimize --wasm "${PHASE_CONTRACT_PATH}" --wasm-out "${OPTIMIZED_PATH}"`
   );
 
   if (optErr && !optErr.includes('Success')) {

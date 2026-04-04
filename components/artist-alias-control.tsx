@@ -75,13 +75,17 @@ export function ArtistAliasControl({ compact = false }: { compact?: boolean }) {
               setStatus(t.pattern)
               return
             }
-            void saveArtistAlias(trimmed).then((res) => {
-              if (res.ok) {
-                setStatus(t.saved)
-              } else {
-                setStatus(`${t.errorPrefix} ${res.error}`)
-              }
-            })
+            void saveArtistAlias(trimmed)
+              .then((res) => {
+                if (res.ok) {
+                  setStatus(t.saved)
+                } else {
+                  setStatus(`${t.errorPrefix} ${res.error}`)
+                }
+              })
+              .catch(() => {
+                setStatus(`${t.errorPrefix} ${lang === "es" ? "Error de red o servidor." : "Network or server error."}`)
+              })
           }}
           className="rounded border border-cyan-400/55 bg-cyan-950/35 px-2.5 py-1.5 text-[9px] font-semibold uppercase tracking-widest text-cyan-100 hover:border-cyan-300 disabled:opacity-50"
         >

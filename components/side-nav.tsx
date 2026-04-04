@@ -38,7 +38,7 @@ export function SideNav() {
   }
 
   return (
-    <nav className="fixed left-0 top-0 z-50 h-screen w-16 md:w-20 hidden md:flex flex-col justify-center border-r border-border/40 bg-background/85 backdrop-blur-md supports-[backdrop-filter]:bg-background/70">
+    <nav className="fixed left-0 top-0 z-50 h-screen w-16 md:w-20 hidden md:flex flex-col justify-center border-r border-cyan-500/15 bg-[oklch(0.09_0.014_220/0.82)] backdrop-blur-md supports-[backdrop-filter]:bg-[oklch(0.09_0.014_220/0.72)]">
       <div className="flex flex-col gap-6 px-4">
         {navItems.map(({ id, label }) => (
           <button key={id} onClick={() => scrollToSection(id)} className="group relative flex items-center gap-3">

@@ -208,21 +208,21 @@ async function buildWalletStatus(wallet: string | null, claims: FaucetClaims) {
   const questConnect: RewardStatus = {
     ...rawQuestConnect,
     claimable: rawQuestConnect.claimable && questProgress.quest_connect_wallet.completed,
-    requirementMet: questProgress.quest_connect_wallet.completed,
+    requirementMet: Boolean(rawQuestConnect.claimedAt) || questProgress.quest_connect_wallet.completed,
     progressPct: rawQuestConnect.claimedAt ? 100 : questProgress.quest_connect_wallet.progressPct,
     requirementText: questProgress.quest_connect_wallet.requirementText,
   }
   const questCollection: RewardStatus = {
     ...rawQuestCollection,
     claimable: rawQuestCollection.claimable && questProgress.quest_first_collection.completed,
-    requirementMet: questProgress.quest_first_collection.completed,
+    requirementMet: Boolean(rawQuestCollection.claimedAt) || questProgress.quest_first_collection.completed,
     progressPct: rawQuestCollection.claimedAt ? 100 : questProgress.quest_first_collection.progressPct,
     requirementText: questProgress.quest_first_collection.requirementText,
   }
   const questSettle: RewardStatus = {
     ...rawQuestSettle,
     claimable: rawQuestSettle.claimable && questProgress.quest_first_settle.completed,
-    requirementMet: questProgress.quest_first_settle.completed,
+    requirementMet: Boolean(rawQuestSettle.claimedAt) || questProgress.quest_first_settle.completed,
     progressPct: rawQuestSettle.claimedAt ? 100 : questProgress.quest_first_settle.progressPct,
     requirementText: questProgress.quest_first_settle.requirementText,
   }

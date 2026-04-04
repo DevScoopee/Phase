@@ -1,5 +1,7 @@
 # PHASER_LIQ // TERMINAL REWARDS DOC
 
+**Índice del proyecto:** [README.md](../README.md) · **Documentación integrada (UI):** `/docs` en la app · **Contratos:** [contracts/README.md](../contracts/README.md)
+
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ PHASE PROTOCOL :: TESTNET REWARDS ENGINE                                   │

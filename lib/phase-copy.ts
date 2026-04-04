@@ -103,6 +103,23 @@ export const phaseCopy: Record<
       previewPendingFusion: string
       previewUnverifiedCopy: string
       previewChainVerified: string
+      back: string
+      myArtifactsSection: string
+      platformListings: string
+      sellNft: string
+      sellModalTitle: string
+      buyerAddressLabel: string
+      buyerHint: string
+      listingPriceLabel: string
+      listingPublish: string
+      listingHint: string
+      transferNft: string
+      transferBusy: string
+      cancel: string
+      close: string
+      cancelListing: string
+      listingLoadError: string
+      transferWasmHint: string
     }
     studioModal: {
       windowTitle: string
@@ -148,8 +165,8 @@ export const phaseCopy: Record<
       market: string
       chamber: string
       intro: string
-      pinataTitle: string
-      pinataBody: string
+      uploadUnavailableTitle: string
+      uploadUnavailableBody: string
       imageSource: string
       paint: string
       upload: string
@@ -268,6 +285,15 @@ export const phaseCopy: Record<
       collectionLine: string
       collectionLinkTitle: string
       faucetButton: string
+      rewardsSectionTitle: string
+      rewardsHelpAria: string
+      rewardsHelpClose: string
+      rewardsHelpModalTitle: string
+      rewardsHelpLiqTitle: string
+      rewardsHelpLiqBody: string
+      rewardsHelpQuestsTitle: string
+      rewardsHelpQuestsBody: string
+      rewardsQuestProgress: string
       creatorCanMint: string
       creatorMintRule: string
       creatorAlreadyMinted: string
@@ -309,6 +335,25 @@ export const phaseCopy: Record<
       previewPendingFusion: "[ PENDING_FUSION ]",
       previewUnverifiedCopy: "[ UNVERIFIED_COPY ]",
       previewChainVerified: "[ CHAIN_VERIFIED ]",
+      back: "◄ Back",
+      myArtifactsSection: "[ MY_STABILIZED_ARTIFACTS ]",
+      platformListings: "[ PLATFORM_LISTINGS ]",
+      sellNft: "[ SELL_NFT ]",
+      sellModalTitle: "Sell / transfer NFT",
+      buyerAddressLabel: "Buyer Stellar address (G…)",
+      buyerHint:
+        "Agree PHASER_LIQ payment with the buyer off-wallet, then transfer the on-chain NFT here. Requires deployed contract with transfer_phase_nft.",
+      listingPriceLabel: "List price (PHASER_LIQ)",
+      listingPublish: "[ PUBLISH_LISTING ]",
+      listingHint: "Listing is visible on this market; payment is peer-to-peer.",
+      transferNft: "[ TRANSFER_ON_CHAIN ]",
+      transferBusy: "Signing…",
+      cancel: "Cancel",
+      close: "Close",
+      cancelListing: "[ DELIST ]",
+      listingLoadError: "Could not load listings.",
+      transferWasmHint:
+        "If simulation fails, redeploy the PHASE WASM with transfer_phase_nft and update CONTRACT_ID.",
     },
     studioModal: {
       windowTitle: "PHASE Art Studio",
@@ -359,11 +404,9 @@ export const phaseCopy: Record<
       title: "PHASE Forge · Multimodal",
       market: "Market",
       chamber: "Chamber",
-      intro:
-        "PAINT / UPLOAD → IPFS (Pinata). URL → https:// or ipfs://. Server needs PINATA_JWT in .env.local.",
-      pinataTitle: "PINATA_JWT missing",
-      pinataBody:
-        "Copy .env.local.example to .env.local, add your JWT, restart dev. Use URL mode without Pinata.",
+      intro: "Register a collection: choose image source, set name and PHASER_LIQ mint price, then forge.",
+      uploadUnavailableTitle: "Paint / upload unavailable",
+      uploadUnavailableBody: "This deployment does not accept sealed file uploads. Use URL mode with a direct image link.",
       imageSource: "Image source",
       paint: "Paint",
       upload: "Upload",
@@ -372,14 +415,13 @@ export const phaseCopy: Record<
       fusionPrice: "Fusion price (PHASER_LIQ)",
       readout: "READOUT",
       metadataUrl: "Metadata image URL",
-      urlHelp: "If set, must be https:// or ipfs:// (max 256 chars, no quotes or backslashes).",
-      fileIpfs: "File → IPFS (PHASE forge seal) on deploy",
+      urlHelp: "If set: https:// or ipfs:// — max 256 chars, no quotes or backslashes.",
+      fileIpfs: "Image file (sealed on deploy)",
       waitingDesign: "Waiting for artwork",
       previewHint: "Preview active — you can reopen the studio",
       designArtifact: "Design artifact",
       reopenDesigner: "Reopen studio",
-      studioBlurb:
-        "Built-in editor (JSPaint-style): 1024×768 canvas, zoom, palette — seal then IPFS on forge.",
+      studioBlurb: "Built-in editor (JSPaint-style): 1024×768 canvas, zoom, palette — seal before forge.",
       linkWallet: "Link wallet",
       linking: "Linking…",
       walletLabel: "Wallet",
@@ -419,7 +461,7 @@ export const phaseCopy: Record<
       placeholders: {
         collectionName: "Crypto-Art 2026",
         price: "5.0",
-        imageUrl: "https://… or ipfs://… (empty = no image)",
+        imageUrl: "Image URL (optional)",
       },
     },
     chamber: {
@@ -490,13 +532,24 @@ export const phaseCopy: Record<
       collectionLine: "Collection #{id} · {name}",
       collectionLinkTitle: "Collection #{id}",
       faucetButton: "[ ⚡ RECHARGE_PHASER_LIQ ]",
+      rewardsSectionTitle: "[ LIQ_REWARDS ]",
+      rewardsHelpAria: "Help: PHASER_LIQ and reward programs",
+      rewardsHelpClose: "Close",
+      rewardsHelpModalTitle: "PHASER_LIQ & rewards",
+      rewardsHelpLiqTitle: "What is LIQ?",
+      rewardsHelpLiqBody:
+        "LIQ is the short name we show in the UI for PHASER_LIQ, the Soroban testnet utility token for PHASE. You use it to pay mint prices (initiate_phase / x402 settlement) and to experiment with the reactor. Balances use seven decimals like other Stellar assets. This is testnet liquidity—not real money.",
+      rewardsHelpQuestsTitle: "Genesis, daily, and quests",
+      rewardsHelpQuestsBody:
+        "Genesis is a one-time starting grant for new wallets. Daily recharge refills on a 24-hour timer. Quests are one-time missions (connect wallet, forge a collection, complete a settlement). Progress bars show eligibility; Claim requests a server-signed mint when requirements are met.",
+      rewardsQuestProgress: "QUEST PROGRESS",
       creatorCanMint: "CREATOR_MINT_ENABLED",
       creatorMintRule: "Creator can mint this collection too (one utility NFT per wallet per collection).",
       creatorAlreadyMinted: "Creator already minted this collection with this wallet.",
       freighterManualAddTitle: "FREIGHTER_COLLECTIBLE",
       freighterManualAddBody:
         "If it does not appear automatically: Freighter -> Collectibles -> Add manually -> paste contract + token ID.",
-      protocolStackLabel: "x402 · SEP-41 token flows · SEP-50 collectible · SEP-0020 validator metadata",
+      protocolStackLabel: "x402 · SEP-41 token flows · SEP-20 collectible · SEP-0020 validator metadata",
       logs: {
         chamberOnline: "[ CHAMBER_ONLINE ] AWAITING_OPERATOR_HANDSHAKE…",
         walletRequest: "[ WALLET ] REQUESTING_SIGNER_CHANNEL…",
@@ -538,7 +591,7 @@ export const phaseCopy: Record<
         readonly: "[ SMART_ASSET_VIEW // READ_ONLY ]",
         noVisual: "[ NO_VISUAL_CHANNEL ]",
         ariaLabel: "Phase utility NFT artifact",
-        sepSuffix: "// SEP-50",
+        sepSuffix: "// SEP-20",
         dataLocked: "[ DATA_LOCKED ]",
         contract: "CONTRACT",
         terminalRestricted: "TERMINAL_LOCKED // CLASSIFIED",
@@ -596,6 +649,25 @@ export const phaseCopy: Record<
       previewPendingFusion: "[ PENDING_FUSION ]",
       previewUnverifiedCopy: "[ COPIA_NO_VERIFICADA ]",
       previewChainVerified: "[ VERIFICADO_EN_CADENA ]",
+      back: "◄ Volver",
+      myArtifactsSection: "[ MIS_ARTEFACTOS_ESTABILIZADOS ]",
+      platformListings: "[ ANUNCIOS_EN_LA_PLATAFORMA ]",
+      sellNft: "[ VENDER_NFT ]",
+      sellModalTitle: "Vender / transferir NFT",
+      buyerAddressLabel: "Dirección Stellar del comprador (G…)",
+      buyerHint:
+        "Acordá el pago en PHASER_LIQ con el comprador (transferencia directa), luego transferí el NFT on-chain aquí. Requiere contrato PHASE con transfer_phase_nft desplegado.",
+      listingPriceLabel: "Precio de venta (PHASER_LIQ)",
+      listingPublish: "[ PUBLICAR_ANUNCIO ]",
+      listingHint: "El anuncio se ve en este mercado; el cobro es P2P entre wallets.",
+      transferNft: "[ TRANSFERIR_ON_CHAIN ]",
+      transferBusy: "Firmando…",
+      cancel: "Cancelar",
+      close: "Cerrar",
+      cancelListing: "[ QUITAR_ANUNCIO ]",
+      listingLoadError: "No se pudieron cargar los anuncios.",
+      transferWasmHint:
+        "Si falla la simulación, redesplegá el WASM PHASE con transfer_phase_nft y actualizá CONTRACT_ID.",
     },
     studioModal: {
       windowTitle: "PHASE Estudio de arte",
@@ -646,11 +718,9 @@ export const phaseCopy: Record<
       title: "PHASE Forja · Multimodal",
       market: "Mercado",
       chamber: "Cámara",
-      intro:
-        "PAINT / SUBIDA → IPFS (Pinata). URL → https:// o ipfs://. El servidor necesita PINATA_JWT en .env.local.",
-      pinataTitle: "Falta PINATA_JWT",
-      pinataBody:
-        "Copia .env.local.example a .env.local, añade el JWT y reinicia dev. Usa modo URL sin Pinata.",
+      intro: "Registra una colección: elige origen de imagen, nombre y precio de mint en PHASER_LIQ, luego forja.",
+      uploadUnavailableTitle: "Pintar / subida no disponible",
+      uploadUnavailableBody: "Este despliegue no acepta subida de archivos sellados. Usa modo URL con un enlace directo a la imagen.",
       imageSource: "Origen de imagen",
       paint: "Pintar",
       upload: "Subir",
@@ -659,14 +729,13 @@ export const phaseCopy: Record<
       fusionPrice: "Precio de fusión (PHASER_LIQ)",
       readout: "LECTURA",
       metadataUrl: "URL imagen (metadata)",
-      urlHelp: "Si no está vacío, debe ser https:// o ipfs:// (máx. 256 caracteres, sin comillas ni \\).",
-      fileIpfs: "Archivo → IPFS (sello PHASE Forja) al desplegar",
+      urlHelp: "Si no está vacío: https:// o ipfs:// — máx. 256 caracteres, sin comillas ni \\.",
+      fileIpfs: "Archivo de imagen (sellado al desplegar)",
       waitingDesign: "Esperando diseño",
       previewHint: "Vista previa activa — puedes reabrir el estudio",
       designArtifact: "Diseñar artefacto",
       reopenDesigner: "Reabrir estudio",
-      studioBlurb:
-        "Editor integrado (estilo JSPaint): lienzo 1024×768, zoom, paleta — sellar y luego IPFS al forjar.",
+      studioBlurb: "Editor integrado (estilo JSPaint): lienzo 1024×768, zoom, paleta — sellar antes de forjar.",
       linkWallet: "Vincular wallet",
       linking: "Vinculando…",
       walletLabel: "Wallet",
@@ -706,7 +775,7 @@ export const phaseCopy: Record<
       placeholders: {
         collectionName: "Cripto-Arte 2026",
         price: "5.0",
-        imageUrl: "https://… o ipfs://… (vacío = sin imagen)",
+        imageUrl: "URL de imagen (opcional)",
       },
     },
     chamber: {
@@ -777,13 +846,24 @@ export const phaseCopy: Record<
       collectionLine: "Colección #{id} · {name}",
       collectionLinkTitle: "Colección #{id}",
       faucetButton: "[ ⚡ SOLICITAR_PHASER_LIQ ]",
+      rewardsSectionTitle: "[ RECOMPENSAS_LIQ ]",
+      rewardsHelpAria: "Ayuda: PHASER_LIQ y recompensas",
+      rewardsHelpClose: "Cerrar",
+      rewardsHelpModalTitle: "PHASER_LIQ y recompensas",
+      rewardsHelpLiqTitle: "¿Qué es LIQ?",
+      rewardsHelpLiqBody:
+        "LIQ es la etiqueta corta que ves en la interfaz para PHASER_LIQ, el token de utilidad Soroban en testnet de PHASE. Sirve para pagar precios de mint (initiate_phase / liquidación x402) y para probar el reactor. Los saldos usan siete decimales como otros assets Stellar. Es liquidez de testnet, no dinero real.",
+      rewardsHelpQuestsTitle: "Genesis, diaria y misiones",
+      rewardsHelpQuestsBody:
+        "Genesis es un fondo inicial único para wallets nuevas. La recarga diaria se reinicia cada 24 horas. Las quests son misiones de una sola vez (vincular wallet, crear colección, completar una liquidación). Las barras muestran el avance; Reclamar pide un mint firmado por el servidor cuando cumples los requisitos.",
+      rewardsQuestProgress: "PROGRESO QUESTS",
       creatorCanMint: "CREADOR_MINT_HABILITADO",
       creatorMintRule: "El creador también puede mintear esta colección (1 NFT de utilidad por wallet por colección).",
       creatorAlreadyMinted: "El creador ya minteó esta colección con esta wallet.",
       freighterManualAddTitle: "COLECCIONABLE_EN_FREIGHTER",
       freighterManualAddBody:
         "Si no aparece automático: Freighter -> Collectibles -> Add manually -> pega contrato + token ID.",
-      protocolStackLabel: "x402 · flujos token SEP-41 · coleccionable SEP-50 · metadata validador SEP-0020",
+      protocolStackLabel: "x402 · flujos token SEP-41 · coleccionable SEP-20 · metadata validador SEP-0020",
       logs: {
         chamberOnline: "[ CÁMARA_EN_LÍNEA ] ESPERANDO_ENLACE_OPERADOR…",
         walletRequest: "[ WALLET ] SOLICITANDO_CANAL_FIRMANTE…",
@@ -825,7 +905,7 @@ export const phaseCopy: Record<
         readonly: "[ VISTA_ACTIVO_INTELIGENTE // SOLO_LECTURA ]",
         noVisual: "[ SIN_CANAL_VISUAL ]",
         ariaLabel: "Artefacto NFT de utilidad PHASE",
-        sepSuffix: "// SEP-50",
+        sepSuffix: "// SEP-20",
         dataLocked: "[ DATOS_BLOQUEADOS ]",
         contract: "CONTRATO",
         terminalRestricted: "TERMINAL_BLOQUEADA // CLASIFICADO",

@@ -16,7 +16,20 @@ PHASE es un sistema de **Pagos Agénticos** basado en el estándar x402. Permite
 | Nombre | Contract ID | Función Principal |
 |--------|-------------|-------------------|
 | **PHASE_LIQ** (Token SEP-41) | `CDW3T2DXLNGMQDZLMINEF3QHXYDB3F4ZJOGQSKW6QYABA4HMUFRG7DXC` | Token de liquidez |
-| **PHASE_CORE** (Protocolo) | `CA5BGDHOL7KW4VC3QO4JIVWOZRJGP53KT63INPWTPKJGWN3DLOS4PJHH` | x402 Facilitator |
+| **PHASE_CORE** (Protocolo) | `CDXZ2HWPSAU3DKACNGTTY3WM6FKN5LPNGMAYFW4KBF74P42RK6SFDRGP` | x402 Facilitator |
+
+**Stellar Expert (testnet):** [PHASE_CORE](https://stellar.expert/explorer/testnet/contract/CDXZ2HWPSAU3DKACNGTTY3WM6FKN5LPNGMAYFW4KBF74P42RK6SFDRGP) · [PHASER_LIQ](https://stellar.expert/explorer/testnet/contract/CDW3T2DXLNGMQDZLMINEF3QHXYDB3F4ZJOGQSKW6QYABA4HMUFRG7DXC)
+
+### Activos de marca (repo)
+
+| Archivo | Uso |
+|---------|-----|
+| `public/og-phase.png` | Open Graph / Twitter Card |
+| `public/icon-sphere.png` | Favicon / Apple icon |
+| `public/phaser-liq-token.png` | Icono PHASER_LIQ + `stellar.toml` |
+| `public/.well-known/stellar.toml` | SEP-0001 |
+
+Metadata en `app/layout.tsx`. Documentación detallada: **README.md** y **`/docs`** en la app.
 
 ### Tecnologías del Stack
 - **Frontend:** Next.js 16 (App Router), React 19, Tailwind CSS
@@ -150,7 +163,7 @@ pub fn settle(
 ## 4. Constantes del Sistema
 
 ```typescript
-const CONTRACT_ID = "CA5BGDHOL7KW4VC3QO4JIVWOZRJGP53KT63INPWTPKJGWN3DLOS4PJHH"
+const CONTRACT_ID = "CDXZ2HWPSAU3DKACNGTTY3WM6FKN5LPNGMAYFW4KBF74P42RK6SFDRGP"
 const TOKEN_ADDRESS = "CDW3T2DXLNGMQDZLMINEF3QHXYDB3F4ZJOGQSKW6QYABA4HMUFRG7DXC"
 const RPC_URL = "https://soroban-testnet.stellar.org"
 const NETWORK_PASSPHRASE = "Test SDF Network ; September 2015"

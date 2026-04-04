@@ -331,23 +331,23 @@ export function PhaseArtifactVisualizer({
   )
 
   const publicMetaPanel = (
-    <div className="mx-auto mt-1 w-full max-w-[min(100%,24rem)] space-y-1 border border-zinc-700/35 bg-black/40 px-2.5 py-2 font-mono text-[10px] uppercase tracking-wide text-zinc-400/95 sm:text-[11px]">
-      <div className="flex justify-between gap-2 border-b border-zinc-800/80 pb-1">
+    <div className="mx-auto mt-1 w-full max-w-[min(100%,24rem)] space-y-2 border border-zinc-700/35 bg-black/40 p-4 font-mono text-[10px] uppercase tracking-wide text-zinc-400/95 sm:text-[11px]">
+      <div className="flex justify-between gap-2 border-b border-zinc-800/80 pb-2">
         <span className="shrink-0 text-zinc-600">{labels.monitorCollectionName}</span>
         <span className="min-w-0 max-w-[65%] truncate text-right normal-case text-zinc-500" title={publicCollectionLine}>
           {publicCollectionLine}
         </span>
       </div>
-      <div className="flex items-center justify-between gap-2 border-b border-zinc-800/80 pb-1">
+      <div className="flex items-center justify-between gap-2 border-b border-zinc-800/80 pb-2">
         <span className="shrink-0 text-zinc-600">{labels.monitorContractAddr}</span>
-        <div className="flex min-w-0 items-center gap-1.5">
+        <div className="flex min-w-0 items-center gap-2">
           <span className="min-w-0 truncate text-right text-zinc-500" title={contractId || undefined}>
             {contractPublic}
           </span>
           <button
             type="button"
-            onClick={() => void copyContractId()}
-            className="shrink-0 rounded border border-cyan-500/40 bg-cyan-950/25 px-1.5 py-0.5 text-[8px] font-bold text-cyan-300/90 transition-colors hover:border-cyan-300 hover:text-cyan-100"
+            onClick={() => void copyContractId().catch(() => {})}
+            className="ml-3 shrink-0 rounded border border-cyan-500/40 bg-cyan-950/25 px-1.5 py-0.5 text-[8px] font-bold text-cyan-300/90 transition-colors hover:border-cyan-300 hover:text-white"
             title={copiedContract ? "Copied" : "Copy"}
             aria-label="Copy PHASER_LIQ contract address"
           >
@@ -355,7 +355,7 @@ export function PhaseArtifactVisualizer({
           </button>
         </div>
       </div>
-      <div className="flex justify-between gap-2 border-b border-zinc-800/80 pb-1">
+      <div className="flex justify-between gap-2 border-b border-zinc-800/80 pb-2">
         <span className="shrink-0 text-zinc-600">{labels.supplyStabilized}</span>
         <span
           className={cn(
@@ -366,7 +366,7 @@ export function PhaseArtifactVisualizer({
           {supplyLine}
         </span>
       </div>
-      <p className="border-t border-zinc-800/80 pt-1.5 text-[9px] leading-snug tracking-[0.08em] text-zinc-500/95">
+      <p className="border-t border-zinc-800/80 pt-2 text-[9px] leading-snug tracking-[0.08em] text-zinc-500/95">
         {labels.readonly}
       </p>
       {expertUrl && expertLabel && (

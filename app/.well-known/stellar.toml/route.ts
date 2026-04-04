@@ -11,29 +11,17 @@ export async function GET() {
       : "http://localhost:3000")
   const icon = `${base}/phaser-liq-token.png`
   const expert = `https://stellar.expert/explorer/testnet/contract/${TOKEN_ADDRESS}`
-  const issuer = process.env.TOKEN_ISSUER?.trim() || process.env.NEXT_PUBLIC_TOKEN_ISSUER?.trim() || ""
-
-  const currenciesBlock = issuer
-    ? `[[CURRENCIES]]
-code="PHASER_LIQ"
-name="Phase Liquidity"
-issuer="${issuer}"
-desc="PHASER_LIQ token for PHASE protocol liquidity flows."
-image="${icon}"
-display_decimals=2
-`
-    : `[[CURRENCIES]]
-code="PHASER_LIQ"
-name="Phase Liquidity"
-desc="PHASER_LIQ token for PHASE protocol liquidity flows."
-image="${icon}"
-display_decimals=2
-`
 
   const body = `VERSION="2.0.0"
 NETWORK_PASSPHRASE="${NETWORK_PASSPHRASE}"
 ACCOUNTS=[]
-${currenciesBlock}
+[[CURRENCIES]]
+script="${TOKEN_ADDRESS}"
+code="PHASER_LIQ"
+name="Phase Liquidity"
+desc="PHASER_LIQ utility liquidity token for PHASE settlement flows."
+image="${icon}"
+display_decimals=7
 # Soroban contract metadata (custom extensions for wallets/indexers)
 PHASER_LIQ_CONTRACT_ID="${TOKEN_ADDRESS}"
 PHASER_LIQ_ICON="${icon}"
@@ -48,6 +36,21 @@ PHASER_LIQ_NODE_DECLARATION_DOCS="https://developers.stellar.org/docs/validators
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
       "Cache-Control": "public, max-age=300",
+      "Access-Control-Allow-Origin": "https://stellar.expert",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    },
+  })
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": "https://stellar.expert",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Max-Age": "86400",
     },
   })
 }

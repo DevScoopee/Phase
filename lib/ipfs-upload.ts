@@ -1,4 +1,4 @@
-/** `true` si el servidor tiene `PINATA_JWT` / `PINATA_API_JWT` (consulta segura vía GET). */
+/** `true` if the server exposes a configured upload endpoint (checked via GET, no secrets leaked). */
 export async function isIpfsUploadConfigured(): Promise<boolean> {
   try {
     const res = await fetch("/api/ipfs", { method: "GET", cache: "no-store" })
@@ -11,8 +11,7 @@ export async function isIpfsUploadConfigured(): Promise<boolean> {
 }
 
 /**
- * Sube un `Blob` o `File` vía ruta interna `/api/ipfs` (Pinata en servidor).
- * Devuelve una URI `ipfs://CID` lista para `create_collection`.
+ * Uploads a `Blob` or `File` via `POST /api/ipfs`. Returns a content URI for `create_collection`.
  */
 export async function uploadToIPFS(fileOrBlob: Blob | File): Promise<string> {
   const fd = new FormData()
@@ -28,10 +27,10 @@ export async function uploadToIPFS(fileOrBlob: Blob | File): Promise<string> {
   }
 
   if (!res.ok) {
-    throw new Error(data.error || `Subida IPFS falló (${res.status})`)
+    throw new Error(data.error || `Subida falló (${res.status})`)
   }
   if (typeof data.uri !== "string" || !data.uri.startsWith("ipfs://")) {
-    throw new Error("Respuesta IPFS inválida (falta uri ipfs://).")
+    throw new Error("Respuesta de subida inválida.")
   }
   return data.uri
 }

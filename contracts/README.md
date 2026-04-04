@@ -2,6 +2,18 @@
 
 Este directorio contiene los contratos inteligentes del protocolo PHASE para Stellar/Soroban.
 
+## Referencia desplegada (testnet, valores por defecto del repo)
+
+Estos IDs coinciden con `lib/phase-protocol.ts` en la app Next.js. Si redespliegas, actualiza `.env.local` y la documentación.
+
+| Contrato | Contract ID | Stellar Expert |
+|----------|-------------|----------------|
+| **phase-protocol** (núcleo) | `CDXZ2HWPSAU3DKACNGTTY3WM6FKN5LPNGMAYFW4KBF74P42RK6SFDRGP` | [Ver ↗](https://stellar.expert/explorer/testnet/contract/CDXZ2HWPSAU3DKACNGTTY3WM6FKN5LPNGMAYFW4KBF74P42RK6SFDRGP) |
+| **Token PHASER_LIQ** (mock-token / SAC) | `CDW3T2DXLNGMQDZLMINEF3QHXYDB3F4ZJOGQSKW6QYABA4HMUFRG7DXC` | [Ver ↗](https://stellar.expert/explorer/testnet/contract/CDW3T2DXLNGMQDZLMINEF3QHXYDB3F4ZJOGQSKW6QYABA4HMUFRG7DXC) |
+
+- Red: **testnet** · Passphrase: `Test SDF Network ; September 2015`
+- Documentación de producto: [README.md](../README.md) · Guía in-app: ruta `/docs` · Recompensas: [docs/PHASER_LIQ_REWARDS_TERMINAL_DOC.md](../docs/PHASER_LIQ_REWARDS_TERMINAL_DOC.md)
+
 ## Estructura
 
 ```

@@ -13,12 +13,15 @@ export default function Page() {
   return (
     <LandingLangShell>
       <main className="relative min-h-screen">
-        <div className="pointer-events-none fixed inset-0 z-[5] bg-gradient-to-b from-background via-transparent to-background opacity-70" aria-hidden="true" />
+        <div
+          className="pointer-events-none fixed inset-0 z-[5] bg-gradient-to-b from-[oklch(0.09_0.014_220)] via-transparent to-[oklch(0.09_0.014_220)] opacity-80"
+          aria-hidden="true"
+        />
         <div className="fixed top-4 right-4 z-50 max-w-[calc(100vw-1.5rem)] md:top-6 md:right-6 md:max-w-none pointer-events-none">
           <FreighterConnect trailing={<LangToggle />} />
         </div>
         <SideNav />
-        <div className="grid-bg fixed inset-0 z-0 opacity-[0.14] md:opacity-25" aria-hidden="true" />
+        <div className="grid-bg fixed inset-0 z-0" aria-hidden="true" />
         <div className="hero-spotlight" aria-hidden="true" />
         <LandingBuildStamp />
 

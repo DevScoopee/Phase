@@ -30,7 +30,7 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
   es: {
     pageTitle: "Documentación PHASE",
     pageSubtitle:
-      "PHASE es una aplicación web para crear colecciones on-chain, listarlas en un mercado y acuñar NFTs de utilidad en Soroban testnet, pagando con PHASER_LIQ. Aquí tienes el mapa del producto, el stack y enlaces oficiales.",
+      "PHASE (P H A S E   P R O T O C O L) es una app web cyber-brutalista para crear colecciones on-chain, mercado, forja y cámara de fusión en Soroban testnet con PHASER_LIQ y flujos x402. Incluye activos de marca, contratos de referencia y flujos detallados.",
     tocLabel: "Índice",
     sections: [
       {
@@ -39,7 +39,7 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
         blocks: [
           {
             type: "p",
-            text: "PHASE conecta tres piezas: una landing de presentación, un mercado donde se ven colecciones creadas por la comunidad, una forja donde el creador registra nombre, precio en PHASER_LIQ e imagen del artefacto, y una cámara de fusión donde el usuario conecta Freighter, paga el precio de la colección y el contrato Soroban actualiza el estado y puede acuñar un NFT de utilidad tipo SEP-50 asociado a esa fase.",
+            text: "PHASE conecta tres piezas: una landing de presentación, un mercado donde se ven colecciones creadas por la comunidad, una forja donde el creador registra nombre, precio en PHASER_LIQ e imagen del artefacto, y una cámara de fusión donde el usuario conecta Freighter, paga el precio de la colección y el contrato Soroban actualiza el estado y puede acuñar un NFT de utilidad tipo SEP-20 asociado a esa fase.",
           },
           {
             type: "p",
@@ -86,6 +86,106 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
         ],
       },
       {
+        id: "brand-assets",
+        title: "Activos de marca y archivos estáticos",
+        blocks: [
+          {
+            type: "p",
+            text: "Los archivos viven en la carpeta public/ del repo y se sirven desde la raíz del sitio. En producción, las URLs absolutas para redes sociales usan metadataBase y NEXT_PUBLIC_SITE_URL en app/layout.tsx (Open Graph y Twitter).",
+          },
+          {
+            type: "links",
+            intro: "Rutas públicas (sustituye el origen por tu dominio desplegado, p. ej. https://tu-dominio.com):",
+            items: [
+              {
+                label: "/og-phase.png",
+                href: "/og-phase.png",
+                description:
+                  "Imagen OG / Twitter Card (preview al compartir). Alt sugerido: figura PHASE / energía líquida en Stellar.",
+              },
+              {
+                label: "/icon-sphere.png",
+                href: "/icon-sphere.png",
+                description: "Favicon y Apple touch icon — esfera reactor / artefacto (alto contraste).",
+              },
+              {
+                label: "/phaser-liq-token.png",
+                href: "/phaser-liq-token.png",
+                description: "Icono del token PHASER_LIQ en la UI y en `stellar.toml` (bloque CURRENCIES) para exploradores.",
+              },
+              {
+                label: "/.well-known/stellar.toml",
+                href: "/.well-known/stellar.toml",
+                description: "Metadatos SEP-0001 del proyecto; también se genera una ruta dinámica en la app cuando aplica.",
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: "on-chain-contracts",
+        title: "Contratos on-chain (testnet)",
+        blocks: [
+          {
+            type: "p",
+            text: "Red: Soroban testnet. Passphrase: Test SDF Network ; September 2015. RPC Soroban: https://soroban-testnet.stellar.org. Horizon: https://horizon-testnet.stellar.org. Los IDs por defecto están en lib/phase-protocol.ts; puedes sobrescribirlos con NEXT_PUBLIC_PHASE_PROTOCOL_ID, NEXT_PUBLIC_TOKEN_CONTRACT_ID (y equivalentes sin prefijo para servidor).",
+          },
+          {
+            type: "ul",
+            items: [
+              "PHASE Protocol (núcleo): colecciones, initiate_phase, NFT de utilidad alineado a SEP-20 en metadatos, settlement x402 en cadena según despliegue.",
+              "PHASER_LIQ (token Soroban): liquidez de prueba, 7 decimales, nombre típico «Phase Liquidity Token», símbolo PHASER_LIQ; usado para precios de mint y transferencias en el flujo de fase.",
+            ],
+          },
+          {
+            type: "links",
+            intro: "Explorador Stellar Expert (testnet) — referencia por defecto del repo:",
+            items: [
+              {
+                label: "Contrato PHASE Protocol",
+                href: "https://stellar.expert/explorer/testnet/contract/CDXZ2HWPSAU3DKACNGTTY3WM6FKN5LPNGMAYFW4KBF74P42RK6SFDRGP",
+                description: "ID por defecto CDXZ2…FDRGP (ver env si redesplegaste).",
+              },
+              {
+                label: "Contrato token PHASER_LIQ",
+                href: "https://stellar.expert/explorer/testnet/contract/CDW3T2DXLNGMQDZLMINEF3QHXYDB3F4ZJOGQSKW6QYABA4HMUFRG7DXC",
+                description: "ID por defecto CDW3…G7DXC (ver env si usas otro token).",
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: "architecture",
+        title: "Cómo funciona (detallado)",
+        blocks: [
+          {
+            type: "p",
+            text: "Forja (/forge): el creador conecta Freighter, define nombre de colección, precio en PHASER_LIQ y una imagen (URL https o ipfs, archivo con sellado PHASE, o lienzo del estudio). La app construye y firma create_collection; obtienes un collection_id para compartir.",
+          },
+          {
+            type: "p",
+            text: "Mercado (/dashboard): lee metadatos y precios desde el contrato o la API de la app; cada tarjeta enlaza a /chamber?collection=ID. La colección 0 es el pool por defecto del protocolo.",
+          },
+          {
+            type: "p",
+            text: "Cámara (/chamber): monitor de wallet, saldo PHASER_LIQ, precio x402 de la colección y estado de fase (has_phased, NFT utilitario). El usuario puede solicitar genesis supply si la política del contrato lo permite, ejecutar settlement (flujo x402 + transacción Soroban) y ver el artefacto con verificación de titularidad cuando la UI lo resuelve on-chain.",
+          },
+          {
+            type: "p",
+            text: "API x402 (demo / compatibilidad): rutas bajo app/api/x402 — challenge 402, supported, verify, settle. Sirven para pruebas locales y alineación con la guía de Agentic Payments; en producción conviene un facilitator x402 real.",
+          },
+          {
+            type: "p",
+            text: "Recompensas testnet: GET/POST /api/faucet — genesis, recarga diaria y misiones; requiere ADMIN_SECRET_KEY en servidor para firmar mints. Documentación operativa: docs/PHASER_LIQ_REWARDS_TERMINAL_DOC.md.",
+          },
+          {
+            type: "p",
+            text: "Asset clásico (opcional): variables CLASSIC_LIQ_* y NEXT_PUBLIC_CLASSIC_* permiten mostrar PHASER_LIQ como asset clásico en Freighter (trustline / bootstrap) además del contrato Soroban.",
+          },
+        ],
+      },
+      {
         id: "concepts",
         title: "Conceptos y piezas",
         blocks: [
@@ -111,7 +211,7 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
               "Frontend: Next.js (App Router), React, Tailwind; UI táctica en Forja/Cámara/Mercado.",
               "Contrato: PHASE Protocol desplegado en Soroban (testnet); direcciones y passphrase vienen de variables de entorno.",
               "Wallet: extensión Freighter para firmar; la app usa la API oficial de Freighter.",
-              "IPFS (opcional): subida de imágenes vía API del servidor si está configurado (p. ej. Pinata).",
+              "Subida de imagen por servidor (opcional): si está activa, Paint/Subir en Forja puede publicar el archivo sellado.",
             ],
           },
           {
@@ -179,16 +279,26 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
         blocks: [
           {
             type: "p",
-            text: "Los importes en pantalla se expresan en PHASER_LIQ; la conversión a stroops y las llamadas al contrato token las hace el cliente. En la Cámara, el monitor de estado suele incluir un enlace al contrato del token en Stellar Expert cuando la app está configurada.",
+            text: "Los importes en pantalla se expresan en PHASER_LIQ; la conversión a stroops y las llamadas al contrato token las hace el cliente. Símbolo PHASER_LIQ, 7 decimales, nombre on-chain habitual «Phase Liquidity Token». En la Cámara, TOKEN_EXPERT enlaza al contrato del token en Stellar Expert.",
           },
           {
             type: "links",
-            intro: "Explorar la red de prueba:",
+            intro: "Contratos de referencia (testnet) y explorador:",
             items: [
+              {
+                label: "Token PHASER_LIQ (contrato)",
+                href: "https://stellar.expert/explorer/testnet/contract/CDW3T2DXLNGMQDZLMINEF3QHXYDB3F4ZJOGQSKW6QYABA4HMUFRG7DXC",
+                description: "ID por defecto del repo; comprobar env si cambiaste TOKEN_CONTRACT_ID.",
+              },
+              {
+                label: "PHASE Protocol (contrato)",
+                href: "https://stellar.expert/explorer/testnet/contract/CDXZ2HWPSAU3DKACNGTTY3WM6FKN5LPNGMAYFW4KBF74P42RK6SFDRGP",
+                description: "Núcleo del protocolo; comprobar env si redesplegaste.",
+              },
               {
                 label: "Stellar Expert — Testnet",
                 href: "https://stellar.expert/explorer/testnet",
-                description: "Busca contratos, cuentas y transacciones en testnet.",
+                description: "Busca cuentas, contratos y transacciones.",
               },
             ],
           },
@@ -272,7 +382,7 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
   en: {
     pageTitle: "PHASE Documentation",
     pageSubtitle:
-      "PHASE is a web app to deploy on-chain collections, browse them in a market, and mint utility NFTs on Soroban testnet using PHASER_LIQ. Below: product map, stack, and official links.",
+      "PHASE (P H A S E   P R O T O C O L) is a cyber-brutalist web app for on-chain collections, market, forge, and fusion chamber on Soroban testnet with PHASER_LIQ and x402-style settlement. Covers brand assets, default contracts, and detailed flows.",
     tocLabel: "Contents",
     sections: [
       {
@@ -281,7 +391,7 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
         blocks: [
           {
             type: "p",
-            text: "PHASE ties together a marketing landing, a market for community collections, a forge where creators set name, PHASER_LIQ price, and artwork, and a fusion chamber where users connect Freighter, pay the collection price, and the Soroban contract updates phase state and can mint a SEP-50-style utility NFT tied to that phase.",
+            text: "PHASE ties together a marketing landing, a market for community collections, a forge where creators set name, PHASER_LIQ price, and artwork, and a fusion chamber where users connect Freighter, pay the collection price, and the Soroban contract updates phase state and can mint a SEP-20-style utility NFT tied to that phase.",
           },
           {
             type: "p",
@@ -328,6 +438,105 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
         ],
       },
       {
+        id: "brand-assets",
+        title: "Brand assets and static files",
+        blocks: [
+          {
+            type: "p",
+            text: "Files live under the public/ folder in the repo and are served from the site root. In production, social previews resolve absolute URLs via metadataBase and NEXT_PUBLIC_SITE_URL in app/layout.tsx (Open Graph and Twitter).",
+          },
+          {
+            type: "links",
+            intro: "Public paths (replace origin with your deployed domain, e.g. https://your-domain.com):",
+            items: [
+              {
+                label: "/og-phase.png",
+                href: "/og-phase.png",
+                description: "Open Graph / Twitter Card image. Suggested alt: PHASE hooded figure / liquid energy on Stellar.",
+              },
+              {
+                label: "/icon-sphere.png",
+                href: "/icon-sphere.png",
+                description: "Favicon and Apple touch icon — stippled reactor / artifact sphere.",
+              },
+              {
+                label: "/phaser-liq-token.png",
+                href: "/phaser-liq-token.png",
+                description: "PHASER_LIQ token icon in the UI and in `stellar.toml` (CURRENCIES) for explorers.",
+              },
+              {
+                label: "/.well-known/stellar.toml",
+                href: "/.well-known/stellar.toml",
+                description: "SEP-0001 project metadata; a dynamic route may also serve stellar.toml when configured.",
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: "on-chain-contracts",
+        title: "On-chain contracts (testnet)",
+        blocks: [
+          {
+            type: "p",
+            text: "Network: Soroban testnet. Passphrase: Test SDF Network ; September 2015. Soroban RPC: https://soroban-testnet.stellar.org. Horizon: https://horizon-testnet.stellar.org. Default IDs are defined in lib/phase-protocol.ts; override with NEXT_PUBLIC_PHASE_PROTOCOL_ID, NEXT_PUBLIC_TOKEN_CONTRACT_ID (and server-side equivalents without the prefix).",
+          },
+          {
+            type: "ul",
+            items: [
+              "PHASE Protocol (core): collections, initiate_phase, SEP-20-aligned utility NFT metadata, on-chain x402 settlement per deployment.",
+              "PHASER_LIQ (Soroban token): testnet liquidity token, 7 decimals, typically named “Phase Liquidity Token”, symbol PHASER_LIQ; used for mint pricing and phase transfers.",
+            ],
+          },
+          {
+            type: "links",
+            intro: "Stellar Expert (testnet) — default repository reference IDs:",
+            items: [
+              {
+                label: "PHASE Protocol contract",
+                href: "https://stellar.expert/explorer/testnet/contract/CDXZ2HWPSAU3DKACNGTTY3WM6FKN5LPNGMAYFW4KBF74P42RK6SFDRGP",
+                description: "Default ID CDXZ2…FDRGP (check env if you redeployed).",
+              },
+              {
+                label: "PHASER_LIQ token contract",
+                href: "https://stellar.expert/explorer/testnet/contract/CDW3T2DXLNGMQDZLMINEF3QHXYDB3F4ZJOGQSKW6QYABA4HMUFRG7DXC",
+                description: "Default ID CDW3…G7DXC (check env if you use another token).",
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: "architecture",
+        title: "How it works (detailed)",
+        blocks: [
+          {
+            type: "p",
+            text: "Forge (/forge): creator connects Freighter, sets collection name, PHASER_LIQ price, and artwork (https or ipfs URL, sealed file upload when the server allows, or studio canvas). The app builds and signs create_collection; you receive a collection_id to share.",
+          },
+          {
+            type: "p",
+            text: "Market (/dashboard): surfaces collection metadata and prices from the contract / app APIs; each card links to /chamber?collection=ID. Collection 0 is the protocol default pool.",
+          },
+          {
+            type: "p",
+            text: "Chamber (/chamber): wallet monitor, PHASER_LIQ balance, collection x402 mint price, and phase state (has_phased, utility NFT). Users may request genesis supply when contract policy allows, run settlement (x402 flow + Soroban transaction), and view the artifact with ownership checks when the UI resolves on-chain state.",
+          },
+          {
+            type: "p",
+            text: "x402 API (demo / compatibility): routes under app/api/x402 — 402 challenge, supported, verify, settle. Intended for local testing and alignment with Agentic Payments docs; production should use a real x402 facilitator.",
+          },
+          {
+            type: "p",
+            text: "Testnet rewards: GET/POST /api/faucet — genesis, daily recharge, and quests; requires ADMIN_SECRET_KEY on the server to sign mints. Operator notes: docs/PHASER_LIQ_REWARDS_TERMINAL_DOC.md.",
+          },
+          {
+            type: "p",
+            text: "Classic asset (optional): CLASSIC_LIQ_* and NEXT_PUBLIC_CLASSIC_* let Freighter show a classic trustline asset alongside the Soroban PHASER_LIQ contract.",
+          },
+        ],
+      },
+      {
         id: "concepts",
         title: "Concepts and moving parts",
         blocks: [
@@ -353,7 +562,7 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
               "Frontend: Next.js (App Router), React, Tailwind; tactical UI on Forge/Chamber/Market.",
               "Contract: PHASE Protocol on Soroban testnet; contract IDs and passphrase come from environment variables.",
               "Wallet: Freighter browser extension for signing; the app uses the official Freighter API.",
-              "IPFS (optional): server-side upload when configured (e.g. Pinata JWT).",
+              "Optional server-side image upload: when enabled, Paint/Upload in Forge can publish the sealed file.",
             ],
           },
           {
@@ -421,16 +630,26 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
         blocks: [
           {
             type: "p",
-            text: "Amounts are shown in PHASER_LIQ; the client converts to stroops and talks to the token contract. In the Chamber, the status monitor often links the token contract on Stellar Expert when the app is configured.",
+            text: "Amounts are shown in PHASER_LIQ; the client converts to stroops and calls the token contract. Symbol PHASER_LIQ, 7 decimals, typical on-chain name “Phase Liquidity Token”. In the Chamber, TOKEN_EXPERT links to the token contract on Stellar Expert.",
           },
           {
             type: "links",
-            intro: "Browse testnet data:",
+            intro: "Default testnet contracts and explorer:",
             items: [
+              {
+                label: "PHASER_LIQ token contract",
+                href: "https://stellar.expert/explorer/testnet/contract/CDW3T2DXLNGMQDZLMINEF3QHXYDB3F4ZJOGQSKW6QYABA4HMUFRG7DXC",
+                description: "Repository default ID; verify env if you changed TOKEN_CONTRACT_ID.",
+              },
+              {
+                label: "PHASE Protocol contract",
+                href: "https://stellar.expert/explorer/testnet/contract/CDXZ2HWPSAU3DKACNGTTY3WM6FKN5LPNGMAYFW4KBF74P42RK6SFDRGP",
+                description: "Core protocol; verify env if you redeployed.",
+              },
               {
                 label: "Stellar Expert — Testnet",
                 href: "https://stellar.expert/explorer/testnet",
-                description: "Search contracts, accounts, and transactions on testnet.",
+                description: "Search accounts, contracts, and transactions.",
               },
             ],
           },

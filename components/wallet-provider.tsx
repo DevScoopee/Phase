@@ -94,12 +94,16 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     if (!address || userDisconnectedRef.current) return
     const watcher = new WatchWalletChanges(3000)
     watcher.watch((params) => {
-      if (userDisconnectedRef.current) return
-      if (params.error) {
+      try {
+        if (userDisconnectedRef.current) return
+        if (params.error) {
+          setAddress(null)
+          return
+        }
+        setAddress(params.address || null)
+      } catch {
         setAddress(null)
-        return
       }
-      setAddress(params.address || null)
     })
     return () => watcher.stop()
   }, [address])
@@ -126,7 +130,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    void autoClaimGenesis()
+    void autoClaimGenesis().catch(() => {})
   }, [address])
 
   const refreshArtistAlias = useCallback(async (): Promise<string | null> => {

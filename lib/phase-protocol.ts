@@ -15,7 +15,15 @@ import {
   xdr,
 } from "@stellar/stellar-sdk"
 
-export const CONTRACT_ID = "CA5BGDHOL7KW4VC3QO4JIVWOZRJGP53KT63INPWTPKJGWN3DLOS4PJHH"
+const DEFAULT_PHASE_CONTRACT = "CDXZ2HWPSAU3DKACNGTTY3WM6FKN5LPNGMAYFW4KBF74P42RK6SFDRGP"
+export const CONTRACT_ID = (() => {
+  const e = (typeof process !== "undefined" ? process.env : {}) as NodeJS.ProcessEnv
+  return (
+    e.NEXT_PUBLIC_PHASE_PROTOCOL_ID?.trim() ||
+    e.PHASE_PROTOCOL_ID?.trim() ||
+    DEFAULT_PHASE_CONTRACT
+  )
+})()
 
 /** Contrato PHASE (NFT de utilidad) en Stellar Expert — testnet */
 export function stellarExpertTestnetContractUrl(contractId: string = CONTRACT_ID) {
@@ -63,6 +71,13 @@ export const RPC_URL = "https://soroban-testnet.stellar.org"
 /** Classic accounts (G…): sequence comes from Horizon; Soroban RPC does not implement `getAccount`. */
 export const HORIZON_URL = "https://horizon-testnet.stellar.org"
 export const NETWORK_PASSPHRASE = "Test SDF Network ; September 2015"
+
+/** Cuenta clásica G… (56 chars) válida para Freighter / transferencias. */
+export function isValidClassicStellarAddress(addr: string): boolean {
+  const t = addr.trim()
+  if (!t.startsWith("G") || t.length !== 56) return false
+  return StrKey.isValidEd25519PublicKey(t)
+}
 
 const DEFAULT_TOKEN_CONTRACT = "CDW3T2DXLNGMQDZLMINEF3QHXYDB3F4ZJOGQSKW6QYABA4HMUFRG7DXC"
 
@@ -255,6 +270,33 @@ export async function buildSettleTransaction(
         nativeToScVal(BigInt(amount), { type: "i128" }),
         nativeToScVal(invoiceId, { type: "u32" }),
         nativeToScVal(collectionId, { type: "u64" }),
+      ),
+    )
+    .setTimeout(30)
+    .build()
+  const prepared = await server.prepareTransaction(tx)
+  return prepared.toXDR()
+}
+
+/** Transfiere el NFT PHASE (`CONTRACT_ID`) al comprador. Requiere WASM desplegado con `transfer_phase_nft`. */
+export async function buildTransferPhaseNftTransaction(
+  fromAddress: string,
+  toAddress: string,
+  tokenId: number,
+) {
+  const server = getRpc()
+  const account = await server.getAccount(fromAddress)
+  const c = new Contract(CONTRACT_ID)
+  const tx = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: Networks.TESTNET,
+  })
+    .addOperation(
+      c.call(
+        "transfer_phase_nft",
+        Address.fromString(fromAddress).toScVal(),
+        Address.fromString(toAddress).toScVal(),
+        nativeToScVal(tokenId, { type: "u64" }),
       ),
     )
     .setTimeout(30)

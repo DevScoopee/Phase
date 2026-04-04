@@ -27,6 +27,8 @@ import {
   sendTransaction,
   stroopsToLiqDisplay,
   PHASER_LIQ_SYMBOL,
+  stellarExpertTestnetContractUrl,
+  TOKEN_ADDRESS,
   validateFinalContractImageUri,
 } from "@/lib/phase-protocol"
 
@@ -35,6 +37,59 @@ export type ImageSourceMode = "PAINT" | "UPLOAD" | "URL"
 function truncateAddress(addr: string) {
   if (!addr || addr.length < 14) return addr
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`
+}
+
+/** Keeps mouse-wheel scrolling inside LIQ_REWARDS instead of the taller form column above. */
+function captureWheelOnRewardsPanel(e: React.WheelEvent<HTMLDivElement>) {
+  const el = e.currentTarget
+  if (el.scrollHeight <= el.clientHeight + 1) return
+  const { scrollTop, scrollHeight, clientHeight } = el
+  const dy = e.deltaY
+  const atTop = scrollTop <= 0
+  const atBottom = scrollTop + clientHeight >= scrollHeight - 1
+  if ((dy < 0 && !atTop) || (dy > 0 && !atBottom)) {
+    e.stopPropagation()
+  }
+}
+
+const PHASER_LIQ_EXPERT_HREF = stellarExpertTestnetContractUrl(TOKEN_ADDRESS)
+
+function PhaserLiqExpertLink({
+  className,
+  children,
+}: {
+  className?: string
+  children?: React.ReactNode
+}) {
+  return (
+    <a
+      href={PHASER_LIQ_EXPERT_HREF}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={`${PHASER_LIQ_SYMBOL} — Stellar Expert (testnet)`}
+      className={cn(
+        "inline-flex items-center gap-1 font-semibold text-cyan-100 underline decoration-cyan-400/55 underline-offset-[3px] transition-colors hover:text-white hover:decoration-cyan-200",
+        className,
+      )}
+    >
+      {children ?? PHASER_LIQ_SYMBOL}
+      <span className="text-[0.65em] font-normal opacity-80" aria-hidden>
+        ↗
+      </span>
+    </a>
+  )
+}
+
+/** Turns any copy containing `PHASER_LIQ` into inline text + expert link. */
+function textWithPhaserLiqLinks(text: string): React.ReactNode {
+  if (!text.includes(PHASER_LIQ_SYMBOL)) return text
+  const parts = text.split(PHASER_LIQ_SYMBOL)
+  return parts.map((part, i) => (
+    <span key={`frag-${i}`}>
+      {part}
+      {i < parts.length - 1 ? <PhaserLiqExpertLink key={`liq-${i}`} /> : null}
+    </span>
+  ))
 }
 
 const forgeNavBtn =
@@ -92,8 +147,8 @@ export default function ForgePage() {
     void refreshLiqBalance().catch(() => {})
   }, [refreshLiqBalance])
 
-  const needsPinata = imageSource === "PAINT" || imageSource === "UPLOAD"
-  const pinataMissing = needsPinata && ipfsConfigured === false
+  const needsServerUpload = imageSource === "PAINT" || imageSource === "UPLOAD"
+  const uploadHostMissing = needsServerUpload && ipfsConfigured === false
 
   useEffect(() => {
     if (!busy) return
@@ -256,12 +311,15 @@ export default function ForgePage() {
   }, [shareUrl, lang])
 
   const shellClass = cn(
-    "tactical-frame relative overflow-hidden p-6 text-cyan-100 md:p-8",
+    "tactical-frame relative flex h-full min-h-0 flex-col overflow-hidden p-4 text-cyan-100 md:p-5",
     busy && "forge-shell--deploying tactical-btn-forge-primary",
   )
 
   const inputClass =
-    "tactical-frame mt-2 w-full border-cyan-500/35 bg-black/55 px-3 py-2.5 text-sm text-cyan-100 placeholder:text-cyan-500/35 focus:border-cyan-400/70 focus:outline-none focus:shadow-[0_0_16px_rgba(0,255,255,0.12)]"
+    "tactical-frame w-full border-cyan-500/35 bg-black/55 px-3 py-2.5 text-[15px] leading-snug text-cyan-50 placeholder:text-cyan-500/40 focus:border-cyan-400/70 focus:outline-none focus:shadow-[0_0_16px_rgba(0,255,255,0.12)]"
+
+  const inputLabelClass =
+    "text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-200/90 tactical-phosphor sm:text-[11px]"
 
   const modeBtn = (mode: ImageSourceMode, label: string) => (
     <button
@@ -272,7 +330,7 @@ export default function ForgePage() {
         setError(null)
       }}
       className={cn(
-        "tactical-btn flex-1 py-2.5 font-mono text-[9px] uppercase tracking-widest sm:flex-none sm:min-w-[100px]",
+        "tactical-btn flex-1 py-2.5 font-mono text-[10px] uppercase tracking-[0.12em] sm:flex-none sm:min-w-[100px]",
         imageSource === mode
           ? "border-cyan-400/70 text-cyan-100 shadow-[0_0_14px_rgba(0,255,255,0.2)]"
           : "border-cyan-500/25 text-cyan-500/60",
@@ -285,16 +343,16 @@ export default function ForgePage() {
   const priceReadout = stroopsToLiqDisplay(liqToStroops(priceLiq))
 
   return (
-    <div className="tactical-command-root tactical-command-root--stable relative min-h-screen font-mono text-foreground">
+    <div className="tactical-command-root tactical-command-root--stable relative flex h-screen max-h-[100dvh] flex-col overflow-hidden font-mono text-foreground antialiased">
       <div className="tactical-film-grain" aria-hidden />
       <div className="tactical-crt-veil" aria-hidden />
       <TacticalCornerSigil className="pointer-events-none fixed bottom-2 left-2 z-50 hidden opacity-70 sm:block" />
 
-      <header className="tactical-header-bar relative z-10 flex flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-6">
+      <header className="tactical-header-bar relative z-10 flex shrink-0 flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-6">
         <Link href="/" className={forgeNavBtn}>
           {f.exit}
         </Link>
-        <span className="tactical-phosphor max-w-[min(52vw,14rem)] text-center text-[10px] font-bold uppercase tracking-[0.28em] text-cyan-100">
+        <span className="tactical-phosphor max-w-[min(52vw,16rem)] text-center text-[11px] font-bold uppercase tracking-[0.22em] text-cyan-50 sm:text-xs">
           {f.title}
         </span>
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -308,96 +366,136 @@ export default function ForgePage() {
         </div>
       </header>
 
-      <main className="relative z-10 mx-auto max-w-5xl px-4 py-10 md:py-14">
+      <main className="relative z-10 mx-auto min-h-0 w-full max-w-[100rem] flex-1 overflow-hidden px-3 pb-3 pt-1 md:px-5">
         <div className={shellClass}>
           {busy && (
-            <>
+            <div className="shrink-0">
               <div className="forge-scanline" aria-hidden />
               <div className="pointer-events-none absolute right-3 top-3 flex items-center gap-2 text-[9px] uppercase tracking-widest text-[#00ffff]">
                 <span className="forge-status-led inline-block size-2 rounded-full bg-[#00ffff]" />
                 {f.deployStatus}
               </div>
-              <p className="mb-4 border-b border-[#00ffff]/30 pb-3 text-[9px] uppercase tracking-[0.2em] text-[#00ffff]/90">
+              <p className="mb-2 border-b border-[#00ffff]/30 pb-2 text-[9px] uppercase tracking-[0.2em] text-[#00ffff]/90">
                 {f.deployTickers[tickerIdx % f.deployTickers.length]}
               </p>
-            </>
+            </div>
           )}
 
           {!busy && (
-            <h1 className="tactical-phosphor border-b border-cyan-500/30 pb-3 text-[11px] font-bold uppercase tracking-[0.32em] text-cyan-100">
+            <h1 className="tactical-phosphor shrink-0 border-b border-cyan-500/30 pb-2 text-[11px] font-bold uppercase tracking-[0.22em] text-cyan-50 sm:text-xs">
               ◈ {f.registerTitle}
             </h1>
           )}
 
           {!busy && (
-            <p className="mt-4 text-[10px] leading-relaxed text-cyan-200/80 tactical-phosphor">
+            <p className="mt-2 line-clamp-3 shrink-0 text-[10px] leading-relaxed text-cyan-100/90 tactical-phosphor sm:text-[11px]">
               {f.intro}
             </p>
           )}
 
-          {!busy && pinataMissing && (
-            <div className="tactical-frame mt-4 border-amber-500/45 bg-amber-950/20 px-3 py-3 text-[10px] text-amber-100/90 shadow-[0_0_16px_rgba(245,158,11,0.1)]">
-              <p className="font-mono uppercase tracking-widest text-amber-300 tactical-phosphor">⚠ {f.pinataTitle}</p>
-              <p className="mt-2 leading-relaxed text-amber-100/85">{f.pinataBody}</p>
+          {!busy && uploadHostMissing && (
+            <div className="tactical-frame mt-2 shrink-0 border-amber-500/45 bg-amber-950/20 px-2 py-2 text-[9px] text-amber-100/90 shadow-[0_0_12px_rgba(245,158,11,0.08)]">
+              <p className="font-mono uppercase tracking-widest text-amber-300 tactical-phosphor">⚠ {f.uploadUnavailableTitle}</p>
+              <p className="mt-1 leading-snug text-amber-100/85">{f.uploadUnavailableBody}</p>
             </div>
           )}
 
-          <div className="mt-6">
-            <p className="text-[9px] font-semibold uppercase tracking-widest text-cyan-300/80 tactical-phosphor">
-              ▣ {f.imageSource}
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
+          {error && (
+            <div className="tactical-alert-critical relative z-[1] mt-2 shrink-0 px-2 py-2" role="alert">
+              <p className="relative z-[1] text-center text-[9px] font-bold uppercase tracking-wider text-red-200">{error}</p>
+            </div>
+          )}
+
+          {shareUrl && createdId != null && (
+            <div className="custom-scrollbar mt-2 max-h-36 shrink-0 overflow-y-auto border-2 border-[#00ffff]/55 bg-[#00ffff]/5 p-2 text-[9px]">
+              <p className="font-bold uppercase tracking-[0.15em] text-cyan-200">{f.collectionLive}</p>
+              <p className="mt-1 font-mono text-[11px] text-cyan-50">
+                {f.collectionIdLabel} <span className="text-cyan-300">#{createdId}</span>
+              </p>
+              <p className="mt-1 font-semibold uppercase tracking-widest text-cyan-400/80">{f.magicLink}</p>
+              <a
+                href={shareUrl}
+                className="mt-1 block break-all rounded border border-[#00ffff]/25 bg-black/30 px-2 py-1 text-[9px] text-[#7fffd4] underline-offset-2 hover:underline"
+              >
+                {shareUrl}
+              </a>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void copyShare().catch(() => {})}
+                  className="inline-flex flex-1 items-center justify-center border-2 border-double border-[#00ffff]/80 px-3 py-2 text-[9px] uppercase tracking-widest text-[#00ffff] hover:bg-[#00ffff]/10 sm:flex-none"
+                >
+                  {copied ? f.copied : f.copy}
+                </button>
+                <Link
+                  href={`/chamber?collection=${createdId}`}
+                  className="inline-flex flex-1 items-center justify-center border-2 border-double border-cyan-400/55 bg-cyan-950/25 px-3 py-2 text-center text-[9px] font-bold uppercase tracking-widest text-cyan-100 hover:bg-cyan-900/35 sm:flex-none"
+                >
+                  {f.openChamber}
+                </Link>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-3 shrink-0 space-y-2">
+            <p className={inputLabelClass}>▣ {f.imageSource}</p>
+            <div className="flex flex-wrap gap-2">
               {modeBtn("PAINT", f.paint)}
               {modeBtn("UPLOAD", f.upload)}
               {modeBtn("URL", f.url)}
             </div>
           </div>
 
-          <div className="mt-8 grid gap-10 lg:grid-cols-2 lg:gap-12">
-            <div className="space-y-5">
-              <div>
-                <label htmlFor="forge-name" className="text-[9px] font-semibold uppercase tracking-widest text-cyan-300/80 tactical-phosphor">
-                  {f.collectionName}
-                </label>
-                <input
-                  id="forge-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  maxLength={64}
-                  disabled={busy}
-                  placeholder={f.placeholders.collectionName}
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label htmlFor="forge-price" className="text-[9px] font-semibold uppercase tracking-widest text-cyan-300/80 tactical-phosphor">
-                  {f.fusionPrice}
-                </label>
-                <input
-                  id="forge-price"
-                  value={priceLiq}
-                  onChange={(e) => setPriceLiq(e.target.value)}
-                  inputMode="decimal"
-                  disabled={busy}
-                  placeholder={f.placeholders.price}
-                  className={inputClass}
-                />
-                <p className="mt-2 font-mono text-[11px] tabular-nums tracking-wide text-cyan-400/95">
-                  <span className="text-cyan-500/75">{f.readout}</span>
+          <div className="mt-3 flex min-h-0 flex-1 flex-col gap-4 lg:grid lg:h-full lg:min-h-0 lg:grid-cols-12 lg:gap-6">
+            <div className="flex min-h-0 w-full flex-col gap-2 lg:col-span-5 lg:h-full lg:min-h-0">
+              <div className="custom-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto pr-0.5 lg:pr-0">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+                  <div>
+                    <label htmlFor="forge-name" className={inputLabelClass}>
+                      {f.collectionName}
+                    </label>
+                    <input
+                      id="forge-name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      maxLength={64}
+                      disabled={busy}
+                      placeholder={f.placeholders.collectionName}
+                      className={cn(inputClass, "mt-1")}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="forge-price" className={inputLabelClass}>
+                      {textWithPhaserLiqLinks(f.fusionPrice)}
+                    </label>
+                    <input
+                      id="forge-price"
+                      value={priceLiq}
+                      onChange={(e) => setPriceLiq(e.target.value)}
+                      inputMode="decimal"
+                      disabled={busy}
+                      placeholder={f.placeholders.price}
+                      className={cn(inputClass, "mt-1")}
+                    />
+                  </div>
+                </div>
+                <p className="font-mono text-[11px] tabular-nums tracking-wide text-cyan-200/95 sm:text-xs">
+                  <span className="text-cyan-400/90">{f.readout}</span>
                   <span className="mx-2 text-cyan-600/50 select-none" aria-hidden>
                     →
                   </span>
-                  <span className="text-cyan-100">{priceReadout}</span>
-                  <span className="ml-2 inline-flex items-center gap-1 text-cyan-500/80">
-                    <TokenIcon className="h-3.5 w-3.5" />
-                    {PHASER_LIQ_SYMBOL}
+                  <span className="text-cyan-50">{priceReadout}</span>
+                  <span className="ml-2 inline-flex items-center">
+                    <PhaserLiqExpertLink>
+                      <TokenIcon className="h-4 w-4 shrink-0" />
+                      {PHASER_LIQ_SYMBOL}
+                    </PhaserLiqExpertLink>
                   </span>
                 </p>
-              </div>
 
               {imageSource === "URL" && (
                 <div>
-                  <label htmlFor="forge-image-url" className="text-[9px] font-semibold uppercase tracking-widest text-cyan-300/80 tactical-phosphor">
+                  <label htmlFor="forge-image-url" className={inputLabelClass}>
                     {f.metadataUrl}
                   </label>
                   <input
@@ -407,16 +505,16 @@ export default function ForgePage() {
                     maxLength={256}
                     disabled={busy}
                     placeholder={f.placeholders.imageUrl}
-                    className={inputClass}
+                    className={cn(inputClass, "mt-1")}
                     autoComplete="off"
                   />
-                  <p className="mt-1.5 text-[8px] leading-relaxed text-cyan-400/75">{f.urlHelp}</p>
+                  <p className="mt-1 text-[9px] leading-relaxed text-cyan-300/85 sm:text-[10px]">{f.urlHelp}</p>
                 </div>
               )}
 
               {imageSource === "UPLOAD" && (
                 <div>
-                  <label htmlFor="forge-file" className="text-[9px] font-semibold uppercase tracking-widest text-cyan-300/80 tactical-phosphor">
+                  <label htmlFor="forge-file" className={inputLabelClass}>
                     {f.fileIpfs}
                   </label>
                   <input
@@ -424,7 +522,7 @@ export default function ForgePage() {
                     type="file"
                     accept="image/*"
                     disabled={busy}
-                    className="tactical-frame mt-2 block w-full border-dashed border-cyan-500/30 bg-black/35 px-2 py-2 text-[9px] text-cyan-400/80 file:mr-3 file:border file:border-cyan-500/45 file:bg-transparent file:px-2 file:py-1 file:font-mono file:text-[9px] file:uppercase file:text-cyan-300"
+                    className="tactical-frame mt-1 block w-full border-dashed border-cyan-500/30 bg-black/35 px-2 py-1.5 text-[9px] text-cyan-400/80 file:mr-3 file:border file:border-cyan-500/45 file:bg-transparent file:px-2 file:py-1 file:font-mono file:text-[9px] file:uppercase file:text-cyan-300"
                     onChange={(e) => {
                       const f = e.target.files?.[0]
                       revokeUpload()
@@ -437,13 +535,13 @@ export default function ForgePage() {
               )}
 
               {imageSource === "PAINT" && (
-                <div className="space-y-4 border-4 border-double border-[#00ffff]/25 bg-black/40 p-5">
-                  <div className="flex min-h-[140px] flex-col items-center justify-center border-4 border-dashed border-[#00ffff]/20 bg-black px-4 py-8">
-                    <span className="text-center font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-300/90">
+                <div className="space-y-2 border-4 border-double border-[#00ffff]/25 bg-black/40 p-3">
+                  <div className="flex min-h-[100px] flex-col items-center justify-center border-4 border-dashed border-[#00ffff]/20 bg-black px-3 py-4">
+                    <span className="text-center font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-cyan-300/90">
                       {f.waitingDesign}
                     </span>
                     {paintPreviewUrl && (
-                      <p className="mt-3 text-center font-mono text-[9px] font-medium uppercase tracking-widest text-emerald-300/85">
+                      <p className="mt-2 text-center font-mono text-[8px] font-medium uppercase tracking-widest text-emerald-300/85">
                         {f.previewHint}
                       </p>
                     )}
@@ -452,87 +550,108 @@ export default function ForgePage() {
                     type="button"
                     disabled={busy}
                     onClick={() => setDesignStudioOpen(true)}
-                    className="w-full border-4 border-double border-[#00ffff] bg-[#00ffff]/10 py-4 font-mono text-[11px] uppercase tracking-[0.2em] text-[#00ffff] shadow-[0_0_20px_rgba(0,255,255,0.15)] transition-all hover:bg-[#00ffff]/18 hover:shadow-[0_0_28px_rgba(0,255,255,0.22)] disabled:opacity-40"
+                    className="w-full border-4 border-double border-[#00ffff] bg-[#00ffff]/10 py-2.5 font-mono text-[10px] uppercase tracking-[0.18em] text-[#00ffff] shadow-[0_0_16px_rgba(0,255,255,0.12)] transition-all hover:bg-[#00ffff]/18 hover:shadow-[0_0_22px_rgba(0,255,255,0.18)] disabled:opacity-40"
                   >
                     {paintPreviewUrl ? f.reopenDesigner : f.designArtifact}
                   </button>
-                  <p className="text-[8px] leading-relaxed text-cyan-400/80">{f.studioBlurb}</p>
+                  <p className="text-[8px] leading-snug text-cyan-400/80">{f.studioBlurb}</p>
                 </div>
               )}
 
-              {!address ? (
-                <button
-                  type="button"
-                  disabled={connecting}
-                  onClick={() => void connect().then(() => refresh()).catch(() => {})}
-                  className="mt-4 w-full border-4 border-double border-[#00ffff]/60 py-3.5 text-[10px] uppercase tracking-widest text-[#00ffff] transition-colors hover:bg-[#00ffff]/10 disabled:opacity-50"
-                >
-                  {connecting ? f.linking : f.linkWallet}
-                </button>
-              ) : (
-                <div className="mt-4 space-y-3">
-                  <p className="text-[10px] text-cyan-300/85">
+              {!address ? null : (
+                <div className="space-y-2 border-t border-cyan-900/40 pt-2">
+                  <p className="text-[10px] text-cyan-100/90 sm:text-[11px]">
                     {f.walletLabel}: <span className="font-medium text-cyan-50">{truncateAddress(address)}</span>
                   </p>
-                  <p className="text-[10px] text-cyan-300/75">
+                  <p className="text-[10px] text-cyan-200/88 sm:text-[11px]">
                     {lang === "es" ? "Artista" : "Artist"}:{" "}
                     <span className="font-medium text-cyan-100">{artistAlias ?? (lang === "es" ? "sin alias" : "no alias")}</span>
                   </p>
-                  <ArtistAliasControl compact />
-                  <p className="font-mono text-[10px] tabular-nums text-cyan-400/90">
-                    {pickCopy(lang).chamber.liqBalance}:{" "}
-                    <span className="text-cyan-100">
+                  <div className="rounded border border-cyan-900/50 bg-black/40 p-2">
+                    <ArtistAliasControl compact />
+                  </div>
+                  <p className="font-mono text-[11px] tabular-nums text-cyan-200/95 sm:text-xs">
+                    <span className="text-cyan-300/90">{pickCopy(lang).chamber.liqBalance}</span>
+                    {": "}
+                    <span className="text-cyan-50">
                       {(() => {
                         const n = parseInt(tokenBalance, 10) / 10000000
-                        return `${Number.isFinite(n) ? n.toFixed(2) : "0.00"} ${PHASER_LIQ_SYMBOL}`
-                      })()}
+                        return Number.isFinite(n) ? n.toFixed(2) : "0.00"
+                      })()}{" "}
                     </span>
+                    <PhaserLiqExpertLink />
                   </p>
+                </div>
+              )}
+              </div>
+
+              {address ? (
+                <div
+                  className="custom-scrollbar mt-auto min-h-[12rem] max-h-[min(26rem,55vh)] shrink-0 overflow-y-auto overscroll-y-contain border-t border-cyan-900/50 pt-2 [-webkit-overflow-scrolling:touch]"
+                  onWheelCapture={captureWheelOnRewardsPanel}
+                >
                   <LiquidityFaucetControl
                     address={address}
                     tokenBalance={tokenBalance}
                     onRefreshBalance={refreshLiqBalance}
+                    className="rounded-none border-0 bg-transparent p-2 shadow-none"
                   />
-                  <button
-                    type="button"
-                    disabled={busy || pinataMissing}
-                    onClick={() => void runCreate().catch(() => {})}
-                    className="w-full border-4 border-double border-[#00ffff] bg-[#00ffff]/5 py-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#00ffff] shadow-[0_0_24px_rgba(0,255,255,0.12)] transition-all hover:bg-[#00ffff]/15 hover:shadow-[0_0_32px_rgba(0,255,255,0.22)] disabled:opacity-40"
-                  >
-                    {busy ? f.deploying : f.forgeCollection}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      disconnect()
-                      void refresh().catch(() => {})
-                    }}
-                    className="w-full border-2 border-cyan-500/35 py-2 text-[9px] font-semibold uppercase tracking-widest text-cyan-400/80 hover:border-red-500/50 hover:text-red-300"
-                  >
-                    {f.disconnect}
-                  </button>
                 </div>
-              )}
+              ) : null}
+
+              <div className="shrink-0 space-y-2 border-t border-cyan-900/50 pt-2">
+                {!address ? (
+                  <button
+                    type="button"
+                    disabled={connecting}
+                    onClick={() => void connect().then(() => refresh()).catch(() => {})}
+                    className="w-full border-4 border-double border-[#00ffff]/60 py-2.5 text-[10px] uppercase tracking-widest text-[#00ffff] transition-colors hover:bg-[#00ffff]/10 disabled:opacity-50"
+                  >
+                    {connecting ? f.linking : f.linkWallet}
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      disabled={busy || uploadHostMissing}
+                      onClick={() => void runCreate().catch(() => {})}
+                      className="w-full border-4 border-double border-[#00ffff] bg-[#00ffff]/5 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#00ffff] shadow-[0_0_20px_rgba(0,255,255,0.14)] transition-all hover:bg-[#00ffff]/15 hover:shadow-[0_0_28px_rgba(0,255,255,0.2)] disabled:opacity-40"
+                    >
+                      {busy ? f.deploying : f.forgeCollection}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        disconnect()
+                        void refresh().catch(() => {})
+                      }}
+                      className="w-full border-2 border-cyan-500/35 py-1.5 text-[9px] font-semibold uppercase tracking-widest text-cyan-400/80 hover:border-red-500/50 hover:text-red-300"
+                    >
+                      {f.disconnect}
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
 
-            <div className="flex flex-col">
-              <p className="mb-3 border-b border-cyan-500/35 pb-2 text-[10px] font-semibold uppercase tracking-[0.3em] text-cyan-200/95">
+            <div className="flex min-h-[220px] flex-1 flex-col lg:col-span-7 lg:min-h-0">
+              <p className="mb-2 shrink-0 border-b border-cyan-500/35 pb-1.5 text-[9px] font-semibold uppercase tracking-[0.28em] text-cyan-200/95">
                 {f.artPreview}
               </p>
-              <div className="art-retro-monitor flex min-h-[220px] flex-1 flex-col items-center justify-center px-4 py-6">
+              <div className="art-retro-monitor flex min-h-0 flex-1 items-center justify-center overflow-hidden px-2 py-2">
                 {previewSrc ? (
-                  <div className="tactical-holo-wrap relative z-[3] max-w-full justify-center">
+                  <div className="tactical-holo-wrap relative z-[3] flex h-full max-h-full w-full max-w-full items-center justify-center">
                     {/* eslint-disable-next-line @next/next/no-img-element -- blob + external URLs */}
                     <img
                       src={previewSrc}
                       alt=""
-                      className="art-retro-monitor__img tactical-holo-img relative z-[3] max-h-[240px] max-w-full"
+                      className="art-retro-monitor__img tactical-holo-img relative z-[3] max-h-full max-w-full object-contain"
                       loading="lazy"
                       referrerPolicy="no-referrer"
                     />
                   </div>
                 ) : (
-                  <span className="relative z-[3] text-center font-mono text-[9px] font-medium uppercase leading-relaxed tracking-[0.2em] text-cyan-400/85">
+                  <span className="relative z-[3] px-2 text-center font-mono text-[9px] font-medium uppercase leading-relaxed tracking-[0.2em] text-cyan-400/85">
                     {imageSource === "PAINT" ? (
                       <>
                         {f.waitingDesign}
@@ -554,43 +673,6 @@ export default function ForgePage() {
               </div>
             </div>
           </div>
-
-          {error && (
-            <div className="tactical-alert-critical relative z-[1] mt-6 px-3 py-3" role="alert">
-              <p className="relative z-[1] text-center text-[10px] font-bold uppercase tracking-wider text-red-200">{error}</p>
-            </div>
-          )}
-
-          {shareUrl && createdId != null && (
-            <div className="mt-6 border-4 border-double border-[#00ffff]/70 bg-[#00ffff]/5 px-4 py-5">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-200">{f.collectionLive}</p>
-              <p className="mt-2 font-mono text-sm text-cyan-50">
-                {f.collectionIdLabel} <span className="text-cyan-300">#{createdId}</span>
-              </p>
-              <p className="mt-1 text-[9px] font-semibold uppercase tracking-widest text-cyan-400/80">{f.magicLink}</p>
-              <a
-                href={shareUrl}
-                className="mt-2 block break-all rounded border border-[#00ffff]/25 bg-black/30 px-2 py-2 text-[10px] text-[#7fffd4] underline-offset-2 hover:underline"
-              >
-                {shareUrl}
-              </a>
-              <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                <button
-                  type="button"
-                  onClick={() => void copyShare().catch(() => {})}
-                  className="inline-flex flex-1 items-center justify-center border-4 border-double border-[#00ffff]/80 px-4 py-2.5 text-[10px] uppercase tracking-widest text-[#00ffff] hover:bg-[#00ffff]/10 sm:flex-none"
-                >
-                  {copied ? f.copied : f.copy}
-                </button>
-                <Link
-                  href={`/chamber?collection=${createdId}`}
-                  className="inline-flex flex-1 items-center justify-center border-4 border-double border-cyan-400/55 bg-cyan-950/25 px-4 py-2.5 text-center text-[10px] font-bold uppercase tracking-widest text-cyan-100 hover:bg-cyan-900/35 sm:flex-none"
-                >
-                  {f.openChamber}
-                </Link>
-              </div>
-            </div>
-          )}
         </div>
       </main>
 

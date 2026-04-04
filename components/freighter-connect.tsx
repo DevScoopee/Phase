@@ -16,20 +16,18 @@ type FreighterConnectProps = {
 
 export function FreighterConnect({ trailing }: FreighterConnectProps) {
   const { lang } = useLang()
-  const { address, connecting, hint, connect, disconnect, artistAlias } = useWallet()
+  const { address, connecting, hint, connect, disconnect } = useWallet()
   const t =
     lang === "es"
       ? {
           disconnectTitle: "Desconectar wallet",
           walletLabel: "WALLET",
-          artistLabel: "ARTISTA",
           connecting: "Conectando...",
           connect: "Conectar Wallet",
         }
       : {
           disconnectTitle: "Disconnect wallet",
           walletLabel: "WALLET",
-          artistLabel: "ARTIST",
           connecting: "Connecting...",
           connect: "Connect Wallet",
         }
@@ -53,11 +51,6 @@ export function FreighterConnect({ trailing }: FreighterConnectProps) {
             >
               {t.walletLabel} · {truncateAddress(address)}
             </div>
-            {artistAlias ? (
-              <div className="border border-cyan-500/40 bg-cyan-950/30 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-cyan-200 max-w-[min(100vw-3rem,18rem)] truncate">
-                {t.artistLabel} · {artistAlias}
-              </div>
-            ) : null}
           </div>
         ) : (
           <button

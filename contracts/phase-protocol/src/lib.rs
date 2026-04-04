@@ -17,6 +17,9 @@ pub enum PhaseError {
     CreatorAlreadyHasCollection = 8,
     AmountBelowCollectionPrice = 9,
     InvalidCollectionMetadata = 10,
+    NftNotFound = 11,
+    NotNftOwner = 12,
+    SelfTransfer = 13,
 }
 
 /// Configuración de una colección creada por un usuario (factory).
@@ -634,6 +637,50 @@ impl PhaseProtocol {
             .get(&DataKey::TokenOwner(token_id))
     }
 
+    /// Transfiere el NFT de utilidad PHASE a otra cuenta. El pago en PHASER_LIQ se acuerda P2P;
+    /// esta llamada solo mueve la propiedad on-chain (`TokenOwner` + `UserPhase`).
+    pub fn transfer_phase_nft(env: Env, from: Address, to: Address, token_id: u64) -> Result<(), PhaseError> {
+        from.require_auth();
+        if from == to {
+            return Err(PhaseError::SelfTransfer);
+        }
+        let current: Address = env
+            .storage()
+            .persistent()
+            .get(&DataKey::TokenOwner(token_id))
+            .ok_or(PhaseError::NftNotFound)?;
+        if current != from {
+            return Err(PhaseError::NotNftOwner);
+        }
+        let collection_id: u64 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::TokenCollection(token_id))
+            .ok_or(PhaseError::NftNotFound)?;
+        let state: PhaseState = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserPhase(from.clone(), collection_id))
+            .ok_or(PhaseError::NftNotFound)?;
+        if state.token_id != token_id {
+            return Err(PhaseError::NftNotFound);
+        }
+        env
+            .storage()
+            .persistent()
+            .remove(&DataKey::UserPhase(from.clone(), collection_id));
+        env.storage().persistent().set(&DataKey::TokenOwner(token_id), &to);
+        env
+            .storage()
+            .persistent()
+            .set(&DataKey::UserPhase(to.clone(), collection_id), &state);
+        env.events().publish(
+            (Symbol::new(&env, "phase_nft_transferred"), from),
+            (token_id, to),
+        );
+        Ok(())
+    }
+
     pub fn total_supply(env: Env) -> u64 {
         env.storage()
             .persistent()
@@ -675,7 +722,7 @@ impl PhaseProtocol {
             )
         };
 
-        let mut b = Bytes::from_slice(&env, b"{\"standard\":\"SEP-50\",\"image\":\"");
+        let mut b = Bytes::from_slice(&env, b"{\"standard\":\"SEP-20\",\"image\":\"");
         append_soroban_str_to_bytes(&mut b, &meta_img);
         b.extend_from_slice(b"\",\"name\":\"");
         append_soroban_str_to_bytes(&mut b, &meta_name);
