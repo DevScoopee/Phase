@@ -214,6 +214,9 @@
   position: relative;
   overflow: hidden;
   isolation: isolate;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  will-change: transform, opacity, box-shadow, filter;
   background: linear-gradient(180deg, rgba(0, 40, 44, 0.55) 0%, rgba(0, 12, 14, 0.85) 100%);
   border: 3px double rgba(0, 255, 255, 0.4);
   box-shadow:
@@ -290,6 +293,9 @@
 
 .tactical-btn-x402 {
   animation: tactical-x402-pulse 2.2s ease-in-out infinite;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  will-change: transform, opacity, box-shadow, filter;
   border-width: 4px;
   background:
     linear-gradient(180deg, rgba(0, 55, 58, 0.65) 0%, rgba(0, 18, 22, 0.92) 100%),
@@ -418,6 +424,9 @@
 
 .tactical-btn-forge-primary {
   animation: tactical-forge-deploy-glow 2s ease-in-out infinite;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  will-change: transform, opacity, box-shadow, filter;
 }
 
 /* ─── Holograma ─── */
@@ -719,6 +728,9 @@
 
 .tactical-reward-trustline-establishing {
   animation: tactical-reward-trustline-pulse 1.05s ease-in-out infinite;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  will-change: transform, opacity, box-shadow, filter;
 }
 
 /* Esquina: wordmark legible (Next/font IBM Plex Mono en body) */
@@ -978,6 +990,9 @@
 }
 
 .tactical-interactive-glitch {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  will-change: transform, opacity, box-shadow, filter;
   transition:
     border-color 0.2s ease,
     box-shadow 0.2s ease,

@@ -7,6 +7,7 @@ import { ArtistAliasControl } from "@/components/artist-alias-control"
 import { LangToggle } from "@/components/lang-toggle"
 import { useLang } from "@/components/lang-context"
 import { TokenIcon } from "@/components/token-icon"
+import { TrustlineButton } from "@/components/trustline-button"
 import { useWallet } from "@/components/wallet-provider"
 import { pickCopy } from "@/lib/phase-copy"
 import { composeImageWithPhaseForgeSeal } from "@/lib/forge-seal-image"
@@ -125,6 +126,7 @@ export default function ForgePage() {
   const [agentTickerIdx, setAgentTickerIdx] = useState(0)
   const [ipfsConfigured, setIpfsConfigured] = useState<boolean | null>(null)
   const [tokenBalance, setTokenBalance] = useState("0")
+  const [protocolReady, setProtocolReady] = useState(false)
 
   const [agentImageUrl, setAgentImageUrl] = useState<string | null>(null)
   const [lore, setLore] = useState<string | null>(null)
@@ -135,6 +137,7 @@ export default function ForgePage() {
     agentState === "FORGING_MATTER"
 
   const busy = isMintingCollection || agentFlowBusy
+  const actionLockedByProtocol = Boolean(address && !protocolReady)
 
   const anomalyFieldLocked = agentFlowBusy || agentState === "COMPLETE"
   const namePriceLocked =
@@ -454,6 +457,11 @@ export default function ForgePage() {
     setAgentState("IDLE")
 
     const addr = address ?? (await refresh())
+    if (!protocolReady) {
+      setError(ff.oracle_blocked_msg)
+      return
+    }
+
     if (!addr) {
       setError(ff.errors.connectWallet)
       return
@@ -484,7 +492,7 @@ export default function ForgePage() {
       setLore(null)
       setError(PROTOCOL_HALTED)
     }
-  }, [address, anomalyDescription, initiateAgentForge, lang, refresh])
+  }, [address, anomalyDescription, initiateAgentForge, lang, protocolReady, refresh])
 
   const handleMintArtifact = useCallback(async () => {
     if (agentState !== "COMPLETE" || !agentImageUrl) return
@@ -501,8 +509,13 @@ export default function ForgePage() {
   }, [agentImageUrl, agentState, resolveImageUriForMint, runCreateCollectionTransaction])
 
   const handleManualUploadAndMint = useCallback(async () => {
-    if (forgeMode !== "MANUAL") return
     const ff = pickCopy(lang).forge
+    if (!protocolReady) {
+      setError(ff.mint_blocked_msg)
+      return
+    }
+
+    if (forgeMode !== "MANUAL") return
     setError(null)
     let finalUri: string
     try {
@@ -531,7 +544,12 @@ export default function ForgePage() {
     resolveImageUriForMint,
     resolveManualFileForMint,
     runCreateCollectionTransaction,
+    protocolReady,
   ])
+
+  useEffect(() => {
+    setProtocolReady(false)
+  }, [address])
 
   const copyShare = useCallback(async () => {
     if (!shareUrl) return
@@ -702,6 +720,18 @@ export default function ForgePage() {
               <p className="font-mono uppercase tracking-widest text-amber-300/95">{f.ipfsOracleHint}</p>
             </div>
           )}
+
+          <TrustlineButton
+            address={address}
+            onRequestConnect={async () => {
+              await connect()
+              return refresh()
+            }}
+            onReady={async () => {
+              setProtocolReady(true)
+              await refreshLiqBalance()
+            }}
+          />
 
           {error && (
             <div className="tactical-alert-critical relative z-[1] mt-2 shrink-0 px-2 py-2" role="alert">
@@ -962,7 +992,7 @@ export default function ForgePage() {
                     {forgeMode === "MANUAL" ? (
                       <button
                         type="button"
-                        disabled={isMintingCollection}
+                        disabled={isMintingCollection || actionLockedByProtocol}
                         onClick={() => {
                           playTacticalUiClick()
                           void handleManualUploadAndMint().catch(() => {})
@@ -977,7 +1007,7 @@ export default function ForgePage() {
                     ) : agentState === "COMPLETE" ? (
                       <button
                         type="button"
-                        disabled={isMintingCollection}
+                        disabled={isMintingCollection || actionLockedByProtocol}
                         onClick={() => {
                           playTacticalUiClick()
                           void handleMintArtifact().catch(() => {})
@@ -992,7 +1022,7 @@ export default function ForgePage() {
                     ) : (
                       <button
                         type="button"
-                        disabled={busy}
+                        disabled={busy || actionLockedByProtocol}
                         onClick={() => {
                           playTacticalUiClick()
                           void handleForgeAgent().catch(() => {})

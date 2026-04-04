@@ -40,6 +40,36 @@ type ForgeAgentBody = {
   payerAddress?: string
 }
 
+type LegacyChallenge = {
+  protocol: "x402"
+  version: "2"
+  network: string
+  token: string
+  contract_id: string
+  token_contract: string
+  amount: number
+  priceDisplay: string
+  facilitator: string
+  invoice: string
+  resource: string
+  note: string
+}
+
+type ForgeAgentPaymentRequiredResponse = {
+  success: false
+  error: "Payment Required"
+  priceDisplay: string
+  message: string
+  challenge: LegacyChallenge
+  paymentRequirements?: PaymentRequirements
+}
+
+type ForgeAgentErrorResponse = {
+  success: false
+  error: string
+  detail?: string
+}
+
 function facilitatorUrl(request: NextRequest): string {
   const configured = process.env.X402_FACILITATOR_URL?.trim()
   if (configured) return configured
@@ -51,7 +81,7 @@ function parseRequiredAmountInt(): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
 }
 
-function buildLegacyChallenge(request: NextRequest) {
+function buildLegacyChallenge(request: NextRequest): LegacyChallenge {
   return {
     protocol: "x402",
     version: "2",
@@ -97,12 +127,13 @@ function buildOfficialPaymentRequirements(request: NextRequest): PaymentRequirem
 function forgeAgentPaymentRequired(
   request: NextRequest,
   paymentRequirements: PaymentRequirements | null,
-) {
+): NextResponse<ForgeAgentPaymentRequiredResponse> {
   const challenge = buildLegacyChallenge(request)
   const challengeBase64 = Buffer.from(JSON.stringify(challenge)).toString("base64")
   const facilitator = facilitatorUrl(request)
 
-  const body: Record<string, unknown> = {
+  const body: ForgeAgentPaymentRequiredResponse = {
+    success: false,
     error: "Payment Required",
     priceDisplay: FORGE_PRICE_DISPLAY,
     message:
@@ -279,19 +310,24 @@ async function paymentValid(
   }
 }
 
-type ForgeAgentSuccess = {
+type ForgeAgentSuccessResponse = {
   success: true
   imageUrl: string
   lore: string
   metadataStandard: "SEP-20"
 }
 
+type ForgeAgentResponse =
+  | ForgeAgentSuccessResponse
+  | ForgeAgentPaymentRequiredResponse
+  | ForgeAgentErrorResponse
+
 function buildPollinationsImageUrl(userPrompt: string): string {
   const imagePrompt = `${userPrompt.trim()}${IMAGE_STYLE_SUFFIX}`
   return `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=1024&height=1024&nologo=true`
 }
 
-async function runForgeAgentCore(userPrompt: string): Promise<ForgeAgentSuccess> {
+async function runForgeAgentCore(userPrompt: string): Promise<ForgeAgentSuccessResponse> {
   const trimmed = userPrompt.trim()
   if (!trimmed) {
     throw new Error("EMPTY_PROMPT")
@@ -315,12 +351,12 @@ async function runForgeAgentCore(userPrompt: string): Promise<ForgeAgentSuccess>
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse<ForgeAgentResponse>> {
   let body: ForgeAgentBody
   try {
     body = (await request.json()) as ForgeAgentBody
   } catch {
-    return NextResponse.json({ error: "JSON inválido" }, { status: 400 })
+    return NextResponse.json({ success: false, error: "JSON inválido" }, { status: 400 })
   }
 
   if (!process.env.GEMINI_API_KEY?.trim()) {
@@ -339,7 +375,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (typeof body.prompt !== "string") {
-    return NextResponse.json({ error: "Falta prompt (string)" }, { status: 400 })
+    return NextResponse.json({ success: false, error: "Falta prompt (string)" }, { status: 400 })
   }
 
   try {

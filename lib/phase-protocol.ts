@@ -962,6 +962,12 @@ export function isCreatorAlreadyHasCollectionError(message: string) {
   return /Error\s*\(\s*Contract\s*,\s*#8\s*\)/.test(message) || /\bContract\s*,\s*#8\b/.test(message)
 }
 
+/** On-chain unauthorized gate (commonly surfaced as `Contract, #13` / "Unauthorized"). */
+export function isPhaseUnauthorizedError(message: string) {
+  const m = message.toLowerCase()
+  return /Error\s*\(\s*Contract\s*,\s*#13\s*\)/.test(message) || /\bContract\s*,\s*#13\b/.test(message) || m.includes("unauthorized")
+}
+
 /** Detect RPC / sequence class errors for narrative recovery UI */
 export function isStellarDesyncError(message: string) {
   const m = message.toLowerCase()

@@ -43,6 +43,7 @@ import {
   isAuthentic,
   isLowEnergy,
   isPhaseInsufficientBalanceError,
+  isPhaseUnauthorizedError,
   isStellarDesyncError,
   parseTokenUriMetadata,
   sendTransaction,
@@ -577,6 +578,11 @@ export function FusionChamber() {
     }
   }, [address, tokenBalance, playElectronicClick])
 
+  const normalizeToastError = useCallback(
+    (msg: string) => (isPhaseUnauthorizedError(msg) ? ch.biometricTrustGateClosed : msg),
+    [ch.biometricTrustGateClosed],
+  )
+
   const requestGenesisSupply = useCallback(async () => {
     if (!address || genesisLoading) return
     setGenesisLoading(true)
@@ -637,7 +643,7 @@ export function FusionChamber() {
       if (!res.ok) {
         const msg = data.error || `HTTP ${res.status}`
         appendLog(`${ch.logs.faucetFailPrefix} ${msg}`)
-        toast.error(msg)
+        toast.error(normalizeToastError(msg))
         await refreshClassicStatus()
         return
       }
@@ -655,11 +661,21 @@ export function FusionChamber() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       appendLog(`${ch.logs.faucetFailPrefix} ${msg}`)
-      toast.error(msg)
+      toast.error(normalizeToastError(msg))
     } finally {
       setClassicBusy(false)
     }
-  }, [address, classicAsset, classicBootstrapAmount, classicBusy, appendLog, ch.logs.faucetFailPrefix, lang, refreshClassicStatus])
+  }, [
+    address,
+    classicAsset,
+    classicBootstrapAmount,
+    classicBusy,
+    appendLog,
+    ch.logs.faucetFailPrefix,
+    lang,
+    normalizeToastError,
+    refreshClassicStatus,
+  ])
 
   const enableClassicAssetTrustline = useCallback(async () => {
     if (!address || classicBusy || !classicAsset) return
@@ -695,11 +711,21 @@ export function FusionChamber() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       appendLog(`${ch.logs.faucetFailPrefix} ${msg}`)
-      toast.error(msg)
+      toast.error(normalizeToastError(msg))
     } finally {
       setClassicBusy(false)
     }
-  }, [address, classicAsset, classicBusy, appendLog, ch.logs.faucetFailPrefix, lang, refreshClassicStatus, requestClassicBootstrap])
+  }, [
+    address,
+    classicAsset,
+    classicBusy,
+    appendLog,
+    ch.logs.faucetFailPrefix,
+    lang,
+    normalizeToastError,
+    refreshClassicStatus,
+    requestClassicBootstrap,
+  ])
 
   useEffect(() => {
     if (!address || !classicEnabled || classicBusy) return
@@ -836,7 +862,7 @@ export function FusionChamber() {
           )}
         >
           <div className="tactical-cockpit-signal" aria-hidden>
-            <span className="tactical-cockpit-signal__label">SIGNAL</span>
+            <span className="tactical-cockpit-signal__label">{ch.signalLabel}</span>
           </div>
           <h2 className="tactical-phosphor mb-1 border-b border-cyan-500/20 pb-1 text-[10px] uppercase tracking-[0.28em] text-cyan-400/75 sm:text-[11px]">
             ┃ {ch.statusMonitor}
@@ -932,13 +958,13 @@ export function FusionChamber() {
                 {classicAsset && (
                   <>
                     <div>
-                      <dt className="text-[12px] font-medium uppercase tracking-[0.14em] text-muted-foreground">CLASSIC_ASSET</dt>
+                      <dt className="text-[12px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{ch.classicAssetLabel}</dt>
                       <dd className="mt-1.5 text-[13px] text-foreground/80">
                         {classicAsset.code} · {truncateAddress(classicAsset.issuer)}
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-[12px] font-medium uppercase tracking-[0.14em] text-muted-foreground">FREIGHTER_BALANCE</dt>
+                      <dt className="text-[12px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{ch.freighterBalanceLabel}</dt>
                       <dd className="mt-1.5 font-mono text-sm tabular-nums text-cyan-300/95">
                         {classicStatus?.hasTrustline ? (classicStatus.balance ?? "0.0000000") : "NO_TRUSTLINE"}
                       </dd>
@@ -971,7 +997,7 @@ export function FusionChamber() {
                 </div>
                 <div>
                   <dt className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{ch.network}</dt>
-                  <dd className="mt-1 text-[12px] text-foreground/85">SOROBAN_TESTNET</dd>
+                  <dd className="mt-1 text-[12px] text-foreground/85">{ch.networkValue}</dd>
                 </div>
               </dl>
             </div>

@@ -92,13 +92,9 @@ function faucetConfigured(): boolean {
   return Boolean(secret && secret.length >= 20)
 }
 
+/** Mismo contrato token que el resto de la app (`lib/phase-protocol.ts`), ya validado como C…. */
 function serverTokenContractId(): string {
-  return (
-    process.env.TOKEN_CONTRACT_ID?.trim() ||
-    process.env.MOCK_TOKEN_ID?.trim() ||
-    process.env.NEXT_PUBLIC_TOKEN_CONTRACT_ID?.trim() ||
-    TOKEN_ADDRESS
-  )
+  return TOKEN_ADDRESS
 }
 
 function rewardAmountStroops(reward: RewardType): string {
@@ -283,7 +279,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Faucet desactivado: define ADMIN_SECRET_KEY (y opcionalmente TOKEN_CONTRACT_ID / MOCK_TOKEN_ID) en .env.local y reinicia el servidor.",
+          "Faucet desactivado: define ADMIN_SECRET_KEY en .env.local. El ID del contrato token es el mismo que en NEXT_PUBLIC_* / TOKEN_CONTRACT_ID (debe ser C…, nunca una cuenta G…). Reinicia el servidor.",
       },
       { status: 503 },
     )

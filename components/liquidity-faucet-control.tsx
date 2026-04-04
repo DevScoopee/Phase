@@ -11,7 +11,7 @@ import {
   parseSignedTxXdr,
 } from "@/lib/classic-liq"
 import { pickCopy } from "@/lib/phase-copy"
-import { formatLiq, NETWORK_PASSPHRASE } from "@/lib/phase-protocol"
+import { formatLiq, isPhaseUnauthorizedError, NETWORK_PASSPHRASE } from "@/lib/phase-protocol"
 import { playTacticalUiClick } from "@/lib/tactical-ui-click"
 import { cn } from "@/lib/utils"
 
@@ -66,6 +66,10 @@ export function LiquidityFaucetControl({
   const { lang } = useLang()
   const ch = pickCopy(lang).chamber
   const logs = ch.logs
+  const normalizeToastError = useCallback(
+    (msg: string) => (isPhaseUnauthorizedError(msg) ? ch.biometricTrustGateClosed : msg),
+    [ch.biometricTrustGateClosed],
+  )
 
   const [status, setStatus] = useState<FaucetStatusResponse | null>(null)
   const [loading, setLoading] = useState(false)
@@ -150,7 +154,7 @@ export function LiquidityFaucetControl({
       if (!submitRes.ok) {
         const msg = submitData.error || `HTTP ${submitRes.status}`
         onNarrativeLog?.(`${L.faucetFailPrefix} ${msg}`)
-        toast.error(msg)
+        toast.error(normalizeToastError(msg))
         return false
       }
       onNarrativeLog?.(L.classicTrustlineConfirmed)
@@ -158,12 +162,12 @@ export function LiquidityFaucetControl({
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       onNarrativeLog?.(`${L.faucetFailPrefix} ${msg}`)
-      toast.error(msg)
+      toast.error(normalizeToastError(msg))
       return false
     } finally {
       setRewardFlowPhase("idle")
     }
-  }, [address, lang, onNarrativeLog])
+  }, [address, lang, normalizeToastError, onNarrativeLog])
 
   const request = useCallback(
     async (reward: RewardType) => {
@@ -201,7 +205,7 @@ export function LiquidityFaucetControl({
         if (!res.ok) {
           const msg = typeof data.error === "string" ? data.error : `HTTP ${res.status}`
           onNarrativeLog?.(`${logs.faucetFailPrefix} ${msg}`)
-          toast.error(msg)
+          toast.error(normalizeToastError(msg))
           await loadStatus()
           return
         }
@@ -233,14 +237,25 @@ export function LiquidityFaucetControl({
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
         onNarrativeLog?.(`${logs.faucetFailPrefix} ${msg}`)
-        toast.error(msg)
+        toast.error(normalizeToastError(msg))
       } finally {
         setLoading(false)
         setLoadingReward(null)
         setRewardFlowPhase("idle")
       }
     },
-    [address, ensureClassicTrustlineForReward, lang, loadStatus, loading, loadingReward, logs, onNarrativeLog, onRefreshBalance],
+    [
+      address,
+      ensureClassicTrustlineForReward,
+      lang,
+      loadStatus,
+      loading,
+      loadingReward,
+      logs,
+      normalizeToastError,
+      onNarrativeLog,
+      onRefreshBalance,
+    ],
   )
 
   const statusLabel = useCallback(
@@ -292,7 +307,9 @@ export function LiquidityFaucetControl({
           >
             {state ? `+${formatLiq(state.amountStroops)}` : "—"}
             {state ? (
-              <span className={cn("ml-1 font-medium text-cyan-400/80", compact ? "text-[10px]" : "text-[11px]")}>LIQ</span>
+              <span className={cn("ml-1 font-medium text-cyan-400/80", compact ? "text-[10px]" : "text-[11px]")}>
+                {ch.rewardsTokenTicker}
+              </span>
             ) : null}
           </span>
         </div>

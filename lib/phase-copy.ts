@@ -214,6 +214,22 @@ export const phaseCopy: Record<
       agentProcessTickers: readonly [string, string, string]
       signingPayment: string
       paywallNegotiating: string
+      trustline_section_title: string
+      trustline_standby: string
+      trustline_signing: string
+      trustline_syncing: string
+      trustline_ready: string
+      trustline_get_testnet_xlm: string
+      trustline_msg_initialized: string
+      trustline_msg_empty_account: string
+      trustline_msg_connect_wallet: string
+      trustline_msg_config_missing: string
+      trustline_msg_waiting_confirmation: string
+      trustline_msg_protocol_ready: string
+      trustline_gas_label: string
+      trustline_friendbot_link: string
+      oracle_blocked_msg: string
+      mint_blocked_msg: string
       ipfsOracleHint: string
       errors: {
         connectWallet: string
@@ -262,6 +278,10 @@ export const phaseCopy: Record<
       collectionIdProtocol: string
       x402Price: string
       network: string
+      networkValue: string
+      signalLabel: string
+      classicAssetLabel: string
+      freighterBalanceLabel: string
       phaseState: string
       nftMinted: string
       liquid: string
@@ -328,10 +348,13 @@ export const phaseCopy: Record<
       rewardsButtonEstablishingTrustline: string
       /** Botón recompensa: llamada POST /api/faucet. */
       rewardsButtonTransmittingFunds: string
+      rewardsTokenTicker: string
       /** Usuario rechazó firmar changeTrust. */
       rewardsTrustlineRejectedToast: string
       /** Cuenta sin XLM / no existe en testnet. */
       rewardsTrustlineAccountMissing: string
+      /** Error narrativo para unauthorized on-chain (`Contract, #13`). */
+      biometricTrustGateClosed: string
       logs: ChamberLogsCopy
       artifact: ArtifactLabelsCopy
     }
@@ -490,6 +513,22 @@ export const phaseCopy: Record<
       ],
       signingPayment: "[ X402 ] OPENING_FREIGHTER — PHASERLIQ_SETTLE…",
       paywallNegotiating: "[ X402 ] NEGOTIATING_PAYWALL…",
+      trustline_section_title: "PHASER protocol init",
+      trustline_standby: "[ INITIALIZE_PHASER_PROTOCOL ]",
+      trustline_signing: "[ SIGNING_PROTOCOL... ]",
+      trustline_syncing: "[ SYNCING_WITH_BLOCKCHAIN... ]",
+      trustline_ready: "[ PROTOCOL_READY ]",
+      trustline_get_testnet_xlm: "[ GET_TESTNET_XLM ]",
+      trustline_msg_initialized: "PHASER protocol initialized.",
+      trustline_msg_empty_account: "Your testnet account is empty. Request funds from Friendbot.",
+      trustline_msg_connect_wallet: "Connect your Freighter wallet first.",
+      trustline_msg_config_missing: "Classic asset is not configured in NEXT_PUBLIC_CLASSIC_LIQ_*.",
+      trustline_msg_waiting_confirmation: "Transaction sent. Waiting for ledger confirmation...",
+      trustline_msg_protocol_ready: "Protocol ready.",
+      trustline_gas_label: "XLM gas",
+      trustline_friendbot_link: "Friendbot ↗",
+      oracle_blocked_msg: "[ INITIALIZE_PHASER_PROTOCOL ] before using Oracle.",
+      mint_blocked_msg: "[ INITIALIZE_PHASER_PROTOCOL ] before minting.",
       ipfsOracleHint:
         "Tip: configure PINATA_JWT on the server so long image URLs (e.g. Pollinations) are sealed to ipfs:// before mint (256-char on-chain limit).",
       errors: {
@@ -540,6 +579,10 @@ export const phaseCopy: Record<
       collectionIdProtocol: "0 (protocol)",
       x402Price: "X402_Price",
       network: "Network",
+      networkValue: "SOROBAN_TESTNET",
+      signalLabel: "SIGNAL",
+      classicAssetLabel: "CLASSIC_ASSET",
+      freighterBalanceLabel: "FREIGHTER_BALANCE",
       phaseState: "Phase_State",
       nftMinted: "NFT_MINTED",
       liquid: "LIQUID",
@@ -607,9 +650,11 @@ export const phaseCopy: Record<
       rewardsMissionChainTitle: "OPERATOR_QUEST_CHAIN",
       rewardsButtonEstablishingTrustline: "[ ESTABLISHING_TRUSTLINE... ]",
       rewardsButtonTransmittingFunds: "[ TRANSMITTING_FUNDS... ]",
+      rewardsTokenTicker: "LIQ",
       rewardsTrustlineRejectedToast: "[ TRUSTLINE_REQUIRED_TO_RECEIVE_FUNDS ] Approve changeTrust in Freighter.",
       rewardsTrustlineAccountMissing:
         "Stellar account not on testnet or unfunded. Add test XLM (Friendbot) before claiming PHASERLIQ.",
+      biometricTrustGateClosed: "[ ERROR: BIOMETRIC_TRUST_GATE_CLOSED ]",
       logs: {
         chamberOnline: "[ CHAMBER_ONLINE ] AWAITING_OPERATOR_HANDSHAKE…",
         walletRequest: "[ WALLET ] REQUESTING_SIGNER_CHANNEL…",
@@ -838,6 +883,22 @@ export const phaseCopy: Record<
       ],
       signingPayment: "[ X402 ] ABRIENDO_FREIGHTER — SETTLE_PHASERLIQ…",
       paywallNegotiating: "[ X402 ] NEGOCIANDO_PAYWALL…",
+      trustline_section_title: "Inicialización protocolo PHASER",
+      trustline_standby: "[ INITIALIZE_PHASER_PROTOCOL ]",
+      trustline_signing: "[ SIGNING_PROTOCOL... ]",
+      trustline_syncing: "[ SYNCING_WITH_BLOCKCHAIN... ]",
+      trustline_ready: "[ PROTOCOL_READY ]",
+      trustline_get_testnet_xlm: "[ GET_TESTNET_XLM ]",
+      trustline_msg_initialized: "Protocolo PHASER inicializado.",
+      trustline_msg_empty_account: "Tu cuenta de Testnet está vacía. Pide fondos al Friendbot.",
+      trustline_msg_connect_wallet: "Conecta tu wallet Freighter primero.",
+      trustline_msg_config_missing: "El asset clásico no está configurado en NEXT_PUBLIC_CLASSIC_LIQ_*.",
+      trustline_msg_waiting_confirmation: "Transacción enviada. Esperando confirmación en ledger...",
+      trustline_msg_protocol_ready: "Protocolo listo.",
+      trustline_gas_label: "Gas XLM",
+      trustline_friendbot_link: "Friendbot ↗",
+      oracle_blocked_msg: "[ INITIALIZE_PHASER_PROTOCOL ] antes de usar el Oráculo.",
+      mint_blocked_msg: "[ INITIALIZE_PHASER_PROTOCOL ] antes de mintear.",
       ipfsOracleHint:
         "Tip: configurá PINATA_JWT en el servidor para sellar URLs largas de imagen (p. ej. Pollinations) a ipfs:// antes del mint (límite 256 caracteres on-chain).",
       errors: {
@@ -888,6 +949,10 @@ export const phaseCopy: Record<
       collectionIdProtocol: "0 (protocolo)",
       x402Price: "Precio_X402",
       network: "Red",
+      networkValue: "SOROBAN_TESTNET",
+      signalLabel: "SEÑAL",
+      classicAssetLabel: "ASSET_CLÁSICO",
+      freighterBalanceLabel: "SALDO_FREIGHTER",
       phaseState: "Estado_Fase",
       nftMinted: "NFT_ACUÑADO",
       liquid: "LÍQUIDO",
@@ -955,10 +1020,12 @@ export const phaseCopy: Record<
       rewardsMissionChainTitle: "CADENA_MISIONES_OPERADOR",
       rewardsButtonEstablishingTrustline: "[ ESTABLECIENDO_TRUSTLINE... ]",
       rewardsButtonTransmittingFunds: "[ TRANSMITIENDO_FONDOS... ]",
+      rewardsTokenTicker: "LIQ",
       rewardsTrustlineRejectedToast:
         "[ TRUSTLINE_REQUERIDA_PARA_RECIBIR ] Aprobá changeTrust en Freighter.",
       rewardsTrustlineAccountMissing:
         "La cuenta no está en testnet o sin XLM. Añadí XLM de prueba (Friendbot) antes de reclamar PHASERLIQ.",
+      biometricTrustGateClosed: "[ ERROR: BIOMETRIC_TRUST_GATE_CLOSED ]",
       logs: {
         chamberOnline: "[ CÁMARA_EN_LÍNEA ] ESPERANDO_ENLACE_OPERADOR…",
         walletRequest: "[ WALLET ] SOLICITANDO_CANAL_FIRMANTE…",
