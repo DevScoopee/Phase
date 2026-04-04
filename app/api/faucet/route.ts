@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { serverDataJsonPath } from "@/lib/server-data-paths"
-import { classicLiqAssetConfigFromPublicEnv, readClassicWalletStatus } from "@/lib/classic-liq"
+import { readClassicWalletStatus } from "@/lib/classic-liq"
+import { resolvePhaserLiqClassicAsset } from "@/lib/stellar"
 import {
   Address,
   BASE_FEE,
@@ -318,8 +319,7 @@ async function pollSubmittedMint(soroban: rpc.Server, hash: string): Promise<"SU
  * Usa solo vars públicas (NEXT_PUBLIC_CLASSIC_LIQ_*) — no requiere CLASSIC_LIQ_ISSUER_SECRET.
  */
 async function preflightClassicTrustlineForMint(userAddress: string): Promise<NextResponse | null> {
-  const asset = classicLiqAssetConfigFromPublicEnv()
-  if (!asset) return null
+  const asset = resolvePhaserLiqClassicAsset()
   try {
     const ws = await readClassicWalletStatus(userAddress, asset)
     if (!ws.accountExists) {
@@ -433,9 +433,8 @@ export async function POST(req: NextRequest) {
   const server = new rpc.Server(RPC_URL)
   const source = adminKp.publicKey()
 
-  const ledgerFailHint = classicLiqAssetConfigFromPublicEnv()
-    ? " Suele deberse a trustline PHASERLIQ sin crear: Forja → INITIALIZE PHASER PROTOCOL, luego reintenta."
-    : ""
+  const ledgerFailHint =
+    " Suele deberse a trustline PHASERLIQ (mismo code+issuer que en Freighter) sin crear: Forja → INITIALIZE PHASER PROTOCOL, luego reintenta."
 
   try {
     const now = Date.now()

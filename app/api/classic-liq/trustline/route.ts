@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { Horizon, Networks, TransactionBuilder } from "@stellar/stellar-sdk"
 import { HORIZON_URL } from "@/lib/phase-protocol"
+import { logHorizonSubmitError } from "@/lib/stellar"
 
 export async function POST(req: NextRequest) {
   let body: { signedXdr?: string }
@@ -21,6 +22,7 @@ export async function POST(req: NextRequest) {
     const submit = await server.submitTransaction(tx)
     return NextResponse.json({ ok: true, hash: submit.hash })
   } catch (e) {
+    logHorizonSubmitError("classic-liq/trustline submit", e)
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 502 })
   }
 }

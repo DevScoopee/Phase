@@ -23,6 +23,7 @@ import {
   RPC_URL,
   TOKEN_ADDRESS,
 } from "@/lib/phase-protocol"
+import { logUnknownStellarError } from "@/lib/stellar"
 
 export const runtime = "nodejs"
 export const maxDuration = 120
@@ -182,6 +183,21 @@ function functionNameToString(fn: string | Buffer): string {
   return fn.toString("utf8")
 }
 
+function logForgeAgentSorobanTxNotSuccess(txHash: string, res: rpc.Api.GetTransactionResponse) {
+  const row: Record<string, unknown> = { context: "forge-agent settle verify", hash: txHash, status: res.status }
+  if (res.status === rpc.Api.GetTransactionStatus.FAILED) {
+    const f = res as rpc.Api.GetFailedTransactionResponse
+    row.ledger = f.ledger
+    try {
+      const tr = f.resultXdr?.result()?.results()?.[0]?.tr()
+      if (tr?.switch) row.opResult = tr.switch().name
+    } catch {
+      /* XDR shape puede variar */
+    }
+  }
+  console.error("[forge-agent] Soroban getTransaction: not SUCCESS", JSON.stringify(row))
+}
+
 async function verifyPhaseSettleTxOnChain(
   txHash: string,
   payerAddress: string,
@@ -190,8 +206,20 @@ async function verifyPhaseSettleTxOnChain(
   if (!payer.startsWith("G") || payer.length !== 56) return false
 
   const server = new rpc.Server(RPC_URL)
-  const res = await server.getTransaction(txHash.trim())
-  if (res.status !== rpc.Api.GetTransactionStatus.SUCCESS) return false
+  let res: rpc.Api.GetTransactionResponse
+  try {
+    res = await server.getTransaction(txHash.trim())
+  } catch (e) {
+    console.error(
+      "[forge-agent] Soroban getTransaction threw",
+      JSON.stringify({ hash: txHash.trim(), error: e instanceof Error ? e.message : String(e) }),
+    )
+    return false
+  }
+  if (res.status !== rpc.Api.GetTransactionStatus.SUCCESS) {
+    logForgeAgentSorobanTxNotSuccess(txHash.trim(), res)
+    return false
+  }
 
   const parsed = TransactionBuilder.fromXDR(res.envelopeXdr, NETWORK_PASSPHRASE)
   const tx = parsed instanceof FeeBumpTransaction ? parsed.innerTransaction : parsed
@@ -280,7 +308,8 @@ async function paymentValid(
   if (settlementTx && payer) {
     try {
       return await verifyPhaseSettleTxOnChain(settlementTx, payer)
-    } catch {
+    } catch (e) {
+      logUnknownStellarError("forge-agent paymentValid (body settle)", e)
       return false
     }
   }
@@ -292,7 +321,8 @@ async function paymentValid(
         phaseFromAuth.settlementTxHash,
         phaseFromAuth.payerAddress,
       )
-    } catch {
+    } catch (e) {
+      logUnknownStellarError("forge-agent paymentValid (Authorization settle)", e)
       return false
     }
   }
@@ -305,7 +335,8 @@ async function paymentValid(
 
   try {
     return await verifyOfficialX402(raw, paymentRequirements)
-  } catch {
+  } catch (e) {
+    logUnknownStellarError("forge-agent paymentValid (x402 verify)", e)
     return false
   }
 }
@@ -386,7 +417,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<ForgeAgen
     if (msg === "EMPTY_PROMPT") {
       return NextResponse.json({ success: false, error: "prompt vacío o inválido" }, { status: 400 })
     }
-    console.error("[PROTOCOL_ERROR] Energía consumida, fallo de IA", e)
+    console.error("[PROTOCOL_ERROR] Energía consumida, fallo de IA (500)", msg, e)
     return NextResponse.json(
       {
         success: false,

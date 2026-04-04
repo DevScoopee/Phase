@@ -12,12 +12,12 @@ import {
   StrKey,
   TransactionBuilder,
 } from "@stellar/stellar-sdk"
+import { readClassicWalletStatus, type ClassicLiqAsset, type ClassicLiqWalletStatus } from "@/lib/classic-liq"
 import {
-  classicLiqAssetConfigFromPublicEnv,
-  readClassicWalletStatus,
-  type ClassicLiqAsset,
-  type ClassicLiqWalletStatus,
-} from "@/lib/classic-liq"
+  ensureTrustlineBeforeClassicPayment,
+  logHorizonSubmitError,
+  resolvePhaserLiqClassicAsset,
+} from "@/lib/stellar"
 import { HORIZON_URL } from "@/lib/phase-protocol"
 
 type ClassicClaims = Record<string, { classicFundAt?: number }>
@@ -72,14 +72,14 @@ export async function GET(req: NextRequest) {
   const config = readClassicAssetConfig()
   const wallet = req.nextUrl.searchParams.get("walletAddress")?.trim() ?? null
   if (!config) {
-    const publicAsset = classicLiqAssetConfigFromPublicEnv()
-    if (wallet && StrKey.isValidEd25519PublicKey(wallet) && publicAsset) {
+    const flowAsset = resolvePhaserLiqClassicAsset()
+    if (wallet && StrKey.isValidEd25519PublicKey(wallet)) {
       try {
-        const status = await walletStatus(wallet, publicAsset)
+        const status = await walletStatus(wallet, flowAsset)
         return NextResponse.json({
           enabled: false,
           trustlineFlowAvailable: true,
-          asset: publicAsset,
+          asset: flowAsset,
           wallet,
           status,
         })
@@ -88,21 +88,18 @@ export async function GET(req: NextRequest) {
           {
             enabled: false,
             trustlineFlowAvailable: true,
-            asset: publicAsset,
+            asset: flowAsset,
             error: e instanceof Error ? e.message : String(e),
           },
           { status: 502 },
         )
       }
     }
-    if (publicAsset) {
-      return NextResponse.json({
-        enabled: false,
-        trustlineFlowAvailable: true,
-        asset: publicAsset,
-      })
-    }
-    return NextResponse.json({ enabled: false })
+    return NextResponse.json({
+      enabled: false,
+      trustlineFlowAvailable: true,
+      asset: flowAsset,
+    })
   }
   if (!wallet) {
     return NextResponse.json({
@@ -163,11 +160,13 @@ export async function POST(req: NextRequest) {
       { status: 412 },
     )
   }
-  if (!status.hasTrustline) {
+  const trustOk = await ensureTrustlineBeforeClassicPayment(wallet, config.asset)
+  if (!trustOk.ok) {
     return NextResponse.json(
       {
         error: "Trustline required. User must sign changeTrust in Freighter first.",
         asset: config.asset,
+        code: trustOk.reason,
       },
       { status: 412 },
     )
@@ -212,6 +211,7 @@ export async function POST(req: NextRequest) {
       amount: config.amount,
     })
   } catch (e) {
+    logHorizonSubmitError("classic-liq POST payment", e)
     return NextResponse.json(
       { error: e instanceof Error ? e.message : String(e), asset: config.asset },
       { status: 502 },
