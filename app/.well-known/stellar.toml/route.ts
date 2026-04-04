@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { classicLiqCodeForStellarToml, classicLiqIssuerForStellarToml } from "@/lib/classic-liq"
 import { TOKEN_ADDRESS, stellarExpertPhaserLiqUrl } from "@/lib/phase-protocol"
 
 const NETWORK_PASSPHRASE = "Test SDF Network ; September 2015"
@@ -18,13 +19,16 @@ export async function GET() {
   const base = siteBaseForStellarToml()
   const icon = `${base}/phaser-liq-token.png`
   const expert = stellarExpertPhaserLiqUrl()
+  const liqCode = classicLiqCodeForStellarToml()
+  const liqIssuer = classicLiqIssuerForStellarToml()
 
   const body = `VERSION="2.0.0"
 NETWORK_PASSPHRASE="${NETWORK_PASSPHRASE}"
 ACCOUNTS=[]
 [[CURRENCIES]]
+code="${liqCode}"
+issuer="${liqIssuer}"
 script="${TOKEN_ADDRESS}"
-code="PHASERLIQ"
 name="Phase Liquidity"
 desc="PHASERLIQ utility liquidity token for PHASE settlement flows."
 image="${icon}"
@@ -43,7 +47,8 @@ PHASER_LIQ_NODE_DECLARATION_DOCS="https://developers.stellar.org/docs/validators
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
       "Cache-Control": "public, max-age=300",
-      "Access-Control-Allow-Origin": "https://stellar.expert",
+      // Freighter / dApp (Origin www.phasee.xyz) y stellar.expert deben poder leer el TOML (CORS).
+      "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type",
     },
@@ -54,7 +59,7 @@ export async function OPTIONS() {
   return new NextResponse(null, {
     status: 204,
     headers: {
-      "Access-Control-Allow-Origin": "https://stellar.expert",
+      "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type",
       "Access-Control-Max-Age": "86400",

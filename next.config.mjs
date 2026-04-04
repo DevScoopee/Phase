@@ -15,7 +15,7 @@ const nextConfig = {
       {
         source: "/.well-known/stellar.toml",
         headers: [
-          { key: "Access-Control-Allow-Origin", value: "https://stellar.expert" },
+          { key: "Access-Control-Allow-Origin", value: "*" },
           { key: "Access-Control-Allow-Methods", value: "GET, OPTIONS" },
           { key: "Access-Control-Allow-Headers", value: "Content-Type" },
         ],
@@ -23,9 +23,10 @@ const nextConfig = {
       {
         source: "/phaser-liq-token.png",
         headers: [
+          { key: "Access-Control-Allow-Origin", value: "*" },
           {
-            key: "Access-Control-Allow-Origin",
-            value: "*",
+            key: "Cross-Origin-Resource-Policy",
+            value: "cross-origin",
           },
           { key: "Cache-Control", value: "public, max-age=86400, immutable" },
         ],

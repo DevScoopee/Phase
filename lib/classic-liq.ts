@@ -31,6 +31,21 @@ type HorizonAccountResponse = {
   balances?: HorizonBalance[]
 }
 
+/** Emisor clásico PHASERLIQ en testnet (Stellar Expert: PHASERLIQ-GAX…). */
+export const DEFAULT_CLASSIC_PHASER_LIQ_ISSUER =
+  "GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS"
+
+/** Para `stellar.toml`: siempre un issuer G válido para que wallets enlacen trustline ↔ fila CURRENCIES ↔ image. */
+export function classicLiqIssuerForStellarToml(): string {
+  const fromEnv = process.env.NEXT_PUBLIC_CLASSIC_LIQ_ISSUER?.trim() ?? ""
+  if (fromEnv && StrKey.isValidEd25519PublicKey(fromEnv)) return fromEnv
+  return DEFAULT_CLASSIC_PHASER_LIQ_ISSUER
+}
+
+export function classicLiqCodeForStellarToml(): string {
+  return process.env.NEXT_PUBLIC_CLASSIC_LIQ_ASSET_CODE?.trim() || "PHASERLIQ"
+}
+
 export function classicLiqAssetConfigFromPublicEnv(): ClassicLiqAsset | null {
   const code = process.env.NEXT_PUBLIC_CLASSIC_LIQ_ASSET_CODE?.trim() ?? ""
   const issuer = process.env.NEXT_PUBLIC_CLASSIC_LIQ_ISSUER?.trim() ?? ""
