@@ -1071,3 +1071,17 @@
 .tactical-quest-step:last-child {
   margin-bottom: 0;
 }
+
+.tactical-quest-flow--compact .tactical-quest-flow__lane {
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.45rem;
+}
+
+.tactical-quest-flow--compact .tactical-quest-flow__lane-title,
+.tactical-quest-flow--compact .tactical-quest-flow__chain-title {
+  margin-bottom: 0.35rem;
+}
+
+.tactical-quest-flow--compact .tactical-quest-step {
+  margin-bottom: 0.4rem;
+}

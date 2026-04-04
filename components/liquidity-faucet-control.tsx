@@ -49,6 +49,8 @@ type Props = {
   address: string | null | undefined
   tokenBalance: string
   className?: string
+  /** Menos padding y márgenes (p. ej. cámara cockpit sin scroll). */
+  compact?: boolean
   onNarrativeLog?: (line: string) => void
   onRefreshBalance: () => void | Promise<void>
 }
@@ -57,6 +59,7 @@ export function LiquidityFaucetControl({
   address,
   tokenBalance: _tokenBalance,
   className,
+  compact = false,
   onNarrativeLog,
   onRefreshBalance,
 }: Props) {
@@ -266,18 +269,35 @@ export function LiquidityFaucetControl({
     const transmitUi = isActive && rewardFlowPhase === "transmit"
     const pct = Math.max(0, Math.min(100, state?.claimedAt ? 100 : state?.progressPct ?? 0))
     return (
-      <div className="tactical-interactive-glitch rounded border border-cyan-400/30 bg-cyan-950/10 p-2.5 shadow-[inset_0_1px_0_rgba(34,211,238,0.06)]">
-        <div className="mb-1.5 flex items-start justify-between gap-2">
-          <span className="text-[11px] font-semibold uppercase leading-tight tracking-[0.18em] text-cyan-100/95 sm:text-xs">
+      <div
+        className={cn(
+          "tactical-interactive-glitch rounded border border-cyan-400/30 bg-cyan-950/10 shadow-[inset_0_1px_0_rgba(34,211,238,0.06)]",
+          compact ? "p-2" : "p-2.5",
+        )}
+      >
+        <div className={cn("flex items-start justify-between gap-2", compact ? "mb-1" : "mb-1.5")}>
+          <span
+            className={cn(
+              "font-semibold uppercase leading-tight tracking-[0.18em] text-cyan-100/95",
+              compact ? "text-[10px] sm:text-[11px]" : "text-[11px] sm:text-xs",
+            )}
+          >
             {title}
           </span>
-          <span className="shrink-0 font-mono text-sm font-semibold tabular-nums tracking-tight text-cyan-200/95">
+          <span
+            className={cn(
+              "shrink-0 font-mono font-semibold tabular-nums tracking-tight text-cyan-200/95",
+              compact ? "text-xs" : "text-sm",
+            )}
+          >
             {state ? `+${formatLiq(state.amountStroops)}` : "—"}
-            {state ? <span className="ml-1 text-[11px] font-medium text-cyan-400/80">LIQ</span> : null}
+            {state ? (
+              <span className={cn("ml-1 font-medium text-cyan-400/80", compact ? "text-[10px]" : "text-[11px]")}>LIQ</span>
+            ) : null}
           </span>
         </div>
-        <p className="mb-2 text-[11px] leading-snug text-cyan-100/60">{description}</p>
-        <div className="mb-2">
+        <p className={cn("leading-snug text-cyan-100/60", compact ? "mb-1.5 text-[10px]" : "mb-2 text-[11px]")}>{description}</p>
+        <div className={compact ? "mb-1.5" : "mb-2"}>
           <div className="h-2 w-full overflow-hidden rounded bg-cyan-950/70">
             <div
               className="h-full bg-cyan-300/75 transition-all"
@@ -386,12 +406,13 @@ export function LiquidityFaucetControl({
   return (
     <section
       className={cn(
-        "tactical-quest-flow w-full rounded border border-cyan-400/35 bg-slate-950/40 p-3 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.05)] backdrop-blur-[2px] sm:p-3.5",
+        "tactical-quest-flow w-full rounded border border-cyan-400/35 bg-slate-950/40 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.05)] backdrop-blur-[2px]",
+        compact ? "tactical-quest-flow--compact p-2 sm:p-2.5" : "p-3 sm:p-3.5",
         className,
       )}
     >
       {helpModal}
-      <header className="mb-2.5">
+      <header className={compact ? "mb-1.5" : "mb-2.5"}>
         <div className="flex items-center justify-between gap-2">
           <p className="tactical-phosphor min-w-0 flex-1 text-[11px] uppercase tracking-[0.22em] text-cyan-100 sm:text-xs">
             {ch.rewardsSectionTitle}
@@ -409,14 +430,14 @@ export function LiquidityFaucetControl({
             ?
           </button>
         </div>
-        <div className="mt-2">
-          <div className="h-2 w-full overflow-hidden rounded bg-cyan-950/70">
+        <div className={compact ? "mt-1" : "mt-2"}>
+          <div className={cn("w-full overflow-hidden rounded bg-cyan-950/70", compact ? "h-1.5" : "h-2")}>
             <div
               className="h-full bg-cyan-300/80 transition-all"
               style={{ width: `${status?.questOverview?.progressPct ?? 0}%` }}
             />
           </div>
-          <p className="mt-1.5 text-[10px] uppercase tracking-[0.16em] text-cyan-300/75">
+          <p className={cn("text-[10px] uppercase tracking-[0.16em] text-cyan-300/75", compact ? "mt-1" : "mt-1.5")}>
             {ch.rewardsQuestProgress}{" "}
             <span className="tabular-nums">
               {status?.questOverview
@@ -428,7 +449,7 @@ export function LiquidityFaucetControl({
       </header>
       <div className="tactical-quest-flow__lane">
         <p className="tactical-quest-flow__lane-title">{ch.rewardsLiquidityLaneTitle}</p>
-        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+        <div className={cn("grid grid-cols-1 sm:grid-cols-2", compact ? "gap-1.5" : "gap-2.5")}>
           {rewardButton(
             "genesis",
             "GENESIS SUPPLY",

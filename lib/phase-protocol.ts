@@ -15,13 +15,36 @@ import {
   xdr,
 } from "@stellar/stellar-sdk"
 
+/**
+ * Soroban contract IDs use strkey prefix **C** (56 chars). A **G** address is a classic *account*, not a contract —
+ * using it in `Contract` or WASM fetch causes `Invalid contract ID: G…` from the SDK.
+ */
+function sorobanContractIdFromEnv(
+  envKeys: (string | undefined)[],
+  fallback: string,
+  settingName: string,
+): string {
+  const raw = envKeys.map((k) => k?.trim()).find((v) => v && v.length > 0)
+  const id = raw ?? fallback
+  if (StrKey.isValidContract(id)) return id
+  if (StrKey.isValidEd25519PublicKey(id)) {
+    throw new Error(
+      `[PHASE] ${settingName}: "${id.slice(0, 8)}…" is a Stellar account (G…), not a Soroban contract (C…). ` +
+        `Remove it from env or paste the contract ID from \`stellar contract deploy\` / Stellar Expert (contract page).`,
+    )
+  }
+  throw new Error(
+    `[PHASE] ${settingName}: not a valid Soroban contract strkey (expected C…). Got: "${id.slice(0, 12)}…"`,
+  )
+}
+
 const DEFAULT_PHASE_CONTRACT = "CDXZ2HWPSAU3DKACNGTTY3WM6FKN5LPNGMAYFW4KBF74P42RK6SFDRGP"
 export const CONTRACT_ID = (() => {
   const e = (typeof process !== "undefined" ? process.env : {}) as NodeJS.ProcessEnv
-  return (
-    e.NEXT_PUBLIC_PHASE_PROTOCOL_ID?.trim() ||
-    e.PHASE_PROTOCOL_ID?.trim() ||
-    DEFAULT_PHASE_CONTRACT
+  return sorobanContractIdFromEnv(
+    [e.NEXT_PUBLIC_PHASE_PROTOCOL_ID, e.PHASE_PROTOCOL_ID],
+    DEFAULT_PHASE_CONTRACT,
+    "PHASE protocol (NEXT_PUBLIC_PHASE_PROTOCOL_ID / PHASE_PROTOCOL_ID)",
   )
 })()
 
@@ -101,13 +124,16 @@ const DEFAULT_TOKEN_CONTRACT = "CDOAXHWC6YJB7U3ELV67HKJY6HEMJFBNRGJK6WZGUAELBWP3
 /** Contrato del token de liquidez del protocolo (Soroban). */
 export const TOKEN_ADDRESS = (() => {
   const e = (typeof process !== "undefined" ? process.env : {}) as NodeJS.ProcessEnv
-  return (
-    e.NEXT_PUBLIC_PHASER_TOKEN_ID?.trim() ||
-    e.PHASER_TOKEN_ID?.trim() ||
-    e.NEXT_PUBLIC_TOKEN_CONTRACT_ID?.trim() ||
-    e.TOKEN_CONTRACT_ID?.trim() ||
-    e.MOCK_TOKEN_ID?.trim() ||
-    DEFAULT_TOKEN_CONTRACT
+  return sorobanContractIdFromEnv(
+    [
+      e.NEXT_PUBLIC_PHASER_TOKEN_ID,
+      e.PHASER_TOKEN_ID,
+      e.NEXT_PUBLIC_TOKEN_CONTRACT_ID,
+      e.TOKEN_CONTRACT_ID,
+      e.MOCK_TOKEN_ID,
+    ],
+    DEFAULT_TOKEN_CONTRACT,
+    "PHASERLIQ token (NEXT_PUBLIC_PHASER_TOKEN_ID / NEXT_PUBLIC_TOKEN_CONTRACT_ID / …)",
   )
 })()
 

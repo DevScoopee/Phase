@@ -60,6 +60,44 @@ function truncateAddress(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`
 }
 
+/** Enlace al asset PHASERLIQ en Stellar Expert (icono + símbolo). */
+function PhaserLiqTokenLink({
+  href,
+  symbol,
+  iconClassName,
+  className,
+  variant = "default",
+}: {
+  href: string
+  symbol: string
+  iconClassName?: string
+  className?: string
+  variant?: "default" | "amber"
+}) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={href}
+      onClick={(e) => {
+        e.stopPropagation()
+        playTacticalUiClick()
+      }}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-sm border border-transparent font-mono tracking-normal underline-offset-[3px] transition-colors hover:underline focus:outline-none",
+        variant === "amber"
+          ? "text-amber-200/95 hover:border-amber-500/45 hover:bg-amber-950/35 hover:text-amber-50 focus-visible:ring-2 focus-visible:ring-amber-400/55"
+          : "text-cyan-400/95 hover:border-cyan-500/45 hover:bg-cyan-950/35 hover:text-cyan-50 focus-visible:ring-2 focus-visible:ring-cyan-400/60",
+        className,
+      )}
+    >
+      <TokenIcon className={cn("shrink-0", iconClassName ?? "h-4 w-4")} />
+      {symbol}
+    </a>
+  )
+}
+
 const chamberNavLink =
   "tactical-interactive-glitch tactical-phosphor inline-flex min-h-[38px] items-center rounded-sm border-2 border-cyan-400/50 bg-cyan-950/40 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-cyan-100 shadow-[0_0_12px_rgba(34,211,238,0.12)] transition-colors hover:border-cyan-300 hover:bg-cyan-900/35 hover:text-white"
 
@@ -747,7 +785,7 @@ export function FusionChamber() {
       <div className="tactical-crt-fine" aria-hidden />
       <TacticalCornerSigil className="pointer-events-none fixed bottom-2 left-2 z-[200] hidden opacity-70 sm:block" />
 
-      <header className="tactical-header-bar relative z-[102] flex shrink-0 items-center justify-between px-4 py-3 md:px-6">
+      <header className="tactical-header-bar relative z-[102] flex shrink-0 items-center justify-between px-4 py-2 md:px-6">
         <Link href="/" className={chamberNavLink} onClick={() => playTacticalUiClick()}>
           {ch.exit}
         </Link>
@@ -788,21 +826,22 @@ export function FusionChamber() {
         </div>
       </header>
 
-      <div className="relative z-[102] grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-hidden lg:grid-cols-[minmax(260px,300px)_minmax(0,1fr)]">
+      <div className="relative z-[102] grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-hidden lg:grid-cols-[minmax(248px,280px)_minmax(0,1fr)]">
         {/* STATUS_MONITOR */}
         <aside
           className={cn(
-            "tactical-cockpit-aside relative z-[102] flex max-h-[min(100dvh,100%)] min-h-0 flex-col overflow-y-auto overscroll-contain p-3 pl-4 sm:p-4 sm:pl-5 lg:max-h-none lg:pl-7",
+            "tactical-cockpit-aside tactical-chamber-aside relative z-[102] flex min-h-0 flex-col overflow-hidden p-2.5 pl-3 sm:p-3 sm:pl-4 lg:max-h-full lg:pl-5",
+            "max-lg:max-h-[min(52dvh,420px)] max-lg:overflow-y-auto max-lg:overscroll-contain",
             "max-lg:border-b max-lg:border-cyan-500/15",
           )}
         >
           <div className="tactical-cockpit-signal" aria-hidden>
             <span className="tactical-cockpit-signal__label">SIGNAL</span>
           </div>
-          <h2 className="tactical-phosphor mb-2 border-b border-cyan-500/20 pb-1.5 text-[11px] uppercase tracking-[0.28em] text-cyan-400/75">
+          <h2 className="tactical-phosphor mb-1 border-b border-cyan-500/20 pb-1 text-[10px] uppercase tracking-[0.28em] text-cyan-400/75 sm:text-[11px]">
             ┃ {ch.statusMonitor}
           </h2>
-          <p className="mb-2 text-[10px] leading-relaxed text-cyan-300/75">{ch.protocolStackLabel}</p>
+          <p className="mb-1.5 line-clamp-2 text-[9px] leading-snug text-cyan-300/70">{ch.protocolStackLabel}</p>
 
           {invalidCollection && (
             <div className="tactical-alert-critical relative z-0 mb-4 px-3 py-3">
@@ -834,24 +873,27 @@ export function FusionChamber() {
           )}
 
           {lowEnergy && address && !phased && !invalidCollection && (
-            <div className="tactical-frame mb-3 border-amber-500/50 bg-amber-950/25 px-2.5 py-2 shadow-[0_0_18px_rgba(245,158,11,0.12)]">
+            <div className="tactical-frame mb-2 border-amber-500/50 bg-amber-950/25 px-2.5 py-1.5 shadow-[0_0_18px_rgba(245,158,11,0.12)]">
               <p className="text-center text-[10px] font-bold uppercase tracking-wider text-amber-300 tactical-phosphor">
                 ⚡ {ch.lowEnergyTitle}
               </p>
-              <p className="mt-2 text-center text-[10px] text-amber-200/80">
-                {ch.reqLiqPrefix}{" "}
+              <p className="mt-1.5 flex flex-wrap items-center justify-center gap-x-1 text-center text-[10px] text-amber-200/80">
+                <span>{ch.reqLiqPrefix}</span>{" "}
                 <span className="tactical-digits-7seg text-amber-200/95">{stroopsToLiqDisplay(effectivePriceStroops)}</span>{" "}
-                <span className="inline-flex items-center gap-1.5 font-mono tracking-normal">
-                  <TokenIcon className="h-3.5 w-3.5" />
-                  {chainTokenSymbol}
-                </span>
+                <PhaserLiqTokenLink
+                  href={expertUrl}
+                  symbol={chainTokenSymbol}
+                  variant="amber"
+                  iconClassName="h-3.5 w-3.5"
+                  className="text-[10px]"
+                />
               </p>
             </div>
           )}
 
-          <div className="text-[13px] leading-snug">
-            <div className="mb-3 space-y-3 border-b border-cyan-900/40 pb-3">
-              <dl className="space-y-3">
+          <div className="min-h-0 flex-1 overflow-y-auto text-[12px] leading-snug lg:overflow-y-auto">
+            <div className="mb-2 space-y-2 border-b border-cyan-900/40 pb-2">
+              <dl className="space-y-2">
                 <div>
                   <dt className="text-[12px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{ch.wallet}</dt>
                   <dd className="mt-1.5 break-all text-[13px] text-foreground/90">
@@ -871,19 +913,20 @@ export function FusionChamber() {
               </dl>
             </div>
 
-            <div className="mb-3 space-y-3 border-b border-cyan-900/40 pb-3">
-              <dl className="space-y-3">
+            <div className="mb-2 space-y-2 border-b border-cyan-900/40 pb-2">
+              <dl className="space-y-2">
                 <div>
-                  <dt className="text-[12px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{ch.liqBalance}</dt>
-                  <dd className={cn("mt-1.5", lowEnergy && "text-amber-400", balanceGlitch && "tactical-balance-glitch")}>
-                    <span className="tactical-digits-7seg text-xl tabular-nums tracking-tight text-cyan-100">
+                  <dt className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{ch.liqBalance}</dt>
+                  <dd className={cn("mt-1", lowEnergy && "text-amber-400", balanceGlitch && "tactical-balance-glitch")}>
+                    <span className="tactical-digits-7seg text-lg tabular-nums tracking-tight text-cyan-100 sm:text-xl">
                       {formatLiq(tokenBalance)}
                     </span>{" "}
-                    <span className="inline-flex items-center gap-1.5 align-middle font-mono text-xs tracking-normal text-cyan-500/80">
-                      <TokenIcon className="h-4 w-4" />
-                      {chainTokenSymbol}
-                    </span>
-                    <p className="mt-1.5 text-[9px] leading-snug tracking-wide text-cyan-500/55">{ch.tokenStandardSep41Note}</p>
+                    <PhaserLiqTokenLink
+                      href={expertUrl}
+                      symbol={chainTokenSymbol}
+                      className="align-middle text-xs text-cyan-500/90"
+                    />
+                    <p className="mt-1 text-[8px] leading-snug tracking-wide text-cyan-500/50">{ch.tokenStandardSep41Note}</p>
                   </dd>
                 </div>
                 {classicAsset && (
@@ -905,47 +948,36 @@ export function FusionChamber() {
               </dl>
             </div>
 
-            <div className="mb-3 space-y-3 border-b border-cyan-900/40 pb-3">
-              <dl className="space-y-3">
+            <div className="mb-2 space-y-2 border-b border-cyan-900/40 pb-2">
+              <dl className="space-y-2">
                 <div>
-                  <dt className="text-[12px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{ch.collectionId}</dt>
-                  <dd className="mt-1.5 text-[13px] tabular-nums text-foreground/85">
+                  <dt className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{ch.collectionId}</dt>
+                  <dd className="mt-1 text-[12px] tabular-nums text-foreground/85">
                     {collectionId > 0 ? String(collectionId) : ch.collectionIdProtocol}
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-[12px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{ch.x402Price}</dt>
-                  <dd className="tactical-phosphor mt-1.5 text-cyan-300">
-                    <span className="tactical-digits-7seg text-xl tabular-nums tracking-tight">{stroopsToLiqDisplay(effectivePriceStroops)}</span>{" "}
-                    <span className="inline-flex items-center gap-1.5 align-middle font-mono text-xs tracking-normal text-cyan-500/75">
-                      <TokenIcon className="h-4 w-4" />
-                      {chainTokenSymbol}
-                    </span>
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[12px] font-medium uppercase tracking-[0.14em] text-muted-foreground">TOKEN_EXPERT</dt>
-                  <dd className="mt-1.5">
-                    <a
+                  <dt className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{ch.x402Price}</dt>
+                  <dd className="tactical-phosphor mt-1 text-cyan-300">
+                    <span className="tactical-digits-7seg text-lg tabular-nums tracking-tight sm:text-xl">
+                      {stroopsToLiqDisplay(effectivePriceStroops)}
+                    </span>{" "}
+                    <PhaserLiqTokenLink
                       href={expertUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex max-w-full truncate rounded border border-cyan-500/45 bg-cyan-950/20 px-1.5 py-0.5 text-[10px] text-cyan-300/90 hover:border-cyan-300 hover:text-cyan-100"
-                      title={expertUrl}
-                    >
-                      {chainTokenSymbol} · stellar.expert ↗
-                    </a>
+                      symbol={chainTokenSymbol}
+                      className="align-middle text-xs text-cyan-500/80"
+                    />
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-[12px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{ch.network}</dt>
-                  <dd className="mt-1.5 text-[13px] text-foreground/85">SOROBAN_TESTNET</dd>
+                  <dt className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{ch.network}</dt>
+                  <dd className="mt-1 text-[12px] text-foreground/85">SOROBAN_TESTNET</dd>
                 </div>
               </dl>
             </div>
 
-            <div className="mb-3 space-y-3 pb-1">
-              <dl className="space-y-3">
+            <div className="mb-2 space-y-2 pb-1">
+              <dl className="space-y-2">
                 <div>
                   <dt className="text-[12px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{ch.phaseState}</dt>
                   <dd className="mt-1.5 text-[13px]">
@@ -978,7 +1010,7 @@ export function FusionChamber() {
                 playTacticalUiClick()
                 void handleConnect().catch(() => {})
               }}
-              className="tactical-interactive-glitch tactical-btn tactical-phosphor mt-4 w-full py-2.5 text-[9px] uppercase tracking-widest text-cyan-200 disabled:opacity-50"
+              className="tactical-interactive-glitch tactical-btn tactical-phosphor mt-2.5 w-full py-2.5 text-[9px] uppercase tracking-widest text-cyan-200 disabled:opacity-50"
             >
               <span>
                 {connecting ? `◌ ${ch.uplinking}` : `▣ ${ch.linkWallet}`}
@@ -994,7 +1026,7 @@ export function FusionChamber() {
                 void refreshStatus().catch(() => {})
                 void refreshClassicStatus().catch(() => {})
               }}
-              className="tactical-interactive-glitch tactical-btn mt-4 w-full border-red-500/30 py-2 text-[9px] uppercase tracking-widest text-red-400/80 hover:border-red-500/60"
+              className="tactical-interactive-glitch tactical-btn mt-2.5 w-full border-red-500/30 py-2 text-[9px] uppercase tracking-widest text-red-400/80 hover:border-red-500/60"
             >
               <span>◇ {ch.disconnect}</span>
             </button>
@@ -1041,7 +1073,7 @@ export function FusionChamber() {
           ) : null}
 
           {address ? (
-            <div className="mt-6 rounded border border-cyan-900/50 bg-black/40 p-3">
+            <div className="mt-3 shrink-0 rounded border border-cyan-900/50 bg-black/40 p-2">
               <ArtistAliasControl compact />
             </div>
           ) : null}
@@ -1057,22 +1089,22 @@ export function FusionChamber() {
         </aside>
 
         {/* THE_REACTOR */}
-        <main className="tactical-cockpit-stage relative z-[102] flex h-full min-h-0 flex-col items-stretch overflow-y-auto overflow-x-hidden max-lg:border-b max-lg:border-cyan-500/15">
+        <main className="tactical-cockpit-stage relative z-[102] flex h-full min-h-0 flex-col items-stretch overflow-hidden overflow-x-hidden max-lg:border-b max-lg:border-cyan-500/15">
           <div
             className="pointer-events-none absolute inset-2 rounded-lg bg-gradient-to-b from-cyan-500/[0.045] to-transparent shadow-[inset_0_1px_0_rgba(34,211,238,0.05)] sm:inset-3"
             aria-hidden
           />
 
-          <div className="tactical-cockpit-stage__content relative flex min-h-0 flex-1 flex-col px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-7">
+          <div className="tactical-cockpit-stage__content relative flex h-full min-h-0 flex-1 flex-col overflow-hidden px-3 py-3 sm:px-5 sm:py-4 lg:px-6 lg:py-4">
           {/* Exhibition pedestal — NFT de utilidad PHASE (Soroban) */}
-          <div className="relative z-10 mx-auto mb-0 w-full min-h-0 max-w-[min(76rem,100%)] shrink-0">
-            <p className="tactical-phosphor mb-1 text-center text-[11px] uppercase tracking-[0.32em] text-cyan-500/60 sm:text-xs">
+          <div className="relative z-10 mx-auto mb-0 flex min-h-0 w-full max-w-[min(76rem,100%)] flex-1 flex-col">
+            <p className="tactical-phosphor mb-0.5 shrink-0 text-center text-[10px] uppercase tracking-[0.32em] text-cyan-500/60 sm:text-[11px]">
               ◈ {ch.exhibitionPedestal}
             </p>
-            <p className="mb-1.5 text-center text-[10px] uppercase tracking-[0.24em] text-cyan-400/85 tactical-phosphor sm:text-[11px]">
+            <p className="mb-1 shrink-0 text-center text-[9px] uppercase tracking-[0.24em] text-cyan-400/85 tactical-phosphor sm:text-[10px]">
               {collectionPedestalLine}
             </p>
-            <div className="tactical-frame flex min-h-[min(22vh,180px)] max-h-[min(58dvh,560px)] flex-col items-stretch gap-2 overflow-y-auto rounded-xl border border-cyan-500/18 bg-[oklch(0.055_0.02_220)]/90 px-4 py-4 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.08),inset_0_0_48px_rgba(0,0,0,0.5)] sm:min-h-[min(24vh,200px)] sm:gap-3 sm:px-5 sm:py-4">
+            <div className="tactical-frame flex min-h-[min(10vh,88px)] max-h-[min(30dvh,240px)] flex-1 flex-col items-stretch gap-1.5 overflow-y-auto rounded-xl border border-cyan-500/18 bg-[oklch(0.055_0.02_220)]/90 px-3 py-2 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.08),inset_0_0_48px_rgba(0,0,0,0.5)] sm:min-h-[min(12vh,104px)] sm:max-h-[min(32dvh,280px)] sm:gap-2 sm:px-4 sm:py-3">
               {mintingArtifact ? (
                 <div className="text-center">
                   <div className="mx-auto mb-2 h-12 w-12 border-2 border-cyan-500/60 border-t-transparent animate-spin rounded-full" />
@@ -1091,8 +1123,6 @@ export function FusionChamber() {
                   <PhaseArtifactVisualizer
                     mode="verified"
                     contractId={TOKEN_ADDRESS}
-                    expertUrl={expertUrl}
-                    expertLabel={ch.stellarExpert}
                     ownerTruncated={
                       onChainTokenOwner ? truncateAddress(onChainTokenOwner) : truncateAddress(address)
                     }
@@ -1129,14 +1159,14 @@ export function FusionChamber() {
                 <div className="flex w-full max-h-full min-h-0 flex-col items-center gap-2 overflow-y-auto sm:gap-3">
                   <div className="tactical-frame w-full shrink-0 px-3 py-2 text-center shadow-[0_0_16px_rgba(0,255,255,0.08)]">
                     <p className="text-[8px] uppercase tracking-[0.35em] text-cyan-500/55">{ch.x402MintPrice}</p>
-                    <p className="tactical-phosphor mt-0.5 text-2xl tracking-wider text-cyan-200 sm:text-3xl">
+                    <p className="tactical-phosphor mt-0.5 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xl tracking-wider text-cyan-200 sm:text-2xl">
                       <span className="tactical-digits-7seg">{stroopsToLiqDisplay(effectivePriceStroops)}</span>
-                      <span className="ml-2 align-middle font-mono text-sm tracking-normal text-cyan-500/75">
-                        <span className="inline-flex items-center gap-1.5">
-                          <TokenIcon className="h-4 w-4" />
-                          {chainTokenSymbol}
-                        </span>
-                      </span>
+                      <PhaserLiqTokenLink
+                        href={expertUrl}
+                        symbol={chainTokenSymbol}
+                        iconClassName="h-4 w-4 sm:h-5 sm:w-5"
+                        className="text-sm sm:text-base"
+                      />
                     </p>
                     {collectionId > 0 && collectionInfo && (
                       <p className="mt-2 text-[9px] uppercase tracking-widest text-muted-foreground/80">
@@ -1173,7 +1203,7 @@ export function FusionChamber() {
             </div>
           </div>
 
-          <p className="tactical-phosphor mb-0.5 mt-2 shrink-0 text-center text-[11px] uppercase tracking-[0.36em] text-cyan-500/55 sm:mt-3 sm:text-xs">
+          <p className="tactical-phosphor mb-0.5 mt-1 shrink-0 text-center text-[10px] uppercase tracking-[0.36em] text-cyan-500/55 sm:text-[11px]">
             ◇ {ch.theReactor}
           </p>
 
@@ -1203,7 +1233,7 @@ export function FusionChamber() {
                   void initiateX402().catch(() => {})
                 }}
                 className={cn(
-                  "tactical-interactive-glitch tactical-btn tactical-btn-x402 relative py-3.5 text-xs uppercase tracking-[0.18em] sm:py-4 sm:text-sm",
+                  "tactical-interactive-glitch tactical-btn tactical-btn-x402 relative py-2.5 text-xs uppercase tracking-[0.18em] sm:py-3 sm:text-sm",
                   (!canInitializeGenesisSupply && (lowEnergy || !address))
                     ? "cursor-not-allowed opacity-40"
                     : "text-cyan-100 tactical-btn-x402--armed",
@@ -1233,11 +1263,12 @@ export function FusionChamber() {
               tokenBalance={tokenBalance}
               onNarrativeLog={appendLog}
               onRefreshBalance={refreshStatus}
-              className="relative z-10 mx-auto mt-3 w-full max-w-[min(52rem,100%)] px-1 sm:mt-4"
+              compact
+              className="relative z-10 mx-auto mt-1.5 w-full max-w-[min(52rem,100%)] px-0 sm:mt-2"
             />
           ) : null}
 
-          <div className="relative z-10 mt-5 w-full min-h-0 max-w-[min(52rem,100%)] shrink-0 border-t border-cyan-500/15 pt-3">
+          <div className="relative z-10 mt-2 w-full min-h-0 max-w-[min(52rem,100%)] shrink-0 border-t border-cyan-500/15 pt-2">
             <div className="mb-2 flex items-center justify-between gap-2">
               <p className="tactical-phosphor text-[10px] font-semibold uppercase tracking-[0.25em] text-cyan-300/90">
                 ▣ {ch.community}
@@ -1262,7 +1293,7 @@ export function FusionChamber() {
               </p>
             )}
             {catalogLoadState === "done" && (
-              <div className="flex max-h-[5.5rem] max-w-full gap-1.5 overflow-x-auto overflow-y-hidden pb-1 [-ms-overflow-style:none] [scrollbar-width:thin]">
+              <div className="flex max-h-[4rem] max-w-full gap-1.5 overflow-x-auto overflow-y-hidden pb-0.5 [-ms-overflow-style:none] [scrollbar-width:thin]">
                 <Link
                   href="/chamber"
                   className={cn(
