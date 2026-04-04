@@ -4,7 +4,7 @@
  * la misma resolución que aquí cuando no hay CLASSIC_LIQ_ISSUER_SECRET.
  */
 
-import { Asset, rpc, StrKey } from "@stellar/stellar-sdk"
+import { Asset, rpc, scValToNative, StrKey, xdr } from "@stellar/stellar-sdk"
 import {
   classicLiqAssetConfigFromPublicEnv,
   classicLiqCodeForStellarToml,
@@ -88,19 +88,68 @@ export function logUnknownStellarError(tag: string, err: unknown): void {
   console.error(`[${tag}]`, err instanceof Error ? err.stack ?? err.message : err)
 }
 
+function safeScValNative(v: xdr.ScVal): string | null {
+  try {
+    const n = scValToNative(v)
+    if (n === null || n === undefined) return null
+    if (typeof n === "bigint") return n.toString()
+    if (typeof n === "object") return JSON.stringify(n)
+    return String(n)
+  } catch {
+    return null
+  }
+}
+
 /** Texto breve para API cuando `getTransaction` devuelve FAILED (mint Soroban). */
 export function summarizeSorobanFailedMint(st: rpc.Api.GetFailedTransactionResponse): string {
   const parts: string[] = [`ledger=${st.ledger}`]
+  let ihfName: string | undefined
   try {
     const results = st.resultXdr?.result()?.results()
     const first = results?.[0]
     if (first) {
       const tr = first.tr()
-      const sw = tr?.switch()
-      if (sw != null) parts.push(`op=${sw.name}`)
+      parts.push(`op=${tr.switch().name}`)
+      if (tr.switch().name === "invokeHostFunction") {
+        try {
+          const ihr = tr.invokeHostFunctionResult()
+          ihfName = ihr.switch().name
+          parts.push(`ihf=${ihfName}`)
+        } catch {
+          parts.push("ihf=?")
+        }
+      }
     }
   } catch {
-    /* XDR opcional */
+    parts.push("op=?")
   }
+
+  const evs = st.diagnosticEventsXdr
+  if (evs?.length) {
+    const fragments: string[] = []
+    const start = Math.max(0, evs.length - 14)
+    for (let i = start; i < evs.length; i++) {
+      try {
+        const ce = evs[i]!.event()
+        const body = ce.body().v0()
+        const topics = body.topics()
+        const tNat = topics.map((t) => safeScValNative(t)).filter(Boolean) as string[]
+        const dNat = safeScValNative(body.data())
+        const chunk = [...tNat, dNat].filter(Boolean).join("·")
+        if (chunk) fragments.push(chunk)
+      } catch {
+        /* siguiente evento */
+      }
+    }
+    const tail = fragments.slice(-5).join(" || ")
+    if (tail) parts.push(`diag=${tail.slice(0, 480)}`)
+  }
+
+  if (ihfName === "invokeHostFunctionTrapped") {
+    parts.push(
+      "nota=ihf_trapped: el WASM del contrato abortó (p. ej. Unauthorized, límite supply, panic). Verifica que ADMIN_SECRET_KEY sea el minter del TOKEN_ADDRESS desplegado y que el contrato coincida con testnet.",
+    )
+  }
+
   return parts.join(" · ")
 }
