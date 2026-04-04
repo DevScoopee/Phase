@@ -1,8 +1,7 @@
+import os from "node:os"
 import path from "node:path"
 
-/** Fixed `.data` segment + literal filenames so Next/Vercel file tracing does not pull in the whole repo. */
-const DATA_DIR = ".data" as const
-
+/** Local filenames only — Next file tracing stays predictable. */
 const FILES = {
   nftListings: "nft-listings.json",
   faucetClaims: "faucet-claims.json",
@@ -12,6 +11,21 @@ const FILES = {
 
 export type ServerDataFile = keyof typeof FILES
 
+/**
+ * Writable root for JSON sidecars (faucet, aliases, listings).
+ * - Local: `<cwd>/.data`
+ * - Vercel: `<os.tmpdir()>/phase-server-data` (project dir is read-only)
+ * - Override: `PHASE_SERVER_DATA_DIR` (e.g. mounted volume)
+ */
+function serverDataRoot(): string {
+  const fromEnv = process.env.PHASE_SERVER_DATA_DIR?.trim()
+  if (fromEnv) return fromEnv
+  if (process.env.VERCEL) {
+    return path.join(os.tmpdir(), "phase-server-data")
+  }
+  return path.join(process.cwd(), ".data")
+}
+
 export function serverDataJsonPath(key: ServerDataFile): string {
-  return path.join(process.cwd(), DATA_DIR, FILES[key])
+  return path.join(serverDataRoot(), FILES[key])
 }

@@ -81,14 +81,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: invalid }, { status: 400 })
   }
 
-  const profiles = await readProfiles()
-  profiles[wallet] = { alias: aliasRaw, updatedAt: Date.now() }
-  await writeProfiles(profiles)
-
-  return NextResponse.json({
-    ok: true,
-    walletAddress: wallet,
-    alias: aliasRaw,
-    updatedAt: profiles[wallet].updatedAt,
-  })
+  try {
+    const profiles = await readProfiles()
+    profiles[wallet] = { alias: aliasRaw, updatedAt: Date.now() }
+    await writeProfiles(profiles)
+    return NextResponse.json({
+      ok: true,
+      walletAddress: wallet,
+      alias: aliasRaw,
+      updatedAt: profiles[wallet].updatedAt,
+    })
+  } catch (err) {
+    console.error("[artist-profile] POST write failed:", err)
+    return NextResponse.json(
+      {
+        error:
+          "No se pudo guardar el alias en el servidor. Si usas un volumen persistente, define PHASE_SERVER_DATA_DIR.",
+      },
+      { status: 503 },
+    )
+  }
 }
