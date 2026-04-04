@@ -1,5 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Rust build trees are committed in this repo; exclude from serverless traces (250 MB limit on Vercel).
+  outputFileTracingExcludes: {
+    "*": ["./contracts/**/*", "./scripts/**/*"],
+  },
   typescript: {
     ignoreBuildErrors: true,
   },

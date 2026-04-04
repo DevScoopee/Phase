@@ -3,8 +3,7 @@ import { promises as fs } from "fs"
 import path from "path"
 import { NextRequest, NextResponse } from "next/server"
 import { StrKey } from "@stellar/stellar-sdk"
-
-const DATA_FILE = process.env.NFT_LISTINGS_FILE?.trim() || ".data/nft-listings.json"
+import { serverDataJsonPath } from "@/lib/server-data-paths"
 
 type Listing = {
   id: string
@@ -17,7 +16,7 @@ type Listing = {
 }
 
 function dataPath() {
-  return path.join(process.cwd(), DATA_FILE)
+  return serverDataJsonPath("nftListings")
 }
 
 async function readListings(): Promise<Listing[]> {

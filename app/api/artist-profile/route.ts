@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { NextRequest, NextResponse } from "next/server"
 import { StrKey } from "@stellar/stellar-sdk"
+import { serverDataJsonPath } from "@/lib/server-data-paths"
 
 type ArtistProfile = {
   alias: string
@@ -15,8 +16,7 @@ const ALIAS_MAX = 24
 const ALIAS_PATTERN = /^[A-Za-z0-9 _.-]+$/
 
 function profilesFilePath() {
-  const rel = process.env.ARTIST_PROFILES_FILE?.trim() || ".data/artist-profiles.json"
-  return path.resolve(process.cwd(), rel)
+  return serverDataJsonPath("artistProfiles")
 }
 
 async function readProfiles(): Promise<ArtistProfiles> {

@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { NextRequest, NextResponse } from "next/server"
+import { serverDataJsonPath } from "@/lib/server-data-paths"
 import {
   Asset,
   BASE_FEE,
@@ -21,8 +22,7 @@ import { HORIZON_URL } from "@/lib/phase-protocol"
 type ClassicClaims = Record<string, { classicFundAt?: number }>
 
 function classicClaimsFilePath() {
-  const rel = process.env.CLASSIC_LIQ_CLAIMS_FILE?.trim() || ".data/classic-liq-claims.json"
-  return path.resolve(process.cwd(), rel)
+  return serverDataJsonPath("classicLiqClaims")
 }
 
 async function readClassicClaims(): Promise<ClassicClaims> {

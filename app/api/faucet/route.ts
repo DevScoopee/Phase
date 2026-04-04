@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
+import { serverDataJsonPath } from "@/lib/server-data-paths"
 import {
   Address,
   BASE_FEE,
@@ -53,8 +54,7 @@ type RewardStatus = {
 }
 
 function claimsFilePath() {
-  const rel = process.env.FAUCET_CLAIMS_FILE?.trim() || ".data/faucet-claims.json"
-  return path.resolve(process.cwd(), rel)
+  return serverDataJsonPath("faucetClaims")
 }
 
 async function readClaims(): Promise<FaucetClaims> {
