@@ -1,0 +1,23 @@
+# Secrets (JWT Pinata, etc.)
+.env.local
+.env*.local
+scripts/.env
+scripts/.env.*
+!scripts/.env.example
+
+# Next.js
+.next/
+out/
+*.tsbuildinfo
+
+# Dependencies
+node_modules/
+
+# Local runtime data (claims/profiles/cache)
+.data/
+
+# Logs
+*.log
+
+# Local assistant metadata
+.claude/

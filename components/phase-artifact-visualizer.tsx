@@ -1,0 +1,562 @@
+"use client"
+
+import type { ArtifactLabelsCopy } from "@/lib/phase-copy"
+import { viewerSignatureShort } from "@/lib/viewer-signature"
+import { cn } from "@/lib/utils"
+import { createPortal } from "react-dom"
+import { useCallback, useEffect, useId, useState } from "react"
+
+export type ArtifactVerificationMode = "locked" | "verifying" | "verified"
+
+const GLITCH_CHARS = "ABCDEFGHKMNPQRSTUVWXYZ023456789#%░▒"
+
+function scramblePreservingShape(target: string): string {
+  let out = ""
+  for (let i = 0; i < target.length; i++) {
+    const ch = target[i]!
+    if (!/[A-Za-z0-9#%·/]/.test(ch)) {
+      out += ch
+      continue
+    }
+    out += GLITCH_CHARS[(Math.random() * GLITCH_CHARS.length) | 0]!
+  }
+  return out
+}
+
+function formatPowerBp(bp: number) {
+  const c = Math.min(10000, Math.max(0, bp))
+  return `${(c / 100).toFixed(0)}%`
+}
+
+function GlitchDecryptField({
+  finalText,
+  active,
+  durationMs = 1500,
+  className,
+}: {
+  finalText: string
+  active: boolean
+  durationMs?: number
+  className?: string
+}) {
+  const [text, setText] = useState(() => (active ? scramblePreservingShape(finalText) : finalText))
+
+  useEffect(() => {
+    if (!active) {
+      setText(finalText)
+      return
+    }
+    setText(scramblePreservingShape(finalText))
+    const start = Date.now()
+    const id = window.setInterval(() => {
+      if (Date.now() - start >= durationMs) {
+        setText(finalText)
+        window.clearInterval(id)
+        return
+      }
+      setText(scramblePreservingShape(finalText))
+    }, 52)
+    return () => window.clearInterval(id)
+  }, [active, finalText, durationMs])
+
+  return <span className={cn("min-w-0 text-right font-mono", className)}>{text}</span>
+}
+
+type Props = {
+  mode: ArtifactVerificationMode
+  ownerTruncated: string
+  serial: number
+  energyLevelBp: number
+  collectionTitle?: string
+  /** Nombre legible para fila pública COLLECTION_NAME. */
+  collectionDisplayName?: string
+  imageUrl?: string | null
+  className?: string
+  labels: ArtifactLabelsCopy
+  contractId: string
+  expertUrl?: string
+  expertLabel?: string
+  onDownloadCertificate?: () => void
+  viewerAddress?: string | null
+  isOwner?: boolean
+  authenticityPending?: boolean
+  onAccessPrivateMetadata?: () => void
+  /** `get_total_minted` / cap — null si RPC falla o aún no hay dato. */
+  supplyMinted?: number | null
+  supplyCap?: number | null
+}
+
+function truncateContractMid(id: string) {
+  const t = id.trim()
+  if (!t) return "—"
+  if (t.length <= 12) return t
+  return `${t.slice(0, 4)}…${t.slice(-4)}`
+}
+
+/**
+ * Monitor de escasez y propiedad: panel público (gris), canal privado (cian) con descifrado animado.
+ */
+export function PhaseArtifactVisualizer({
+  mode,
+  ownerTruncated,
+  serial,
+  energyLevelBp,
+  collectionTitle,
+  collectionDisplayName,
+  imageUrl,
+  className,
+  labels,
+  contractId,
+  expertUrl,
+  expertLabel,
+  onDownloadCertificate,
+  viewerAddress = null,
+  isOwner = false,
+  authenticityPending = false,
+  onAccessPrivateMetadata,
+  supplyMinted = null,
+  supplyCap = null,
+}: Props) {
+  void ownerTruncated
+
+  const asciiInner = 38
+  const line = (inner: string) => {
+    const t = inner.length > asciiInner ? `${inner.slice(0, asciiInner - 1)}…` : inner
+    return `║ ${t.padEnd(asciiInner, " ")} ║`
+  }
+  const isVerified = mode === "verified"
+  const isRestricted = mode === "locked" || mode === "verifying"
+
+  const head =
+    collectionTitle != null && collectionTitle.length > 0
+      ? `  ${collectionTitle.slice(0, 36)}`
+      : `  ${labels.registeredDefault} `
+
+  const bannerText =
+    mode === "verified"
+      ? labels.systemActive
+      : mode === "verifying"
+        ? labels.verifying
+        : labels.terminalRestricted
+
+  const topBlock = ["╔════════════════════════════════════════╗", line(head), "╠════════════════════════════════════════╣"].join("\n")
+
+  const powerStateLabel = isVerified ? labels.stateSolid : labels.stateLiquid
+  const powerFinalPrivate = `${powerStateLabel} · ${formatPowerBp(energyLevelBp)}`
+  const secretFinal = `#${Math.max(0, Math.floor(serial))}`
+  const contractPublic = truncateContractMid(contractId)
+
+  const publicCollectionLine =
+    collectionDisplayName?.trim() ||
+    (collectionTitle != null && collectionTitle.length > 0 ? collectionTitle.replace(/\s*\/\/.*$/, "").trim() : "") ||
+    "—"
+
+  const supplyLine =
+    supplyMinted != null && supplyCap != null ? `[ ${supplyMinted} / ${supplyCap} ]` : `[ — / — ]`
+  const supplyRemainingRatio =
+    supplyCap != null && supplyCap > 0 && supplyMinted != null
+      ? (supplyCap - supplyMinted) / supplyCap
+      : 1
+  const supplyAlert = supplyCap != null && supplyCap > 0 && supplyMinted != null && supplyRemainingRatio < 0.1
+
+  const trimmedImg = imageUrl?.trim() ?? ""
+  const protectArt = Boolean(trimmedImg) && (!isVerified || authenticityPending || !isOwner)
+  const ownerUnlocked = isVerified && isOwner && !authenticityPending
+  const eligibleForDecrypt = ownerUnlocked && Boolean(trimmedImg)
+
+  const [lightboxOpen, setLightboxOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  const [decrypting, setDecrypting] = useState(false)
+  const [copiedContract, setCopiedContract] = useState(false)
+  const lightboxTitleId = useId()
+
+  useEffect(() => {
+    if (!eligibleForDecrypt) {
+      setDecrypting(false)
+      return
+    }
+    setDecrypting(true)
+    const t = window.setTimeout(() => setDecrypting(false), 1500)
+    return () => window.clearTimeout(t)
+  }, [eligibleForDecrypt, trimmedImg])
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const closeLightbox = useCallback(() => setLightboxOpen(false), [])
+  const copyContractId = useCallback(async () => {
+    if (typeof navigator === "undefined" || !contractId) return
+    try {
+      await navigator.clipboard.writeText(contractId)
+      setCopiedContract(true)
+      window.setTimeout(() => setCopiedContract(false), 1000)
+    } catch {
+      setCopiedContract(false)
+    }
+  }, [contractId])
+
+  useEffect(() => {
+    if (!lightboxOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeLightbox()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [lightboxOpen, closeLightbox])
+
+  const frameClass = isVerified
+    ? ownerUnlocked
+      ? "border-cyan-500/40 bg-gradient-to-b from-cyan-950/40 to-black/80 shadow-[0_0_32px_rgba(34,211,238,0.22)]"
+      : "border-orange-600/30 bg-gradient-to-b from-orange-950/25 to-black/85 shadow-[0_0_20px_rgba(234,88,12,0.1)]"
+    : "border-orange-600/25 bg-gradient-to-b from-orange-950/20 to-black/85 shadow-[0_0_20px_rgba(234,88,12,0.08)]"
+
+  const preClass =
+    "text-left text-[11px] sm:text-[12px] leading-snug tracking-tight select-all font-mono text-zinc-400/95"
+
+  const bannerClass = isVerified
+    ? ownerUnlocked
+      ? "border-cyan-500/50 bg-cyan-950/55 text-cyan-200/95 tactical-phosphor shadow-[0_0_14px_rgba(34,211,238,0.15)]"
+      : "border-orange-500/40 bg-orange-950/45 text-orange-200/90"
+    : "border-orange-500/35 bg-orange-950/40 text-orange-200/90"
+
+  const showArtFirst = isRestricted && Boolean(trimmedImg)
+
+  const usePixelTreatment = Boolean(trimmedImg) && !isVerified
+  const useBlurOnArt =
+    Boolean(trimmedImg) && isVerified && (!isOwner || authenticityPending)
+
+  const holoBlock = (
+    <div className="relative z-[2] w-full">
+      <div
+        className={cn(
+          "art-retro-monitor relative mx-auto flex w-full max-w-[min(100%,28rem)] items-center justify-center px-2 py-4 sm:px-3 sm:py-5",
+          "min-h-[min(42vw,220px)] max-h-[min(58vh,420px)] sm:min-h-[240px] sm:max-h-[440px]",
+          !trimmedImg && "min-h-[72px] max-h-[120px]",
+          (isRestricted || protectArt || (eligibleForDecrypt && decrypting)) && "phase-artifact-monitor--locked",
+          ownerUnlocked && "border-cyan-500/45",
+          protectArt && !ownerUnlocked && "border-orange-500/35",
+        )}
+      >
+        {trimmedImg ? (
+          <button
+            type="button"
+            onClick={() => setLightboxOpen(true)}
+            className={cn(
+              "group relative z-[2] mx-auto flex max-h-full w-full cursor-zoom-in flex-col items-center gap-2 border-0 bg-transparent p-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-black",
+              protectArt ? "focus-visible:ring-orange-400/70" : "focus-visible:ring-cyan-400/70",
+            )}
+            aria-label={labels.expandPreview}
+          >
+            <div
+              className={cn(
+                "tactical-holo-wrap relative w-full max-w-full justify-center overflow-hidden rounded-sm",
+                protectArt && "phase-artifact-holo-locked",
+              )}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={trimmedImg}
+                alt=""
+                className={cn(
+                  "art-retro-monitor__img tactical-holo-img max-h-[min(52vh,400px)] w-auto max-w-full object-contain transition-[filter] duration-500 sm:max-h-[min(56vh,420px)]",
+                  usePixelTreatment && "phase-artifact-img-pixel",
+                  useBlurOnArt && "blur-[6px] sm:blur-[5px]",
+                  eligibleForDecrypt && !decrypting && "blur-0",
+                  eligibleForDecrypt && decrypting && "blur-[3px] brightness-[0.92]",
+                )}
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                onError={(e) => {
+                  e.currentTarget.style.display = "none"
+                }}
+              />
+              {eligibleForDecrypt && decrypting && (
+                <div
+                  className="phase-artifact-decrypt-overlay pointer-events-none absolute inset-0 z-[4] flex items-center justify-center bg-black/25"
+                  aria-hidden
+                >
+                  <span className="max-w-[95%] text-center font-mono text-[clamp(0.6rem,3.2vw,0.95rem)] font-bold uppercase leading-tight tracking-[0.28em] text-cyan-300/95 tactical-phosphor sm:text-base sm:tracking-[0.32em]">
+                    {labels.decryptingImage}
+                  </span>
+                </div>
+              )}
+              {!isOwner && protectArt && (
+                <div
+                  className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center overflow-hidden"
+                  aria-hidden
+                >
+                  <span className="max-w-[min(100%,22rem)] px-2 text-center font-mono text-[clamp(0.45rem,2.2vw,0.7rem)] font-bold uppercase leading-tight tracking-[0.12em] text-white mix-blend-overlay opacity-95 [transform:rotate(45deg)] sm:text-[10px] sm:tracking-[0.18em]">
+                    {authenticityPending ? labels.pendingOwnershipVerification : labels.previewOnly}
+                  </span>
+                </div>
+              )}
+            </div>
+            <span
+              className={cn(
+                "font-mono text-[8px] uppercase tracking-[0.35em] opacity-80 group-hover:opacity-100 sm:text-[9px]",
+                protectArt
+                  ? "text-orange-400/75 group-hover:text-orange-200"
+                  : "text-cyan-400/85 group-hover:text-cyan-200",
+              )}
+            >
+              {labels.expandPreview}
+            </span>
+          </button>
+        ) : (
+          <span
+            className={cn(
+              "relative z-[3] px-2 text-center font-mono text-[9px] uppercase tracking-[0.35em]",
+              ownerUnlocked ? "tactical-phosphor text-cyan-400/70" : "text-orange-400/55",
+            )}
+          >
+            {labels.noVisual}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+
+  const bannerEl = (
+    <div className={cn("relative z-[2]", showArtFirst ? "mb-2 mt-1" : "mb-2")}>
+      <p className={cn("border px-2 py-1.5 text-center font-mono text-[10px] uppercase tracking-[0.24em]", bannerClass)}>
+        {bannerText}
+      </p>
+      {isRestricted && (
+        <p className="mt-1.5 text-center font-mono text-[9px] uppercase leading-snug tracking-[0.12em] text-orange-300/85">
+          {labels.accessDeniedLine}
+        </p>
+      )}
+    </div>
+  )
+
+  const publicMetaPanel = (
+    <div className="mx-auto mt-1 w-full max-w-[min(100%,24rem)] space-y-1 border border-zinc-700/35 bg-black/40 px-2.5 py-2 font-mono text-[10px] uppercase tracking-wide text-zinc-400/95 sm:text-[11px]">
+      <div className="flex justify-between gap-2 border-b border-zinc-800/80 pb-1">
+        <span className="shrink-0 text-zinc-600">{labels.monitorCollectionName}</span>
+        <span className="min-w-0 max-w-[65%] truncate text-right normal-case text-zinc-500" title={publicCollectionLine}>
+          {publicCollectionLine}
+        </span>
+      </div>
+      <div className="flex items-center justify-between gap-2 border-b border-zinc-800/80 pb-1">
+        <span className="shrink-0 text-zinc-600">{labels.monitorContractAddr}</span>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="min-w-0 truncate text-right text-zinc-500" title={contractId || undefined}>
+            {contractPublic}
+          </span>
+          <button
+            type="button"
+            onClick={() => void copyContractId()}
+            className="shrink-0 rounded border border-cyan-500/40 bg-cyan-950/25 px-1.5 py-0.5 text-[8px] font-bold text-cyan-300/90 transition-colors hover:border-cyan-300 hover:text-cyan-100"
+            title={copiedContract ? "Copied" : "Copy"}
+            aria-label="Copy PHASER_LIQ contract address"
+          >
+            {copiedContract ? "OK" : "COPY"}
+          </button>
+        </div>
+      </div>
+      <div className="flex justify-between gap-2 border-b border-zinc-800/80 pb-1">
+        <span className="shrink-0 text-zinc-600">{labels.supplyStabilized}</span>
+        <span
+          className={cn(
+            "shrink-0 tabular-nums tracking-tight",
+            supplyAlert ? "font-bold text-red-400 tactical-phosphor [text-shadow:0_0_12px_rgba(248,113,113,0.45)]" : "text-zinc-500",
+          )}
+        >
+          {supplyLine}
+        </span>
+      </div>
+      <p className="border-t border-zinc-800/80 pt-1.5 text-[9px] leading-snug tracking-[0.08em] text-zinc-500/95">
+        {labels.readonly}
+      </p>
+      {expertUrl && expertLabel && (
+        <a
+          href={expertUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex w-full items-center justify-center border border-cyan-500/40 bg-cyan-950/30 px-2 py-1.5 text-[10px] font-bold tracking-[0.14em] text-cyan-200 transition-colors hover:border-cyan-300 hover:text-cyan-100"
+        >
+          {expertLabel}
+        </a>
+      )}
+    </div>
+  )
+
+  const privateMonitorPanel =
+    ownerUnlocked ? (
+      <div className="relative z-[2] mx-auto mt-3 w-full max-w-[min(100%,24rem)] space-y-2 border border-cyan-400/35 bg-cyan-950/25 px-2.5 py-2.5 shadow-[0_0_20px_rgba(34,211,238,0.12)]">
+        <p className="text-center font-mono text-[8px] font-bold uppercase tracking-[0.3em] text-cyan-300 tactical-phosphor sm:text-[9px]">
+          {labels.privateChannelUnlocked}
+        </p>
+        <div className="flex items-start justify-between gap-2 border-b border-cyan-500/15 pb-2">
+          <span className="shrink-0 pt-0.5 font-mono text-[8px] text-cyan-600/95 sm:text-[9px]">{labels.secretId}</span>
+          <GlitchDecryptField
+            key={`secret-${serial}`}
+            finalText={secretFinal}
+            active={ownerUnlocked}
+            className="text-[9px] text-cyan-100 tactical-phosphor sm:text-[10px]"
+          />
+        </div>
+        <div className="flex items-start justify-between gap-2 border-b border-cyan-500/15 pb-2">
+          <span className="shrink-0 pt-0.5 font-mono text-[8px] text-cyan-600/95 sm:text-[9px]">{labels.powerLevel}</span>
+          <GlitchDecryptField
+            key={`pow-${serial}-${energyLevelBp}`}
+            finalText={powerFinalPrivate}
+            active={ownerUnlocked}
+            className="text-[9px] text-cyan-100 tactical-phosphor sm:text-[10px]"
+          />
+        </div>
+        <div className="flex items-start justify-between gap-2 border-b border-cyan-500/15 pb-2">
+          <span className="shrink-0 pt-0.5 font-mono text-[8px] text-cyan-600/95 sm:text-[9px]">{labels.holderSignature}</span>
+          <span className="max-w-[55%] break-all text-right font-mono text-[9px] text-cyan-100 tactical-phosphor sm:text-[10px]">
+            {viewerSignatureShort(viewerAddress)}
+          </span>
+        </div>
+        <div className="space-y-1.5 pt-0.5">
+          <span className="block font-mono text-[8px] uppercase tracking-wide text-cyan-600/90 sm:text-[9px]">
+            {labels.rawMetadata}
+          </span>
+          {onAccessPrivateMetadata && (
+            <button
+              type="button"
+              onClick={onAccessPrivateMetadata}
+              className="tactical-phosphor w-full border-2 border-cyan-400/55 bg-cyan-950/45 py-2 text-[9px] font-bold uppercase tracking-[0.2em] text-cyan-100 shadow-[0_0_16px_rgba(34,211,238,0.28)] transition-colors hover:border-cyan-300 hover:bg-cyan-900/50 hover:text-white"
+            >
+              {labels.accessPrivateMetadata}
+            </button>
+          )}
+        </div>
+      </div>
+    ) : null
+
+  const asciiBlock = (
+    <div className="relative z-[2] mx-auto max-w-[min(100%,24rem)] py-1">
+      <div className="tactical-pedestal-scene">
+        <div className="tactical-pedestal-spin">
+          <pre className={cn(preClass)}>{topBlock}</pre>
+        </div>
+      </div>
+      {publicMetaPanel}
+      {privateMonitorPanel}
+    </div>
+  )
+
+  const footerOwnerActions = ownerUnlocked && (onDownloadCertificate || expertUrl) && (
+    <div className="relative z-[2] mt-3 flex flex-col gap-2 sm:flex-row sm:justify-center sm:gap-3">
+      {onDownloadCertificate && (
+        <button
+          type="button"
+          onClick={onDownloadCertificate}
+          className="tactical-phosphor border-2 border-cyan-400/55 bg-cyan-950/40 px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.2)] transition-colors hover:border-cyan-300 hover:bg-cyan-900/45 hover:text-white"
+        >
+          {labels.downloadCertificate}
+        </button>
+      )}
+      {expertUrl && expertLabel && (
+        <a
+          href={expertUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="tactical-phosphor inline-flex items-center justify-center border-2 border-cyan-400/55 bg-cyan-950/35 px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.2)] transition-colors hover:border-cyan-300 hover:bg-cyan-900/40 hover:text-white"
+        >
+          {expertLabel}
+        </a>
+      )}
+    </div>
+  )
+
+  const lightbox =
+    mounted &&
+    lightboxOpen &&
+    trimmedImg &&
+    createPortal(
+      <div
+        className="fixed inset-0 z-[500] flex items-center justify-center bg-black/92 p-3 sm:p-6"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={lightboxTitleId}
+        onClick={closeLightbox}
+      >
+        <div
+          className="relative flex max-h-[92vh] max-w-[min(96vw,1200px)] flex-col items-center gap-3"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p id={lightboxTitleId} className="sr-only">
+            {labels.expandPreview}
+          </p>
+          <button
+            type="button"
+            onClick={closeLightbox}
+            className="tactical-phosphor absolute -top-1 right-0 z-[2] border border-orange-500/50 bg-orange-950/80 px-3 py-1.5 font-mono text-[9px] font-bold uppercase tracking-widest text-orange-200 hover:bg-orange-900/90 sm:right-1"
+          >
+            {labels.closePreview}
+          </button>
+          <div className="relative inline-block max-w-full">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={trimmedImg}
+              alt=""
+              className={cn(
+                "max-h-[min(88vh,900px)] max-w-full object-contain shadow-[0_0_40px_rgba(251,146,60,0.15)] transition-[filter] duration-500",
+                usePixelTreatment && "phase-artifact-img-pixel",
+                useBlurOnArt && "blur-[7px] sm:blur-[6px]",
+                eligibleForDecrypt && !decrypting && "blur-0",
+                eligibleForDecrypt && decrypting && "blur-[4px] brightness-90",
+              )}
+              loading="eager"
+              referrerPolicy="no-referrer"
+            />
+            {eligibleForDecrypt && decrypting && (
+              <div
+                className="phase-artifact-decrypt-overlay pointer-events-none absolute inset-0 z-[3] flex items-center justify-center bg-black/30"
+                aria-hidden
+              >
+                <span className="text-center font-mono text-lg font-bold uppercase tracking-[0.32em] text-cyan-300 tactical-phosphor sm:text-xl">
+                  {labels.decryptingImage}
+                </span>
+              </div>
+            )}
+            {!isOwner && protectArt && (
+              <div
+                className="pointer-events-none absolute inset-0 z-[4] flex items-center justify-center overflow-hidden"
+                aria-hidden
+              >
+                <span className="max-w-[90%] px-3 text-center font-mono text-sm font-bold uppercase leading-snug tracking-[0.15em] text-white mix-blend-overlay opacity-95 [transform:rotate(45deg)] sm:text-base sm:tracking-[0.22em]">
+                  {labels.pendingOwnershipVerification}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>,
+      document.body,
+    )
+
+  return (
+    <div
+      className={cn(
+        "tactical-frame relative overflow-hidden rounded-sm border-2 px-3 py-3 sm:px-4",
+        frameClass,
+        className,
+      )}
+      aria-label={labels.ariaLabel}
+    >
+      {lightbox}
+
+      {showArtFirst ? (
+        <>
+          {holoBlock}
+          {bannerEl}
+          {asciiBlock}
+        </>
+      ) : (
+        <>
+          {bannerEl}
+          {holoBlock}
+          {asciiBlock}
+          {footerOwnerActions}
+        </>
+      )}
+    </div>
+  )
+}
