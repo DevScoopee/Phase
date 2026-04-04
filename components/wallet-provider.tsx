@@ -114,17 +114,35 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     autoFundedWalletsRef.current.add(address)
 
     const autoClaimGenesis = async () => {
+      const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+      const postReward = async (reward: string) => {
+        const res = await fetch("/api/faucet", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ walletAddress: address, reward }),
+        })
+        const data = (await res.json().catch(() => ({}))) as { ok?: boolean; pending?: boolean; code?: string }
+        return { res, data }
+      }
+      const settleReward = async (reward: string) => {
+        for (let i = 0; i < 8; i++) {
+          const { res, data } = await postReward(reward)
+          if (res.status === 503 || res.status === 412) return
+          if (res.status === 202 || data.pending === true) {
+            await sleep(2200)
+            continue
+          }
+          if (res.status === 200 && data.ok === true) return
+          if (res.status === 409 && data.code === "FAUCET_MINT_IN_PROGRESS") {
+            await sleep(2000)
+            continue
+          }
+          return
+        }
+      }
       try {
-        await fetch("/api/faucet", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ walletAddress: address, reward: "genesis" }),
-        })
-        await fetch("/api/faucet", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ walletAddress: address, reward: "quest_connect_wallet" }),
-        })
+        await settleReward("genesis")
+        await settleReward("quest_connect_wallet")
       } catch {
         // Silent: faucet may be disabled or already claimed.
       }

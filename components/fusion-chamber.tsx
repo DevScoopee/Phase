@@ -595,6 +595,7 @@ export function FusionChamber() {
       })
       const data = (await res.json().catch(() => ({}))) as {
         error?: string
+        detail?: string
         hash?: string
         pending?: boolean
         ok?: boolean
@@ -602,7 +603,9 @@ export function FusionChamber() {
       }
       if (!res.ok) {
         const msg = typeof data.error === "string" ? data.error : `HTTP ${res.status}`
-        appendLog(`${ch.logs.faucetFailPrefix} ${msg}`)
+        const detail = typeof data.detail === "string" ? data.detail : undefined
+        appendLog(`${ch.logs.faucetFailPrefix} ${msg}${detail ? ` — ${detail}` : ""}`)
+        toast.error(normalizeToastError(msg), detail ? { description: detail } : undefined)
         return
       }
       if (data.pending || data.ok === false) {

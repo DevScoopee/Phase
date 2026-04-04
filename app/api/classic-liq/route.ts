@@ -13,6 +13,7 @@ import {
   TransactionBuilder,
 } from "@stellar/stellar-sdk"
 import {
+  classicLiqAssetConfigFromPublicEnv,
   readClassicWalletStatus,
   type ClassicLiqAsset,
   type ClassicLiqWalletStatus,
@@ -71,6 +72,36 @@ export async function GET(req: NextRequest) {
   const config = readClassicAssetConfig()
   const wallet = req.nextUrl.searchParams.get("walletAddress")?.trim() ?? null
   if (!config) {
+    const publicAsset = classicLiqAssetConfigFromPublicEnv()
+    if (wallet && StrKey.isValidEd25519PublicKey(wallet) && publicAsset) {
+      try {
+        const status = await walletStatus(wallet, publicAsset)
+        return NextResponse.json({
+          enabled: false,
+          trustlineFlowAvailable: true,
+          asset: publicAsset,
+          wallet,
+          status,
+        })
+      } catch (e) {
+        return NextResponse.json(
+          {
+            enabled: false,
+            trustlineFlowAvailable: true,
+            asset: publicAsset,
+            error: e instanceof Error ? e.message : String(e),
+          },
+          { status: 502 },
+        )
+      }
+    }
+    if (publicAsset) {
+      return NextResponse.json({
+        enabled: false,
+        trustlineFlowAvailable: true,
+        asset: publicAsset,
+      })
+    }
     return NextResponse.json({ enabled: false })
   }
   if (!wallet) {

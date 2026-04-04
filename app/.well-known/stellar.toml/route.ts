@@ -2,13 +2,20 @@ import { NextResponse } from "next/server"
 import { TOKEN_ADDRESS, stellarExpertPhaserLiqUrl } from "@/lib/phase-protocol"
 
 const NETWORK_PASSPHRASE = "Test SDF Network ; September 2015"
+const PRODUCTION_SITE = "https://www.phasee.xyz"
+
+/** Base URL for absolute `image=` in stellar.toml (wallets require HTTPS + absolute). */
+function siteBaseForStellarToml(): string {
+  const fromEnv = process.env.NEXT_PUBLIC_SITE_URL?.trim()?.replace(/\/+$/, "")
+  if (fromEnv) return fromEnv.includes("://") ? fromEnv : `https://${fromEnv}`
+  if (process.env.VERCEL_ENV === "production") return PRODUCTION_SITE
+  const vercel = process.env.VERCEL_URL?.trim()?.replace(/\/+$/, "")
+  if (vercel) return `https://${vercel}`
+  return process.env.NODE_ENV === "development" ? "http://localhost:3000" : PRODUCTION_SITE
+}
 
 export async function GET() {
-  const base =
-    process.env.NEXT_PUBLIC_SITE_URL?.trim()?.replace(/\/+$/, "") ||
-    (process.env.VERCEL_URL?.trim()
-      ? `https://${process.env.VERCEL_URL.trim().replace(/\/+$/, "")}`
-      : "http://localhost:3000")
+  const base = siteBaseForStellarToml()
   const icon = `${base}/phaser-liq-token.png`
   const expert = stellarExpertPhaserLiqUrl()
 

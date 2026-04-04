@@ -1,6 +1,7 @@
 "use client"
 
 import Image from "next/image"
+import { useState } from "react"
 import { cn } from "@/lib/utils"
 
 type TokenIconProps = {
@@ -9,6 +10,7 @@ type TokenIconProps = {
 }
 
 export function TokenIcon({ className, pulse = false }: TokenIconProps) {
+  const [imgFailed, setImgFailed] = useState(false)
   return (
     <span
       className={cn(
@@ -18,14 +20,21 @@ export function TokenIcon({ className, pulse = false }: TokenIconProps) {
       )}
       aria-hidden
     >
-      <Image
-        src="/phaser-liq-token.png"
-        alt=""
-        width={16}
-        height={16}
-        className="h-full w-full rounded-full object-cover"
-        priority={false}
-      />
+      {imgFailed ? (
+        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-cyan-700 text-[9px] font-bold leading-none text-white">
+          P
+        </span>
+      ) : (
+        <Image
+          src="/phaser-liq-token.png"
+          alt=""
+          width={16}
+          height={16}
+          className="h-full w-full rounded-full object-contain"
+          priority={false}
+          onError={() => setImgFailed(true)}
+        />
+      )}
     </span>
   )
 }

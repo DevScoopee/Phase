@@ -39,6 +39,8 @@ type FaucetStatusResponse = {
 
 type ClassicLiqApiWallet = {
   enabled: boolean
+  /** Issuer secret no configurado: igual podemos guiar changeTrust vía NEXT_PUBLIC_* + submit trustline. */
+  trustlineFlowAvailable?: boolean
   asset?: { code: string; issuer: string }
   status?: { accountExists?: boolean; hasTrustline?: boolean }
 }
@@ -117,7 +119,11 @@ export function LiquidityFaucetControl({
     } catch {
       return true
     }
-    if (!classic.enabled || !classic.asset) return true
+    const canRunTrustlineFlow =
+      Boolean(classic.asset) && (classic.enabled || Boolean(classic.trustlineFlowAvailable))
+    if (!canRunTrustlineFlow) return true
+    const asset = classic.asset
+    if (!asset) return true
     const hasTrustline = Boolean(classic.status?.hasTrustline)
     if (hasTrustline) return true
     if (!classic.status?.accountExists) {
@@ -129,7 +135,7 @@ export function LiquidityFaucetControl({
     onNarrativeLog?.(L.classicTrustlineFreighter)
     setRewardFlowPhase("trustline")
     try {
-      const trustTx = await buildClassicTrustlineTransactionXdr(address, classic.asset)
+      const trustTx = await buildClassicTrustlineTransactionXdr(address, asset)
       const signResult = await signTransaction(trustTx, {
         networkPassphrase: NETWORK_PASSPHRASE,
         address,
@@ -196,6 +202,7 @@ export function LiquidityFaucetControl({
         })
         const data = (await res.json().catch(() => ({}))) as {
           error?: string
+          detail?: string
           ok?: boolean
           pending?: boolean
           note?: string
@@ -204,8 +211,9 @@ export function LiquidityFaucetControl({
         }
         if (!res.ok) {
           const msg = typeof data.error === "string" ? data.error : `HTTP ${res.status}`
-          onNarrativeLog?.(`${logs.faucetFailPrefix} ${msg}`)
-          toast.error(normalizeToastError(msg))
+          const detail = typeof data.detail === "string" ? data.detail : undefined
+          onNarrativeLog?.(`${logs.faucetFailPrefix} ${msg}${detail ? ` — ${detail}` : ""}`)
+          toast.error(normalizeToastError(msg), detail ? { description: detail } : undefined)
           await loadStatus()
           return
         }

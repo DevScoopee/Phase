@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { serverDataJsonPath } from "@/lib/server-data-paths"
+import { classicLiqAssetConfigFromPublicEnv, readClassicWalletStatus } from "@/lib/classic-liq"
 import {
   Address,
   BASE_FEE,
@@ -22,7 +23,13 @@ import {
   userOwnsAnyPhaseToken,
 } from "@/lib/phase-protocol"
 
+/** Vercel Hobby ~10s: el poll largo anterior (20×1.5s) cortaba la función → 502 del gateway. */
+export const maxDuration = 25
+
 const DAILY_WINDOW_MS = 24 * 60 * 60 * 1000
+const FAUCET_PENDING_TTL_MS = 8 * 60 * 1000
+const FAUCET_POLL_INTERVAL_MS = 1000
+const FAUCET_MAX_POLLS_PER_REQUEST = 4
 const QUEST_REWARD_STROOPS = "30000000"
 const DAILY_REWARD_STROOPS = "20000000"
 
@@ -34,6 +41,8 @@ type WalletClaims = {
   genesisAt?: number
   dailyAt?: number
   quests?: Partial<Record<QuestId, number>>
+  /** Mint ya enviado; reutilizamos el hash para seguir el poll sin reenviar (serverless timeout). */
+  faucetPending?: { hash: string; reward: RewardType; at: number }
 }
 
 type FaucetClaims = Record<string, WalletClaims>
@@ -53,6 +62,13 @@ type RewardStatus = {
   requirementText?: string
 }
 
+function parseRewardType(input: unknown): RewardType {
+  const value = typeof input === "string" ? input.trim().toLowerCase() : ""
+  if (value === "genesis" || value === "daily") return value
+  if (QUEST_IDS.includes(value as QuestId)) return value as QuestId
+  return "genesis"
+}
+
 function claimsFilePath() {
   return serverDataJsonPath("faucetClaims")
 }
@@ -69,10 +85,17 @@ async function readClaims(): Promise<FaucetClaims> {
         continue
       }
       if (!value || typeof value !== "object") continue
+      const fp = value.faucetPending
+      let faucetPending: WalletClaims["faucetPending"]
+      if (fp && typeof fp === "object" && typeof fp.hash === "string" && typeof fp.at === "number") {
+        const r = parseRewardType(fp.reward)
+        faucetPending = { hash: fp.hash, reward: r, at: fp.at }
+      }
       normalized[wallet] = {
         genesisAt: typeof value.genesisAt === "number" ? value.genesisAt : undefined,
         dailyAt: typeof value.dailyAt === "number" ? value.dailyAt : undefined,
         quests: value.quests && typeof value.quests === "object" ? value.quests : {},
+        faucetPending,
       }
     }
     return normalized
@@ -105,13 +128,6 @@ function rewardAmountStroops(reward: RewardType): string {
 
 function isQuestReward(reward: RewardType): reward is QuestId {
   return QUEST_IDS.includes(reward as QuestId)
-}
-
-function parseRewardType(input: unknown): RewardType {
-  const value = typeof input === "string" ? input.trim().toLowerCase() : ""
-  if (value === "genesis" || value === "daily") return value
-  if (QUEST_IDS.includes(value as QuestId)) return value as QuestId
-  return "genesis"
 }
 
 async function readQuestProgress(wallet: string | null): Promise<Record<QuestId, QuestProgress>> {
@@ -259,6 +275,7 @@ export async function GET(req: NextRequest) {
 async function markClaim(wallet: string, reward: RewardType) {
   const claims = await readClaims()
   const walletClaim = claims[wallet] ?? {}
+  walletClaim.faucetPending = undefined
   const now = Date.now()
   if (reward === "genesis") walletClaim.genesisAt = now
   if (reward === "daily") walletClaim.dailyAt = now
@@ -268,6 +285,70 @@ async function markClaim(wallet: string, reward: RewardType) {
   }
   claims[wallet] = walletClaim
   await writeClaims(claims)
+}
+
+async function clearFaucetPendingOnly(wallet: string) {
+  const claims = await readClaims()
+  const w = claims[wallet]
+  if (!w?.faucetPending) return
+  w.faucetPending = undefined
+  claims[wallet] = w
+  await writeClaims(claims)
+}
+
+/** A lo sumo ~5s de espera por invocación (compatible con timeout serverless). */
+async function pollSubmittedMint(soroban: rpc.Server, hash: string): Promise<"SUCCESS" | "FAILED" | "PENDING"> {
+  for (let i = 0; i < FAUCET_MAX_POLLS_PER_REQUEST; i++) {
+    if (i > 0) {
+      await new Promise((r) => setTimeout(r, FAUCET_POLL_INTERVAL_MS))
+    }
+    try {
+      const st = await soroban.getTransaction(hash)
+      if (st.status === rpc.Api.GetTransactionStatus.SUCCESS) return "SUCCESS"
+      if (st.status === rpc.Api.GetTransactionStatus.FAILED) return "FAILED"
+    } catch {
+      // RPC intermitente: seguir intentando dentro del presupuesto de polls
+    }
+  }
+  return "PENDING"
+}
+
+/**
+ * El mint Soroban acredita el mismo PHASERLIQ que el asset clásico: sin trustline el ledger rechaza la tx.
+ * Usa solo vars públicas (NEXT_PUBLIC_CLASSIC_LIQ_*) — no requiere CLASSIC_LIQ_ISSUER_SECRET.
+ */
+async function preflightClassicTrustlineForMint(userAddress: string): Promise<NextResponse | null> {
+  const asset = classicLiqAssetConfigFromPublicEnv()
+  if (!asset) return null
+  try {
+    const ws = await readClassicWalletStatus(userAddress, asset)
+    if (!ws.accountExists) {
+      return NextResponse.json(
+        {
+          error: "Cuenta no encontrada en testnet.",
+          code: "ACCOUNT_NOT_FOUND",
+          detail:
+            "Fóndate con Friendbot (XLM). Luego en Forja completa INITIALIZE PHASER PROTOCOL (trustline) y vuelve a reclamar.",
+        },
+        { status: 412 },
+      )
+    }
+    if (!ws.hasTrustline) {
+      return NextResponse.json(
+        {
+          error: "Falta la trustline PHASERLIQ.",
+          code: "TRUSTLINE_REQUIRED",
+          detail:
+            "En Forja pulsa INITIALIZE PHASER PROTOCOL, firma changeTrust en Freighter y reclama de nuevo. Sin esto el mint falla en ledger.",
+        },
+        { status: 412 },
+      )
+    }
+  } catch {
+    // Horizon intermitente: no bloqueamos el mint (comportamiento previo).
+    return null
+  }
+  return null
 }
 
 /**
@@ -328,6 +409,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error: already,
+        code: status.nextAt ? "FAUCET_COOLDOWN" : "FAUCET_REWARD_ALREADY_CLAIMED",
         reward,
         claimedAt: status.claimedAt,
         nextAt: status.nextAt,
@@ -335,6 +417,9 @@ export async function POST(req: NextRequest) {
       { status: status.nextAt ? 429 : 409 },
     )
   }
+
+  const trustlineBlock = await preflightClassicTrustlineForMint(userAddress)
+  if (trustlineBlock) return trustlineBlock
 
   const adminSecret = process.env.ADMIN_SECRET_KEY!.trim()
   let adminKp: Keypair
@@ -348,7 +433,66 @@ export async function POST(req: NextRequest) {
   const server = new rpc.Server(RPC_URL)
   const source = adminKp.publicKey()
 
+  const ledgerFailHint = classicLiqAssetConfigFromPublicEnv()
+    ? " Suele deberse a trustline PHASERLIQ sin crear: Forja → INITIALIZE PHASER PROTOCOL, luego reintenta."
+    : ""
+
   try {
+    const now = Date.now()
+    let liveClaims = await readClaims()
+    let row: WalletClaims = { ...(liveClaims[userAddress] ?? {}) }
+
+    if (row.faucetPending && now - row.faucetPending.at > FAUCET_PENDING_TTL_MS) {
+      row = { ...row, faucetPending: undefined }
+      liveClaims[userAddress] = row
+      await writeClaims(liveClaims)
+    }
+
+    if (row.faucetPending?.reward === reward) {
+      const pendingHash = row.faucetPending.hash
+      const out = await pollSubmittedMint(server, pendingHash)
+      if (out === "SUCCESS") {
+        await markClaim(userAddress, reward)
+        return NextResponse.json({
+          ok: true,
+          hash: pendingHash,
+          reward,
+          amountStroops: rewardAmountStroops(reward),
+        })
+      }
+      if (out === "FAILED") {
+        await clearFaucetPendingOnly(userAddress)
+        return NextResponse.json(
+          { error: `La transacción falló en ledger.${ledgerFailHint}`, hash: pendingHash },
+          { status: 502 },
+        )
+      }
+      return NextResponse.json(
+        {
+          ok: false,
+          hash: pendingHash,
+          pending: true,
+          reward,
+          amountStroops: rewardAmountStroops(reward),
+          note: "Transaction still pending on ledger. Retry the same reward in a few seconds.",
+        },
+        { status: 202 },
+      )
+    }
+
+    if (row.faucetPending && row.faucetPending.reward !== reward) {
+      return NextResponse.json(
+        {
+          error:
+            "Hay otra recompensa de faucet confirmándose en ledger. Espera unos segundos y vuelve a intentar esta recompensa.",
+          code: "FAUCET_MINT_IN_PROGRESS",
+          reward,
+          blockingReward: row.faucetPending.reward,
+        },
+        { status: 409 },
+      )
+    }
+
     const account = await server.getAccount(source)
     const c = new Contract(tokenId)
     const tx = new TransactionBuilder(account, {
@@ -376,19 +520,25 @@ export async function POST(req: NextRequest) {
       )
     }
     const hash = send.hash as string
-    for (let i = 0; i < 20; i++) {
-      await new Promise((r) => setTimeout(r, 1500))
-      const st = await server.getTransaction(hash)
-      if (st.status === rpc.Api.GetTransactionStatus.SUCCESS) {
-        await markClaim(userAddress, reward)
-        return NextResponse.json({ ok: true, hash, reward, amountStroops: rewardAmountStroops(reward) })
-      }
-      if (st.status === rpc.Api.GetTransactionStatus.FAILED) {
-        return NextResponse.json(
-          { error: "La transacción falló en ledger.", hash },
-          { status: 502 },
-        )
-      }
+
+    liveClaims = await readClaims()
+    liveClaims[userAddress] = {
+      ...(liveClaims[userAddress] ?? {}),
+      faucetPending: { hash, reward, at: Date.now() },
+    }
+    await writeClaims(liveClaims)
+
+    const out = await pollSubmittedMint(server, hash)
+    if (out === "SUCCESS") {
+      await markClaim(userAddress, reward)
+      return NextResponse.json({ ok: true, hash, reward, amountStroops: rewardAmountStroops(reward) })
+    }
+    if (out === "FAILED") {
+      await clearFaucetPendingOnly(userAddress)
+      return NextResponse.json(
+        { error: `La transacción falló en ledger.${ledgerFailHint}`, hash },
+        { status: 502 },
+      )
     }
     return NextResponse.json(
       {
@@ -397,7 +547,7 @@ export async function POST(req: NextRequest) {
         pending: true,
         reward,
         amountStroops: rewardAmountStroops(reward),
-        note: "Transaction still pending on ledger. Reward claim is not locked until success is confirmed.",
+        note: "Transaction still pending on ledger. Retry the same reward in a few seconds.",
       },
       { status: 202 },
     )
