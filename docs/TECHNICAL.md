@@ -1,225 +1,204 @@
-# PHASE — Documentación técnica
+# PHASE Technical Documentation
 
-Referencia de arquitectura, rutas, APIs, integración Stellar/Soroban y operación. El producto corre en **Stellar testnet** (Soroban + cuentas clásicas G…). No constituye asesoría financiera.
+Professional technical specification for the current repository state.
 
-**Índice:** [README](../README.md) · [Contratos Rust](../contracts/README.md) · [Recompensas / faucet](./PHASER_LIQ_REWARDS_TERMINAL_DOC.md) · [Prompt maestro](../PROMPT_MAESTRO_PHASE.md)
+Primary references:
+- [`PROJECT_ARCHITECTURE.md`](../PROJECT_ARCHITECTURE.md)
+- [`README.md`](../README.md)
+- [`docs/PHASER_LIQ_REWARDS_TERMINAL_DOC.md`](./PHASER_LIQ_REWARDS_TERMINAL_DOC.md)
+- [`contracts/README.md`](../contracts/README.md)
 
 ---
 
-## 1. Visión del sistema
+## 1. System Summary
 
-PHASE es una aplicación **Next.js (App Router)** que permite:
+PHASE is a Next.js + Soroban testnet application where:
 
-- **Forjar** colecciones on-chain (contrato Soroban PHASE) con nombre, precio de mint en **PHASERLIQ** y URI de imagen.
-- **Mercado** (`/dashboard`): catálogo de colecciones y flujos de listado/transferencia de NFT utilitario cuando el contrato expone los entrypoints necesarios.
-- **Cámara de fusión** (`/chamber`): el usuario conecta **Freighter**, consulta saldo/token, ejecuta **settlement** (pago + transacción protocolo) y visualiza el artefacto NFT.
-- **Recompensas testnet**: mint vía servidor firmado (`/api/faucet`) y, opcionalmente, **activo clásico** PHASERLIQ + trustline (`/api/classic-liq`).
-- **Agente de forja** (opcional): lore/imagen vía `POST /api/forge-agent` (Gemini + generación de imagen) con capa de pago x402.
+- creators register collections;
+- users pay PHASERLIQ and mint utility NFTs through settlement;
+- rewards/bootstrap APIs support onboarding and testing.
 
-Los identificadores de contrato por defecto y la red están centralizados en [`lib/phase-protocol.ts`](../lib/phase-protocol.ts) y se pueden sobrescribir con variables de entorno `NEXT_PUBLIC_*` / servidor.
+The implementation separates concerns between:
+
+- **Client** (wallet interaction + UI state),
+- **Server APIs** (trusted operations and persistence),
+- **On-chain contracts** (canonical protocol state).
+
+---
+
+## 2. Runtime Topology
 
 ```mermaid
 flowchart TB
-  subgraph client [Cliente Next.js]
-    Pages[Páginas / RSC + client]
-    Wallet[Freighter API]
-    PhaseLib[lib/phase-protocol.ts]
+  subgraph Client
+    UI[Next.js pages/components]
+    Wallet[Freighter]
+    ProtoLib[lib/phase-protocol.ts]
   end
-  subgraph next [Next.js servidor]
-    API[Route Handlers /api/*]
-    Data[(JSON .data o tmp)]
+
+  subgraph Server
+    API[app/api/* route handlers]
+    Store[(JSON store)]
   end
-  subgraph stellar [Stellar testnet]
+
+  subgraph StellarTestnet
     RPC[Soroban RPC]
-    HZ[Horizon]
-    Proto[Contrato PHASE WASM]
-    Token[Contrato token PHASERLIQ WASM]
+    Horizon[Horizon]
+    PhaseContract[PHASE contract]
+    TokenContract[PHASERLIQ contract]
   end
-  Pages --> Wallet
-  Pages --> PhaseLib
-  PhaseLib --> RPC
-  PhaseLib --> HZ
+
+  UI --> Wallet
+  UI --> ProtoLib
+  ProtoLib --> RPC
+  ProtoLib --> Horizon
   API --> RPC
-  API --> HZ
-  API --> Data
-  Wallet --> HZ
-  PhaseLib --> Proto
-  PhaseLib --> Token
+  API --> Horizon
+  API --> Store
+  RPC --> PhaseContract
+  RPC --> TokenContract
 ```
 
 ---
 
-## 2. Stack tecnológico
+## 3. Repository Structure
 
-| Capa | Tecnología |
-|------|------------|
-| Framework | Next.js 16 (App Router), React 19 |
-| Estilo | Tailwind CSS 4, capa táctica en `app/tactical-command.css` |
-| Stellar | `@stellar/stellar-sdk`, `@stellar/freighter-api` |
-| Pagos agente | `x402-stellar` (verificación/settlement en rutas API) |
-| i18n | `components/lang-context.tsx` + [`lib/phase-copy.ts`](../lib/phase-copy.ts) (EN/ES) |
-| UI auxiliar | Radix, sonner, framer-motion, etc. (`package.json`) |
-
----
-
-## 3. Estructura del repositorio (resumen)
-
-| Ruta | Rol |
-|------|-----|
-| `app/` | Rutas, layouts, route handlers (`app/api/*`), `globals.css`, `tactical-command.css` |
-| `components/` | UI: `fusion-chamber`, `forge` vía página, `liquidity-faucet-control`, `wallet-provider`, etc. |
-| `lib/phase-protocol.ts` | Constantes de red, construcción/simulación de llamadas Soroban, utilidades de token |
-| `lib/classic-liq.ts` | Activo clásico PHASERLIQ: estado de trustline, XDR `changeTrust` |
-| `lib/phase-copy.ts` | Cadenas i18n y tipos de copy |
-| `lib/server-data-paths.ts` | Rutas de ficheros JSON persistidos en servidor |
-| `contracts/phase-protocol/` | Contrato Soroban en Rust (build/deploy: `contracts/README.md`) |
-| `public/` | Estáticos, `og-phase`, iconos, `.well-known/stellar.toml` estático |
-| `scripts/` | Utilidades locales (no desplegadas como API) |
-| `.data/` | Datos locales gitignored (claims, listados); en Vercel → tmp vía `PHASE_SERVER_DATA_DIR` |
+| Path | Responsibility |
+|---|---|
+| `app/` | App Router routes, layouts, API handlers, global/tactical styles |
+| `components/` | Feature UI components (forge/chamber/rewards/wallet integration) |
+| `lib/phase-protocol.ts` | Soroban integration helpers, constants, error normalization |
+| `lib/classic-liq.ts` | Classic asset trustline utilities (`changeTrust` XDR, Horizon checks) |
+| `lib/phase-copy.ts` | Centralized i18n dictionary (EN/ES) |
+| `lib/server-data-paths.ts` | Writable data location abstraction |
+| `contracts/` | Soroban Rust contracts and tooling docs |
+| `docs/` | Technical and operational documentation |
 
 ---
 
-## 4. Rutas de interfaz (App Router)
+## 4. Frontend Routes
 
-| Ruta | Archivo | Descripción |
-|------|---------|-------------|
-| `/` | `app/page.tsx` | Landing |
-| `/forge` | `app/forge/page.tsx` | Forja: colección, Oracle/agente, estudio, recompensas LIQ |
-| `/dashboard` | `app/dashboard/page.tsx` | Mercado / colecciones / listados |
-| `/chamber` | `app/chamber/page.tsx` | Cámara: query `?collection=<id>` |
-| `/docs` | `app/docs/page.tsx` | Documentación in-app (`lib/project-docs-content.ts`) |
-| `/.well-known/stellar.toml` | `app/.well-known/stellar.toml/route.ts` | SEP-0001 dinámico (puede complementar `public/.well-known/stellar.toml`) |
-
----
-
-## 5. API HTTP (Route Handlers)
-
-Todas bajo `app/api/<name>/route.ts` salvo anidaciones indicadas.
-
-| Método(es) | Ruta | Función |
-|------------|------|---------|
-| GET, POST | `/api/faucet` | Estado de recompensas por wallet; mint Soroban firmado por cuenta admin (`ADMIN_SECRET_KEY`). Ver [PHASER_LIQ_REWARDS_TERMINAL_DOC.md](./PHASER_LIQ_REWARDS_TERMINAL_DOC.md). |
-| GET, POST | `/api/classic-liq` | Configuración activo clásico; GET estado trustline/bootstrap; POST pago bootstrap desde issuer (`CLASSIC_LIQ_ISSUER_SECRET`). |
-| POST | `/api/classic-liq/trustline` | Envía a Horizon una transacción **ya firmada** por el usuario (`changeTrust`). Body: `{ signedXdr }`. |
-| POST | `/api/ipfs` | Subida servidor a IPFS (Pinata) cuando está configurado. |
-| POST | `/api/forge-agent` | Agente forja (Gemini + imagen); integración x402 según implementación actual. |
-| GET, POST | `/api/nft-listings` | Listados P2P/demo persistidos en JSON. |
-| GET, PUT | `/api/artist-profile` | Perfiles de artista en JSON. |
-| GET/POST… | `/api/x402/*` | verify, settle, supported, etc. — compatibilidad con flujo x402 Stellar. |
-
-**Persistencia:** ficheros definidos en `lib/server-data-paths.ts` (`faucet-claims.json`, `classic-liq-claims.json`, `nft-listings.json`, `artist-profiles.json`). El directorio base es `.data/` en local o `PHASE_SERVER_DATA_DIR` / tmp en Vercel.
+| Route | File | Description |
+|---|---|---|
+| `/` | `app/page.tsx` | Landing page |
+| `/forge` | `app/forge/page.tsx` | Collection creation + Oracle flow + rewards |
+| `/dashboard` | `app/dashboard/page.tsx` | Market/catalog/listing operations |
+| `/chamber` | `app/chamber/page.tsx` | Settlement and artifact interface |
+| `/docs` | `app/docs/page.tsx` | In-app product documentation |
+| `/.well-known/stellar.toml` | `app/.well-known/stellar.toml/route.ts` | Dynamic SEP-0001 surface |
 
 ---
 
-## 6. Integración on-chain (Soroban)
+## 5. API Specification
 
-### 6.1 Constantes principales (`lib/phase-protocol.ts`)
+All handlers live in `app/api/**/route.ts`.
 
-- **`CONTRACT_ID`**: contrato PHASE (colecciones, fase, NFT utilitario). Env: `NEXT_PUBLIC_PHASE_PROTOCOL_ID`, `PHASE_PROTOCOL_ID`. Default en código: ver archivo fuente.
-- **`TOKEN_ADDRESS`**: contrato del token PHASERLIQ (interfaz tipo SEP-41 en Soroban). Env: `NEXT_PUBLIC_PHASER_TOKEN_ID`, `NEXT_PUBLIC_TOKEN_CONTRACT_ID`, `TOKEN_CONTRACT_ID`, `MOCK_TOKEN_ID`, etc.
-- **`RPC_URL`**: `https://soroban-testnet.stellar.org`
-- **`HORIZON_URL`**: `https://horizon-testnet.stellar.org` (secuencia de cuentas G…, balances clásicos)
-- **`NETWORK_PASSPHRASE`**: `Test SDF Network ; September 2015`
-- **`PHASER_LIQ_DECIMALS`**: `7` — conversiones humano ↔ stroops en helpers (`formatLiq`, `stroopsToLiqDisplay`, `liqToStroops`, …)
-- **`READONLY_SIM_SOURCE_G`**: cuenta G con XLM en testnet usada como *fee account* en simulaciones de solo lectura (override `NEXT_PUBLIC_SOROBAN_SIM_ACCOUNT`)
+### 5.1 Core routes
 
-### 6.2 Patrones de uso
+| Methods | Route | Purpose |
+|---|---|---|
+| `GET`, `POST` | `/api/faucet` | Reward status + claim execution (server-minted on success). |
+| `POST` | `/api/claim-bounty` | Compatibility wrapper over `/api/faucet` with strict typed contract. |
+| `GET`, `POST` | `/api/classic-liq` | Classic PHASERLIQ asset status/bootstrap operations. |
+| `POST` | `/api/classic-liq/trustline` | Submits user-signed trustline XDR. |
+| `POST` | `/api/forge-agent` | Gemini-first forge assistant endpoint with payment gate support. |
+| `GET`, `POST` | `/api/nft-listings` | JSON-backed market listing state. |
+| `GET`, `PUT` | `/api/artist-profile` | JSON-backed artist alias profile. |
+| `GET`, `POST`, etc. | `/api/x402/*` | x402 settlement/verify/supported endpoints. |
 
-- **Lectura**: muchas funciones construyen una transacción de invocación, la **simulan** vía RPC y parsean el retval (`simulateContractCall`).
-- **Escritura**: el cliente obtiene XDR o envelope, el usuario firma con **Freighter** (`signTransaction`), y se envía con `sendTransaction` / RPC según el flujo.
+### 5.2 Response contracts
 
-Las funciones exportadas incluyen (no exhaustivo): `buildSettleTransaction`, `buildCreateCollectionTransaction`, `getTokenBalance`, `checkHasPhased`, `fetchCollectionInfo`, `fetchCollectionsCatalog`, `sendTransaction`, `getTransactionResult`, etc.
-
----
-
-## 7. Activo clásico PHASERLIQ y SEP-0001
-
-- El token mostrado en **Freighter** como línea de balance clásica requiere **trustline** (`changeTrust`) hacia el **issuer** G… y código `PHASERLIQ` (u otro configurado).
-- Variables servidor: `CLASSIC_LIQ_ASSET_CODE`, `CLASSIC_LIQ_ISSUER_SECRET`, `CLASSIC_LIQ_BOOTSTRAP_AMOUNT`.
-- Variables públicas UI: `NEXT_PUBLIC_CLASSIC_LIQ_ASSET_CODE`, `NEXT_PUBLIC_CLASSIC_LIQ_ISSUER` (cuando se use en cliente; el flujo de recompensas puede obtener `asset` desde `GET /api/classic-liq`).
-
-**Trustline antes del faucet:** `components/liquidity-faucet-control.tsx` llama a `GET /api/classic-liq` antes de `POST /api/faucet`. Si el servidor tiene activo clásico habilitado y la wallet no tiene trustline, se construye y firma `changeTrust` y se envía a `/api/classic-liq/trustline`.
-
-**SEP-0001:** Metadatos del emisor para exploradores/wallets: `/.well-known/stellar.toml` (estático en `public/` y/o ruta dinámica en `app/.well-known/`). El **home domain** de la cuenta emisora en la red debe coincidir con el dominio que sirve el TOML.
+- `forge-agent` and `claim-bounty` now use strict TypeScript response unions.
+- Error payloads are explicit and status-code aligned.
+- No untyped `any` responses should be used for public API contracts.
 
 ---
 
-## 8. Wallet y sesión
+## 6. On-chain Integration
 
-- **`components/wallet-provider.tsx`**: contexto React; lectura de dirección Freighter, `connect` / `disconnect`, refresco. Maneja edge cases (desconexión explícita vs. permiso persistente de Freighter).
-- Las páginas críticas (`/forge`, `/chamber`) son **client components** donde corresponde para firmar transacciones.
+### 6.1 Contract IDs and validation
 
----
+`lib/phase-protocol.ts` enforces Soroban contract ID validity (`C...`) and rejects classic account IDs (`G...`) where contracts are expected.
 
-## 9. Flujo de settlement (cámara)
+Key constants:
 
-Resumen del flujo de negocio en UI (simplificado):
+- `CONTRACT_ID` (PHASE protocol contract)
+- `TOKEN_ADDRESS` (PHASERLIQ contract)
+- `RPC_URL`, `HORIZON_URL`, `NETWORK_PASSPHRASE`
 
-1. Usuario conecta wallet y se muestra saldo PHASERLIQ (Soroban) vía contrato token.
-2. Se muestra precio de mint de la colección (`effectivePriceStroops`).
-3. Al ejecutar settlement, la app construye la transacción (p. ej. `buildSettleTransaction`), el usuario firma en Freighter y se envía a la red.
-4. Tras confirmación, se refresca estado de fase / NFT y el visualizador de artefacto.
+### 6.2 Transaction model
 
-Los textos de error (desync Stellar, saldo insuficiente) se mapean en `fusion-chamber.tsx` y copy en `phase-copy`.
-
----
-
-## 10. x402
-
-- Dependencia **`x402-stellar`** y rutas bajo `app/api/x402/` para verificación y settlement acorde al ecosistema Stellar x402.
-- El agente de forja puede exigir pago x402 antes de generar contenido; revisar `app/api/forge-agent/route.ts` para reglas actuales y cabeceras.
+- **Read paths**: simulation + retval parsing.
+- **Write paths**: unsigned XDR construction -> Freighter signature -> submit + confirmation polling.
+- **Error mapping**: protocol-level normalization (including unauthorized gate `#13`).
 
 ---
 
-## 11. Variables de entorno
+## 7. Rewards and Trustline Model
 
-Lista orientativa; la fuente de verdad comentada está en [`.env.local.example`](../.env.local.example).
+The reward flow is trustline-first:
 
-| Variable | Ámbito | Uso |
-|----------|--------|-----|
-| `NEXT_PUBLIC_PHASE_PROTOCOL_ID` | Cliente | ID contrato PHASE |
-| `NEXT_PUBLIC_PHASER_TOKEN_ID` / `NEXT_PUBLIC_TOKEN_CONTRACT_ID` | Cliente | ID contrato token |
-| `ADMIN_SECRET_KEY` | Servidor | Firma mints faucet Soroban |
-| `CLASSIC_LIQ_*` / `NEXT_PUBLIC_CLASSIC_*` | Servidor / cliente | Activo clásico + trustline UX |
-| `PINATA_JWT` / APIs IPFS | Servidor | Subida de archivos en forja |
-| `GEMINI_API_KEY` | Servidor | Agente forja (si no hay clave, el endpoint puede responder no disponible) |
-| `NEXT_PUBLIC_SITE_URL` | Cliente | URLs absolutas OG/metadata |
-| `PHASE_SERVER_DATA_DIR` | Servidor | Directorio escribible para JSON |
+1. Query reward state.
+2. Ensure classic trustline exists when required.
+3. Claim reward via faucet-compatible endpoint.
+4. Refresh balances and UI state.
 
-**Nunca** commitear `.env.local` ni secretos.
+Detailed operational flow is documented in:
+[`docs/PHASER_LIQ_REWARDS_TERMINAL_DOC.md`](./PHASER_LIQ_REWARDS_TERMINAL_DOC.md)
 
 ---
 
-## 12. Seguridad y operaciones
+## 8. Internationalization Rules
 
-- Claves solo en entorno servidor; rotar si se filtran.
-- Testnet: los fondos no son dinero real; igualmente minimizar exposición de issuer/faucet.
-- Tras redesplegar WASM PHASE o token, actualizar env y documentación (`README`, este archivo).
-- CORS y cabeceras: revisar `next.config.mjs` para orígenes permitidos en rutas sensibles.
+- User-facing strings must come from `lib/phase-copy.ts`.
+- Components should not hardcode visible text.
+- New feature work must include EN/ES keys before merge.
 
 ---
 
-## 13. Comandos locales
+## 9. Environment Variables
+
+Canonical reference remains:
+[`/.env.local.example`](../.env.local.example)
+
+Critical groups:
+
+- Protocol/token contract IDs (`NEXT_PUBLIC_*`, server-side variants)
+- Reward signer (`ADMIN_SECRET_KEY`)
+- Classic asset configuration (`CLASSIC_LIQ_*`, `NEXT_PUBLIC_CLASSIC_*`)
+- Gemini runtime (`GEMINI_API_KEY`)
+- Writable server data directory (`PHASE_SERVER_DATA_DIR`)
+
+---
+
+## 10. Security and Operations
+
+- Never commit private credentials.
+- Keep server-only secrets out of client runtime.
+- Use writable server storage abstraction (`server-data-paths`) for platform-safe behavior.
+- On contract redeploys, update:
+  - env values,
+  - architecture/technical docs,
+  - any static references.
+
+---
+
+## 11. Build and Verification
 
 ```bash
 npm install
-cp .env.local.example .env.local
-npm run dev    # desarrollo
-npm run build  # producción
-npm run start  # sirve build
+npm run dev
+npm run build
+npx tsc --noEmit
 ```
 
-Contrato Rust: ver [`contracts/README.md`](../contracts/README.md) (`cargo build`, `stellar contract deploy`, etc.).
+Contract commands are documented in [`contracts/README.md`](../contracts/README.md).
 
 ---
 
-## 14. Referencias externas
+## 12. External References
 
-- [Stellar Soroban](https://developers.stellar.org/docs/build/smart-contracts)
+- [Soroban Smart Contracts](https://developers.stellar.org/docs/build/smart-contracts)
 - [SEP-0001](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md)
-- [Freighter](https://docs.freighter.app/)
+- [Freighter Docs](https://docs.freighter.app/)
 - [Stellar x402](https://developers.stellar.org/docs/build/agentic-payments/x402)
-
----
-
-*Última revisión alineada con el árbol de código del repositorio; si alguna ruta o env difiere en tu fork, prioriza el código fuente.*

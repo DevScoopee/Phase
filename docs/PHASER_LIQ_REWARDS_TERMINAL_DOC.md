@@ -1,76 +1,41 @@
-# PHASER_LIQ // TERMINAL REWARDS DOC
+# PHASERLIQ Rewards API and Operations
 
-**Índice del proyecto:** [README.md](../README.md) · **Documentación integrada (UI):** `/docs` en la app · **Contratos:** [contracts/README.md](../contracts/README.md)
+Related docs:
+- [`README.md`](../README.md)
+- [`PROJECT_ARCHITECTURE.md`](../PROJECT_ARCHITECTURE.md)
+- [`docs/TECHNICAL.md`](./TECHNICAL.md)
 
-```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ PHASE PROTOCOL :: TESTNET REWARDS ENGINE                                   │
-│ MODULE: PHASER_LIQ EARNING LOOP                                            │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+---
 
-## ES - Documentacion Operativa
+## ES — Documentación operativa
 
-```text
-[ RESUMEN ]
-Sistema de recompensas para testnet con 3 vias:
-1) GENESIS SUPPLY (1 vez por wallet)
-2) DAILY RECHARGE (cada 24h por wallet)
-3) QUEST REWARDS (1 vez por mision)
-```
+### Objetivo
 
-### Reglas
+Definir el comportamiento del motor de recompensas testnet para PHASERLIQ, incluyendo reglas funcionales, contratos API y secuencia trustline-first.
 
-- `genesis`: entrega inicial para bootstrap de cuenta nueva.
-- `daily`: recarga con ventana de `24h` entre reclamos.
-- `quests`: cada quest se reclama una sola vez por wallet y ahora valida condición real on-chain:
-  - `quest_connect_wallet`
-  - `quest_first_collection` -> requiere colección creada por la wallet (`get_creator_collection_id`)
-  - `quest_first_settle` -> requiere al menos un phase/settlement (`get_user_phase`)
+### Tipos de recompensa
 
-### API
+- `genesis`: bootstrap inicial (una vez por wallet).
+- `daily`: recarga periódica (cooldown de 24h).
+- `quest_connect_wallet`
+- `quest_first_collection`
+- `quest_first_settle`
 
-```text
-GET  /api/faucet
-GET  /api/faucet?walletAddress=G...
-POST /api/faucet
-```
+### Endpoints
 
-### GET /api/faucet?walletAddress=G...
+#### `GET /api/faucet?walletAddress=G...`
 
-- Devuelve `enabled` y estado por reward:
-  - `claimable`
-  - `claimedAt`
-  - `nextAt`
-  - `amountStroops`
-  - `requirementMet` / `progressPct` / `requirementText` (quests)
-- Incluye `questOverview` agregado para barra de progreso global.
+Devuelve estado global y por reward:
 
-Ejemplo rapido:
+- `enabled`
+- `questOverview`
+- `rewards[*].claimable`
+- `rewards[*].claimedAt`
+- `rewards[*].nextAt`
+- `rewards[*].amountStroops`
+- `rewards[*].requirementMet`, `progressPct`, `requirementText` (quests)
 
-```json
-{
-  "enabled": true,
-  "wallet": "GXXXXXXXXXXXXXXXXXXXXXXXX",
-  "dailyWindowMs": 86400000,
-  "questOverview": { "completed": 1, "total": 3, "progressPct": 33 },
-  "rewards": {
-    "genesis": { "claimable": false, "claimedAt": 1712345678901, "nextAt": null, "amountStroops": "100000000" },
-    "daily": { "claimable": true, "claimedAt": 1712345000000, "nextAt": null, "amountStroops": "20000000" },
-    "quest_connect_wallet": {
-      "claimable": true,
-      "claimedAt": null,
-      "nextAt": null,
-      "amountStroops": "30000000",
-      "requirementMet": true,
-      "progressPct": 100,
-      "requirementText": "Connect wallet is required."
-    }
-  }
-}
-```
-
-### POST /api/faucet
+#### `POST /api/faucet`
 
 Body:
 
@@ -80,13 +45,6 @@ Body:
   "reward": "daily"
 }
 ```
-
-- `reward` soportados:
-  - `genesis`
-  - `daily`
-  - `quest_connect_wallet`
-  - `quest_first_collection`
-  - `quest_first_settle`
 
 Respuesta exitosa:
 
@@ -99,81 +57,61 @@ Respuesta exitosa:
 }
 ```
 
-Errores comunes:
+Errores esperados:
 
-- `409`: reward ya reclamado (one-time).
-- `429`: reward en cooldown (daily).
-- `412`: requisito de quest no cumplido (on-chain).
-- `503`: faucet no configurado (falta `ADMIN_SECRET_KEY`).
+- `409`: recompensa one-time ya reclamada.
+- `429`: cooldown activo (`daily`).
+- `412`: requisito quest no cumplido.
+- `503`: faucet no configurado.
 
-### UI: Panel de obtencion
+### Ruta de compatibilidad
 
-```text
-[ FORMAS_DE_CONSEGUIR_PHASER_LIQ ]
-  > GENESIS SUPPLY
-  > DAILY RECHARGE
-  > QUEST #1 CONNECT
-  > QUEST #2 COLLECTION
-  > QUEST #3 SETTLEMENT
-```
+`POST /api/claim-bounty` reutiliza la semántica de `POST /api/faucet` y devuelve el mismo contrato de respuesta.
 
-- El panel muestra estado en tiempo real: `READY`, `LOCKED`, `CLAIMED`, `RESET @ ...`.
-- Cada quest renderiza barra de progreso (`progressPct`) + texto de requisito.
-- Cada claim deja traza en logs del chamber.
-- Recompensa acreditada muestra toast con icono de token.
+### Flujo trustline-first
 
-### Trustline clásica antes del `POST /api/faucet`
+Si hay activo clásico configurado en servidor:
 
-Si el servidor tiene configurado el activo clásico (`CLASSIC_LIQ_ASSET_CODE` + `CLASSIC_LIQ_ISSUER_SECRET`), `GET /api/classic-liq?walletAddress=…` devuelve `enabled: true`. En ese caso, el panel **`LiquidityFaucetControl`** (Forja y Cámara):
+1. UI consulta `GET /api/classic-liq`.
+2. Si no existe trustline, construye `changeTrust` y pide firma en Freighter.
+3. UI envía XDR firmado a `POST /api/classic-liq/trustline`.
+4. Solo después ejecuta `POST /api/faucet` (o `POST /api/claim-bounty`).
 
-1. Comprueba si la wallet ya tiene trustline hacia `PHASERLIQ` + issuer.
-2. Si no: construye `changeTrust`, el operador firma en **Freighter**, y el cliente envía el XDR firmado a **`POST /api/classic-liq/trustline`**.
-3. Tras éxito (o si ya había trustline), continúa con **`POST /api/faucet`**.
-
-Referencia arquitectura: [`docs/TECHNICAL.md` §7](./TECHNICAL.md#7-activo-clásico-phaserliq-y-sep-0001).
+Esto evita fallos por intentos de acreditar fondos a wallets sin trustline.
 
 ---
 
-## EN - Operational Documentation
+## EN — Operational documentation
 
-```text
-[ SUMMARY ]
-Testnet earning engine with 3 acquisition paths:
-1) GENESIS SUPPLY (one-time per wallet)
-2) DAILY RECHARGE (every 24h per wallet)
-3) QUEST REWARDS (one-time per mission)
-```
+### Purpose
 
-### Rules
+Define the PHASERLIQ testnet reward engine behavior, API contracts, and trustline-first execution model.
 
-- `genesis`: initial bootstrap for a new wallet.
-- `daily`: rechargeable reward with `24h` cooldown.
-- `quests`: each quest is one-time per wallet and now requires real on-chain proof:
-  - `quest_connect_wallet`
-  - `quest_first_collection` -> requires creator collection (`get_creator_collection_id`)
-  - `quest_first_settle` -> requires at least one phase/settlement (`get_user_phase`)
+### Reward types
 
-### API
+- `genesis` (one-time bootstrap)
+- `daily` (24h cooldown)
+- `quest_connect_wallet`
+- `quest_first_collection`
+- `quest_first_settle`
 
-```text
-GET  /api/faucet
-GET  /api/faucet?walletAddress=G...
-POST /api/faucet
-```
+### Endpoints
 
-### GET /api/faucet?walletAddress=G...
+#### `GET /api/faucet?walletAddress=G...`
 
-- Returns `enabled` and reward status:
-  - `claimable`
-  - `claimedAt`
-  - `nextAt`
-  - `amountStroops`
-  - `requirementMet` / `progressPct` / `requirementText` (quests)
-- Also includes `questOverview` for a global quest progress bar.
+Returns global and per-reward status:
 
-### POST /api/faucet
+- `enabled`
+- `questOverview`
+- `rewards[*].claimable`
+- `rewards[*].claimedAt`
+- `rewards[*].nextAt`
+- `rewards[*].amountStroops`
+- quest requirements/progress fields where applicable
 
-Body:
+#### `POST /api/faucet`
+
+Request body:
 
 ```json
 {
@@ -182,15 +120,7 @@ Body:
 }
 ```
 
-Supported `reward` values:
-
-- `genesis`
-- `daily`
-- `quest_connect_wallet`
-- `quest_first_collection`
-- `quest_first_settle`
-
-Success response:
+Successful response:
 
 ```json
 {
@@ -201,39 +131,24 @@ Success response:
 }
 ```
 
-Common error codes:
+Common status codes:
 
-- `409`: already claimed reward.
-- `429`: cooldown active (daily).
-- `412`: quest requirement not satisfied (on-chain check).
-- `503`: faucet not configured (`ADMIN_SECRET_KEY` missing).
+- `409`: already claimed one-time reward.
+- `429`: cooldown still active.
+- `412`: quest prerequisite not met.
+- `503`: faucet unavailable/misconfigured.
 
-### UI: Earning panel
+### Compatibility route
 
-```text
-[ WAYS_TO_EARN_PHASER_LIQ ]
-  > GENESIS SUPPLY
-  > DAILY RECHARGE
-  > QUEST #1 CONNECT
-  > QUEST #2 COLLECTION
-  > QUEST #3 SETTLEMENT
-```
+`POST /api/claim-bounty` is a typed compatibility route that forwards to `/api/faucet` semantics.
 
-- Live reward state labels: `READY`, `LOCKED`, `CLAIMED`, `RESET @ ...`.
-- Each quest card renders progress bars from `progressPct`.
-- Claims write narrative logs in the chamber.
-- Successful claim shows token-icon toast feedback.
+### Trustline-first execution
 
-### Classic trustline before `POST /api/faucet`
+When classic asset mode is enabled:
 
-When the server enables the classic asset (`CLASSIC_LIQ_ASSET_CODE` + `CLASSIC_LIQ_ISSUER_SECRET`), `GET /api/classic-liq?walletAddress=…` returns `enabled: true`. Then **`LiquidityFaucetControl`** (Forge + Chamber):
+1. UI checks wallet/asset status via `/api/classic-liq`.
+2. Missing trustline triggers signed `changeTrust`.
+3. Signed XDR is posted to `/api/classic-liq/trustline`.
+4. Reward claim is executed only after trustline readiness.
 
-1. Checks whether the wallet already trusts `PHASERLIQ` for the configured issuer.
-2. If not: builds `changeTrust`, user signs in **Freighter**, client posts signed XDR to **`POST /api/classic-liq/trustline`**.
-3. On success (or existing trustline), proceeds with **`POST /api/faucet`**.
-
-See [`docs/TECHNICAL.md` §7](./TECHNICAL.md#7-activo-clásico-phaserliq-y-sep-0001).
-
-```text
-END_OF_DOC :: PHASER_LIQ_REWARDS_TERMINAL_DOC
-```
+This prevents failed funding attempts for wallets that cannot yet receive the classic asset.
