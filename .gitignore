@@ -13,6 +13,9 @@ out/
 # Dependencies
 node_modules/
 
+# Soroban / Rust build output (large; breaks Vercel traces if committed)
+contracts/**/target/
+
 # Local runtime data (claims/profiles/cache)
 .data/
 
