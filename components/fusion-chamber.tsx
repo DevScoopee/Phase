@@ -389,6 +389,16 @@ export function FusionChamber() {
   }, [refreshClassicStatus])
 
   useEffect(() => {
+    if (!address) return
+    const id = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return
+      void refreshStatus().catch(() => {})
+      void refreshClassicStatus().catch(() => {})
+    }, 12_000)
+    return () => window.clearInterval(id)
+  }, [address, refreshStatus, refreshClassicStatus])
+
+  useEffect(() => {
     if (!logsOpen) return
     const t = window.setTimeout(() => {
       logEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })

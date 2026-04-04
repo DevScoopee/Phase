@@ -16,7 +16,9 @@
     "deploy:phase": "tsx deploy-phase.ts",
     "interact": "tsx interact.ts",
     "issue:sac": "tsx issue-sac-token.ts",
-    "set:issuer-home-domain": "tsx set-issuer-home-domain.ts"
+    "setup:phase-v2": "tsx setup-phase-v2.ts",
+    "set:issuer-home-domain": "tsx set-issuer-home-domain.ts",
+    "issuer-to-distributor": "tsx issuer-pay-distributor.ts"
   },
   "dependencies": {
     "@stellar/freighter-api": "^6.0.1",

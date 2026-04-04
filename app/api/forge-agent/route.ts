@@ -24,9 +24,11 @@ import {
   TOKEN_ADDRESS,
 } from "@/lib/phase-protocol"
 import { logUnknownStellarError } from "@/lib/stellar"
+import { warnPhaserLiqSacMismatchOnce } from "@/lib/phaser-liq-sac-warn"
 
 export const runtime = "nodejs"
 export const maxDuration = 120
+export const dynamic = 'force-dynamic'
 
 const X402_NETWORK = "stellar:testnet"
 /** Texto fijo del paywall (spec producto). */
@@ -198,6 +200,11 @@ function logForgeAgentSorobanTxNotSuccess(txHash: string, res: rpc.Api.GetTransa
   console.error("[forge-agent] Soroban getTransaction: not SUCCESS", JSON.stringify(row))
 }
 
+/**
+ * Comprueba en RPC que el pago fue un `invokeHostFunction` → **settle** en **CONTRACT_ID**
+ * (protocolo PHASE), con `TOKEN_ADDRESS` y monto ≥ REQUIRED_AMOUNT.
+ * Este endpoint **no** firma ni llama `mint` ni `transfer` del token; el mint del faucet va en `app/api/faucet/route.ts`.
+ */
 async function verifyPhaseSettleTxOnChain(
   txHash: string,
   payerAddress: string,
@@ -396,6 +403,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<ForgeAgen
       { status: 503 },
     )
   }
+
+  warnPhaserLiqSacMismatchOnce(TOKEN_ADDRESS, "forge-agent")
 
   const paymentRequirements = buildOfficialPaymentRequirements(request)
   const auth = request.headers.get("authorization")

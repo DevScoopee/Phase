@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { REQUIRED_AMOUNT, TOKEN_ADDRESS } from "@/lib/phase-protocol"
 
+export const dynamic = 'force-dynamic'
+
 const X402_NETWORK = "stellar:testnet"
 
 function facilitatorUrl(request: NextRequest): string {

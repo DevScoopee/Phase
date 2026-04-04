@@ -54,6 +54,15 @@ export function classicLiqAssetConfigFromPublicEnv(): ClassicLiqAsset | null {
   return { code, issuer }
 }
 
+/**
+ * Contract ID Soroban (C…) del Stellar Asset Contract que envuelve el par clásico (code + issuer).
+ * Debe ser el mismo que `NEXT_PUBLIC_TOKEN_CONTRACT_ID` / `TOKEN_CONTRACT_ID` si usas ese asset como PHASERLIQ.
+ * Compruébalo en Stellar Expert: cuenta emisora → sección Assets → enlace «Contract ID».
+ */
+export function expectedClassicPhaserLiqSorobanContractId(): string {
+  return new Asset(classicLiqCodeForStellarToml(), classicLiqIssuerForStellarToml()).contractId(Networks.TESTNET)
+}
+
 export function isClassicLiqEnabledPublic(): boolean {
   return classicLiqAssetConfigFromPublicEnv() != null
 }

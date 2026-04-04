@@ -20,6 +20,8 @@ import {
 } from "@/lib/stellar"
 import { HORIZON_URL } from "@/lib/phase-protocol"
 
+export const dynamic = 'force-dynamic'
+
 type ClassicClaims = Record<string, { classicFundAt?: number }>
 
 function classicClaimsFilePath() {

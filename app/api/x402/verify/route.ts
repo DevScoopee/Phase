@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { REQUIRED_AMOUNT } from "@/lib/phase-protocol"
 
+export const dynamic = 'force-dynamic'
+
 type LocalX402Token = {
   invoice?: string
   amount?: number | string

@@ -46,7 +46,7 @@ PHASER_LIQ_NODE_DECLARATION_DOCS="https://developers.stellar.org/docs/validators
     status: 200,
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
-      "Cache-Control": "public, max-age=300",
+      "Cache-Control": "no-store, max-age=0",
       // Freighter / dApp (Origin www.phasee.xyz) y stellar.expert deben poder leer el TOML (CORS).
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, OPTIONS",

@@ -8,6 +8,8 @@
     "interact": "next dev",
     "lint": "eslint .",
     "set:issuer-home-domain": "cd scripts && npm run set:issuer-home-domain",
+    "classic:issuer-to-distributor": "cd scripts && npm run issuer-to-distributor",
+    "setup:phase-v2": "cd scripts && npm run setup:phase-v2",
     "start": "next start"
   },
   "dependencies": {

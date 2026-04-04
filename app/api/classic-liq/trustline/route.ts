@@ -3,6 +3,8 @@ import { Horizon, Networks, TransactionBuilder } from "@stellar/stellar-sdk"
 import { HORIZON_URL } from "@/lib/phase-protocol"
 import { logHorizonSubmitError } from "@/lib/stellar"
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(req: NextRequest) {
   let body: { signedXdr?: string }
   try {

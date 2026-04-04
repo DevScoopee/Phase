@@ -2,6 +2,7 @@
 
 import {
   Address,
+  Asset,
   BASE_FEE,
   Contract,
   FeeBumpTransaction,
@@ -119,7 +120,21 @@ export function isValidClassicStellarAddress(addr: string): boolean {
   return StrKey.isValidEd25519PublicKey(t)
 }
 
+/**
+ * SAC (Stellar Asset Contract) de PHASERLIQ emitido por el issuer clásico de testnet.
+ * Debe ser idéntico a `new Asset(code, issuer).contractId(NETWORK_PASSPHRASE)`; si env
+ * apunta a otro C…, fallos en mint/transfer/settle pueden parecer trustline u host errors.
+ * @see lib/classic-liq.ts `DEFAULT_CLASSIC_PHASER_LIQ_ISSUER` (mismo G… que aquí).
+ */
+const DEFAULT_PHASER_LIQ_SAC_ISSUER =
+  "GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS"
+
 const DEFAULT_TOKEN_CONTRACT = "CDOAXHWC6YJB7U3ELV67HKJY6HEMJFBNRGJK6WZGUAELBWP3WP77RLFD"
+
+/** Contrato SAC esperado para PHASERLIQ + issuer por defecto (validar contra `TOKEN_ADDRESS`). */
+export function expectedDefaultPhaserLiqSACContractId(): string {
+  return new Asset("PHASERLIQ", DEFAULT_PHASER_LIQ_SAC_ISSUER).contractId(NETWORK_PASSPHRASE)
+}
 
 /** Contrato del token de liquidez del protocolo (Soroban). */
 export const TOKEN_ADDRESS = (() => {
@@ -196,6 +211,10 @@ function addressLikeToString(v: unknown): string {
   return ""
 }
 
+/**
+ * Simulación de solo lectura: cada llamada obtiene secuencia actual del fee source, arma un tx nuevo
+ * y pide simulación al RPC (sin reutilizar footprint ni resultado de peticiones anteriores).
+ */
 async function simulateContractCall(
   contractId: string,
   method: string,
@@ -298,6 +317,7 @@ export async function buildInitiatePhaseTransaction(userAddress: string, collect
     )
     .setTimeout(30)
     .build()
+  // prepareTransaction ejecuta simulateTransaction internamente y sobrescribe el footprint en este tx.
   const prepared = await server.prepareTransaction(tx)
   return prepared.toXDR()
 }
@@ -358,12 +378,22 @@ export async function buildTransferPhaseNftTransaction(
   return prepared.toXDR()
 }
 
+function logSorobanRpcResultForDebug(context: string, result: unknown): void {
+  if (typeof console === "undefined" || typeof console.log !== "function") return
+  try {
+    console.log(context, JSON.stringify(result, (_, v) => (typeof v === "bigint" ? v.toString() : v)))
+  } catch {
+    console.log(context, result)
+  }
+}
+
 export async function sendTransaction(signedXdr: string) {
   const server = getRpc()
   const parsed = TransactionBuilder.fromXDR(signedXdr, Networks.TESTNET)
   const tx = parsed instanceof FeeBumpTransaction ? parsed.innerTransaction : (parsed as Transaction)
   const result = await server.sendTransaction(tx)
   if (result.status === "ERROR") {
+    logSorobanRpcResultForDebug("[PHASE Soroban] sendTransaction ERROR (RPC result)", result)
     throw new Error("sendTransaction rejected by RPC (see errorResult on server)")
   }
   return result
@@ -376,6 +406,7 @@ export async function getTransactionResult(txHash: string): Promise<unknown> {
     const result = await server.getTransaction(txHash)
     if (result.status === rpc.Api.GetTransactionStatus.SUCCESS) return result
     if (result.status === rpc.Api.GetTransactionStatus.FAILED) {
+      logSorobanRpcResultForDebug("[PHASE Soroban] getTransaction FAILED (RPC result)", result)
       throw new Error("Transaction failed on ledger")
     }
   }

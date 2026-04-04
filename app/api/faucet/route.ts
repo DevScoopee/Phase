@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { serverDataJsonPath } from "@/lib/server-data-paths"
-import { readClassicWalletStatus } from "@/lib/classic-liq"
+import {
+  classicLiqIssuerForStellarToml,
+  expectedClassicPhaserLiqSorobanContractId,
+  readClassicWalletStatus,
+} from "@/lib/classic-liq"
+import { warnPhaserLiqSacMismatchOnce } from "@/lib/phaser-liq-sac-warn"
 import { resolvePhaserLiqClassicAsset, summarizeSorobanFailedMint } from "@/lib/stellar"
 import {
   Address,
@@ -17,6 +22,7 @@ import {
 import {
   checkHasPhased,
   fetchCreatorCollectionId,
+  HORIZON_URL,
   NETWORK_PASSPHRASE,
   PHASER_FAUCET_MINT_STROOPS,
   RPC_URL,
@@ -27,12 +33,18 @@ import {
 /** Vercel Hobby ~10s: el poll largo anterior (20×1.5s) cortaba la función → 502 del gateway. */
 export const maxDuration = 25
 
+/** Sin caché de respuesta de ruta: cada POST vuelve a simular/preparar en cadena. */
+export const dynamic = 'force-dynamic'
+
 const DAILY_WINDOW_MS = 24 * 60 * 60 * 1000
 const FAUCET_PENDING_TTL_MS = 8 * 60 * 1000
 const FAUCET_POLL_INTERVAL_MS = 1000
 const FAUCET_MAX_POLLS_PER_REQUEST = 4
 const QUEST_REWARD_STROOPS = "30000000"
 const DAILY_REWARD_STROOPS = "20000000"
+
+/** Por debajo de esto, Soroban suele fallar (trap / ihf_trapped) por falta de XLM para fees y renta. */
+const MIN_SIGNER_NATIVE_XLM = 5
 
 const QUEST_IDS = ["quest_connect_wallet", "quest_first_collection", "quest_first_settle"] as const
 type QuestId = (typeof QUEST_IDS)[number]
@@ -111,9 +123,32 @@ async function writeClaims(claims: FaucetClaims) {
   await writeFile(file, JSON.stringify(claims, null, 2), "utf8")
 }
 
+function faucetUsesDistributorTransfer(): boolean {
+  const s = process.env.FAUCET_DISTRIBUTOR_SECRET_KEY?.trim()
+  return Boolean(s && s.length >= 20)
+}
+
 function faucetConfigured(): boolean {
+  if (faucetUsesDistributorTransfer()) return true
   const secret = process.env.ADMIN_SECRET_KEY?.trim()
   return Boolean(secret && secret.length >= 20)
+}
+
+async function fetchNativeXlmBalance(gAddress: string): Promise<number | null> {
+  try {
+    const res = await fetch(`${HORIZON_URL}/accounts/${encodeURIComponent(gAddress)}`, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { balances?: Array<{ asset_type?: string; balance?: string }> }
+    const native = data.balances?.find((b) => b.asset_type === "native")
+    if (!native?.balance) return null
+    const n = parseFloat(native.balance)
+    return Number.isFinite(n) ? n : null
+  } catch {
+    return null
+  }
 }
 
 /** Mismo contrato token que el resto de la app (`lib/phase-protocol.ts`), ya validado como C…. */
@@ -246,6 +281,7 @@ async function buildWalletStatus(wallet: string | null, claims: FaucetClaims) {
   const questsDone = Number(questCompletion[0]) + Number(questCompletion[1]) + Number(questCompletion[2])
   return {
     enabled: faucetConfigured(),
+    payoutMode: faucetConfigured() ? (faucetUsesDistributorTransfer() ? "transfer" : "mint") : null,
     wallet,
     dailyWindowMs: DAILY_WINDOW_MS,
     questOverview: {
@@ -326,7 +362,7 @@ function faucetMintLedgerFailedResponse(
   failed: rpc.Api.GetFailedTransactionResponse,
 ): NextResponse {
   const sorobanSummary = summarizeSorobanFailedMint(failed)
-  console.error("[faucet] Soroban mint FAILED (trustline ya verificada en esta petición)", {
+  console.error("[faucet] Soroban mint/transfer FAILED (trustline ya verificada en esta petición)", {
     hash,
     sorobanSummary,
     ledger: failed.ledger,
@@ -381,7 +417,10 @@ async function preflightClassicTrustlineForMint(userAddress: string): Promise<Ne
 }
 
 /**
- * Acuña PHASERLIQ vía `mint` del contrato token (firma ADMIN_SECRET_KEY).
+ * PHASERLIQ al usuario:
+ * - **mint** (por defecto): firma `ADMIN_SECRET_KEY` — en el Stellar Asset Contract debe ser el **Issuer** (G… del asset), no un distribuidor.
+ * - **transfer** (opcional): si existe `FAUCET_DISTRIBUTOR_SECRET_KEY`, se llama `transfer(distribuidor → usuario)`; el distribuidor debe tener saldo y XLM para fees.
+ *
  * Body: `{ "walletAddress": "G…", "reward": "genesis|daily|quest_*" }`
  */
 export async function POST(req: NextRequest) {
@@ -389,7 +428,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Faucet desactivado: define ADMIN_SECRET_KEY en .env.local. El ID del contrato token es el mismo que en NEXT_PUBLIC_* / TOKEN_CONTRACT_ID (debe ser C…, nunca una cuenta G…). Reinicia el servidor.",
+          "Faucet desactivado: define ADMIN_SECRET_KEY (mint como issuer del SAC) o FAUCET_DISTRIBUTOR_SECRET_KEY (transfer desde billetera con liquidez). Reinicia el servidor.",
+        code: "FAUCET_NOT_CONFIGURED",
       },
       { status: 503 },
     )
@@ -450,17 +490,73 @@ export async function POST(req: NextRequest) {
   const trustlineBlock = await preflightClassicTrustlineForMint(userAddress)
   if (trustlineBlock) return trustlineBlock
 
-  const adminSecret = process.env.ADMIN_SECRET_KEY!.trim()
-  let adminKp: Keypair
-  try {
-    adminKp = Keypair.fromSecret(adminSecret)
-  } catch {
-    return NextResponse.json({ error: "ADMIN_SECRET_KEY no es un secret Stellar válido." }, { status: 500 })
+  const useTransfer = faucetUsesDistributorTransfer()
+  let signerKp: Keypair
+  if (useTransfer) {
+    const distSecret = process.env.FAUCET_DISTRIBUTOR_SECRET_KEY!.trim()
+    try {
+      signerKp = Keypair.fromSecret(distSecret)
+    } catch {
+      return NextResponse.json(
+        { error: "FAUCET_DISTRIBUTOR_SECRET_KEY no es un secret Stellar válido.", code: "FAUCET_BAD_DISTRIBUTOR_SECRET" },
+        { status: 500 },
+      )
+    }
+  } else {
+    const adminSecret = process.env.ADMIN_SECRET_KEY?.trim()
+    if (!adminSecret || adminSecret.length < 20) {
+      return NextResponse.json(
+        {
+          error: "Falta ADMIN_SECRET_KEY para modo mint, o usa FAUCET_DISTRIBUTOR_SECRET_KEY para modo transfer.",
+          code: "FAUCET_ADMIN_MISSING",
+        },
+        { status: 503 },
+      )
+    }
+    try {
+      signerKp = Keypair.fromSecret(adminSecret)
+    } catch {
+      return NextResponse.json({ error: "ADMIN_SECRET_KEY no es un secret Stellar válido." }, { status: 500 })
+    }
   }
 
   const tokenId = serverTokenContractId()
+  warnPhaserLiqSacMismatchOnce(tokenId, "faucet")
   const server = new rpc.Server(RPC_URL)
-  const source = adminKp.publicKey()
+  const source = signerKp.publicKey()
+
+  if (!useTransfer) {
+    const sacExpected = expectedClassicPhaserLiqSorobanContractId()
+    if (tokenId === sacExpected) {
+      const issuerG = classicLiqIssuerForStellarToml()
+      if (source !== issuerG) {
+        return NextResponse.json(
+          {
+            error:
+              "Modo mint + SAC PHASERLIQ: ADMIN_SECRET_KEY debe ser el secret del Issuer (misma G… que NEXT_PUBLIC_CLASSIC_LIQ_ISSUER). Solo el issuer puede mint en el Stellar Asset Contract; un distribuidor provoca fallos tipo ihf_trapped. Alternativa: define FAUCET_DISTRIBUTOR_SECRET_KEY y liquidez en esa cuenta para pagar con transfer.",
+            code: "FAUCET_ADMIN_NOT_ISSUER",
+            expectedIssuer: issuerG,
+            signerPublic: source,
+          },
+          { status: 503 },
+        )
+      }
+    }
+  }
+
+  const nativeXlm = await fetchNativeXlmBalance(source)
+  if (nativeXlm != null && nativeXlm < MIN_SIGNER_NATIVE_XLM) {
+    return NextResponse.json(
+      {
+        error: `La cuenta que firma el faucet tiene ~${nativeXlm.toFixed(2)} XLM; se recomiendan al menos ${MIN_SIGNER_NATIVE_XLM} XLM en testnet para fees Soroban (si no, suele fallar con trap / ihf_trapped).`,
+        code: "FAUCET_SIGNER_LOW_XLM",
+        signer: source,
+        nativeXlmApprox: nativeXlm,
+        minRecommendedXlm: MIN_SIGNER_NATIVE_XLM,
+      },
+      { status: 503 },
+    )
+  }
 
   try {
     const now = Date.now()
@@ -517,22 +613,26 @@ export async function POST(req: NextRequest) {
 
     const account = await server.getAccount(source)
     const c = new Contract(tokenId)
+    const amountSc = nativeToScVal(BigInt(rewardAmountStroops(reward)), { type: "i128" })
     const tx = new TransactionBuilder(account, {
       fee: BASE_FEE,
       networkPassphrase: NETWORK_PASSPHRASE,
     })
       .addOperation(
-        c.call(
-          "mint",
-          Address.fromString(userAddress).toScVal(),
-          nativeToScVal(BigInt(rewardAmountStroops(reward)), { type: "i128" }),
-        ),
+        useTransfer
+          ? c.call(
+              "transfer",
+              Address.fromString(source).toScVal(),
+              Address.fromString(userAddress).toScVal(),
+              amountSc,
+            )
+          : c.call("mint", Address.fromString(userAddress).toScVal(), amountSc),
       )
       .setTimeout(30)
       .build()
 
     const prepared = await server.prepareTransaction(tx)
-    prepared.sign(adminKp)
+    prepared.sign(signerKp)
     const send = await server.sendTransaction(prepared)
     if (send.status === "ERROR") {
       const err = (send as { errorResult?: unknown }).errorResult

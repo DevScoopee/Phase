@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { CONTRACT_ID, REQUIRED_AMOUNT, TOKEN_ADDRESS } from "@/lib/phase-protocol"
 
+export const dynamic = 'force-dynamic'
+
 const X402_NETWORK = "stellar:testnet"
 
 type LocalX402Token = {

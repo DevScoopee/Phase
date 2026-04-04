@@ -141,6 +141,38 @@ stellar contract invoke \
   # 10000000 = 1.0 token con 7 decimales
 ```
 
+### 5. Stellar Asset Contract (SAC) del PHASERLIQ clásico — “relanzar” / instalar en testnet
+
+Para un par **code:issuer** fijo, el **Contract ID del SAC es determinista**: no cambia aunque vuelvas a ejecutar el deploy. Puedes **comprobarlo** sin firmar:
+
+```bash
+stellar contract id asset \
+  --network testnet \
+  --rpc-url https://soroban-testnet.stellar.org \
+  --network-passphrase "Test SDF Network ; September 2015" \
+  --asset "PHASERLIQ:GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS"
+# → CDOAXHWC6YJB7U3ELV67HKJY6HEMJFBNRGJK6WZGUAELBWP3WP77RLFD (mismo default que lib/phase-protocol.ts)
+```
+
+Si la CLI se queja de *passphrase missing* o *rpc-url missing*, suele ser config parcial: pasa siempre `--rpc-url` y `--network-passphrase` como arriba (o exporta `STELLAR_RPC_URL` y `STELLAR_NETWORK_PASSPHRASE`).
+
+Si usas otro emisor, sustituye el `G…` en `--asset` (y en `.env` `NEXT_PUBLIC_CLASSIC_LIQ_ISSUER`).
+
+Para **instanciar** el contrato builtin en la red (primera vez o si faltaba), paga fees con una cuenta testnet con XLM (cualquier `G…` con fondos; no tiene que ser el issuer):
+
+```bash
+stellar contract asset deploy \
+  --network testnet \
+  --rpc-url https://soroban-testnet.stellar.org \
+  --network-passphrase "Test SDF Network ; September 2015" \
+  --asset "PHASERLIQ:GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS" \
+  --source-account TU_CUENTA_CON_XLM
+```
+
+Luego alinea `.env.local` con el **mismo** `C…` (o borra overrides y usa el default del repo):
+
+- `NEXT_PUBLIC_TOKEN_CONTRACT_ID` / `NEXT_PUBLIC_PHASER_TOKEN_ID` (y equivalentes servidor sin `NEXT_PUBLIC_`).
+
 ## Comandos de Interacción
 
 ### Mock Token
