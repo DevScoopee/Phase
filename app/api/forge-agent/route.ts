@@ -1,5 +1,5 @@
+import { GoogleGenerativeAI } from "@google/generative-ai"
 import { NextRequest, NextResponse } from "next/server"
-import OpenAI from "openai"
 import {
   Address,
   FeeBumpTransaction,
@@ -21,7 +21,6 @@ import {
   READONLY_SIM_SOURCE_G,
   REQUIRED_AMOUNT,
   RPC_URL,
-  stroopsToLiqDisplay,
   TOKEN_ADDRESS,
 } from "@/lib/phase-protocol"
 
@@ -29,17 +28,15 @@ export const runtime = "nodejs"
 export const maxDuration = 120
 
 const X402_NETWORK = "stellar:testnet"
-/** Coste forja-agente alineado con REQUIRED_AMOUNT (p. ej. 1.00 PHASERLIQ). */
-const FORGE_PRICE_DISPLAY = `${stroopsToLiqDisplay(REQUIRED_AMOUNT)} PHASERLIQ`
-/** Sufijo de estilo forzado para DALL·E (tras el prompt del usuario). */
+/** Texto fijo del paywall (spec producto). */
+const FORGE_PRICE_DISPLAY = "1.00 PHASER_LIQ"
+
 const IMAGE_STYLE_SUFFIX =
-  ", dark cyber-brutalist aesthetic, glowing neon cyan, minimalist glitch art, isometric"
+  ", dark cyber-brutalist aesthetic, glowing neon cyan, minimalist glitch art, isometric 3d"
 
 type ForgeAgentBody = {
   prompt?: string
-  /** Hash de tx Soroban exitosa que invoca `settle` en el contrato PHASE (PHASERLIQ). */
   settlementTxHash?: string
-  /** Cuenta G que firmó la tx (debe coincidir con `source` del envelope). */
   payerAddress?: string
 }
 
@@ -55,7 +52,6 @@ function parseRequiredAmountInt(): number {
 }
 
 function buildLegacyChallenge(request: NextRequest) {
-  const priceHuman = `${stroopsToLiqDisplay(REQUIRED_AMOUNT)} PHASERLIQ`
   return {
     protocol: "x402",
     version: "2",
@@ -64,7 +60,7 @@ function buildLegacyChallenge(request: NextRequest) {
     contract_id: CONTRACT_ID,
     token_contract: TOKEN_ADDRESS,
     amount: parseRequiredAmountInt(),
-    priceDisplay: priceHuman,
+    priceDisplay: FORGE_PRICE_DISPLAY,
     facilitator: facilitatorUrl(request),
     invoice: `forge_${Date.now()}`,
     resource: request.nextUrl.pathname,
@@ -290,50 +286,26 @@ type ForgeAgentSuccess = {
   metadataStandard: "SEP-20"
 }
 
-async function runForgeAgentCore(prompt: string): Promise<ForgeAgentSuccess> {
-  const apiKey = process.env.OPENAI_API_KEY!.trim()
-  const openai = new OpenAI({ apiKey })
-  const trimmed = prompt.trim()
+function buildPollinationsImageUrl(userPrompt: string): string {
+  const imagePrompt = `${userPrompt.trim()}${IMAGE_STYLE_SUFFIX}`
+  return `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=1024&height=1024&nologo=true`
+}
+
+async function runForgeAgentCore(userPrompt: string): Promise<ForgeAgentSuccess> {
+  const trimmed = userPrompt.trim()
   if (!trimmed) {
     throw new Error("EMPTY_PROMPT")
   }
 
-  const imagePrompt = `${trimmed}${IMAGE_STYLE_SUFFIX}`
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!.trim())
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
 
-  const imageModel = process.env.OPENAI_FORGE_IMAGE_MODEL?.trim() || "dall-e-3"
+  const systemInstruction = `Eres el Arquitecto del Protocolo PHASE. Escribe una descripción de máximo 2 oraciones técnicas, oscuras, ciberpunk y enigmáticas sobre el siguiente artefacto forjado por el usuario: ${trimmed}`
 
-  const imageResult = await openai.images.generate({
-    model: imageModel,
-    prompt: imagePrompt,
-    n: 1,
-    size: "1024x1024",
-  })
+  const geminiResult = await model.generateContent(systemInstruction)
+  const lore = geminiResult.response.text().trim()
 
-  const imageUrl = imageResult.data?.[0]?.url
-  if (!imageUrl) {
-    throw new Error("OpenAI images.generate returned no URL")
-  }
-
-  const loreModel = process.env.OPENAI_FORGE_LORE_MODEL?.trim() || "gpt-4o-mini"
-
-  const completion = await openai.chat.completions.create({
-    model: loreModel,
-    messages: [
-      {
-        role: "system",
-        content:
-          "Eres el Arquitecto del Protocolo PHASE. Escribe una descripción de máximo 2 oraciones técnicas, oscuras y enigmáticas sobre el siguiente artefacto (el usuario describe la anomalía a continuación). Sin títulos ni comillas. Texto apto para metadata SEP-20.",
-      },
-      {
-        role: "user",
-        content: trimmed,
-      },
-    ],
-    max_tokens: 220,
-    temperature: 0.85,
-  })
-
-  const lore = completion.choices[0]?.message?.content?.trim() || ""
+  const imageUrl = buildPollinationsImageUrl(trimmed)
 
   return {
     success: true,
@@ -344,18 +316,18 @@ async function runForgeAgentCore(prompt: string): Promise<ForgeAgentSuccess> {
 }
 
 export async function POST(request: NextRequest) {
-  if (!process.env.OPENAI_API_KEY?.trim()) {
-    return NextResponse.json(
-      { success: false, error: "OPENAI_API_KEY no configurada en el servidor" },
-      { status: 503 },
-    )
-  }
-
   let body: ForgeAgentBody
   try {
     body = (await request.json()) as ForgeAgentBody
   } catch {
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 })
+  }
+
+  if (!process.env.GEMINI_API_KEY?.trim()) {
+    return NextResponse.json(
+      { success: false, error: "GEMINI_API_KEY no configurada en el servidor" },
+      { status: 503 },
+    )
   }
 
   const paymentRequirements = buildOfficialPaymentRequirements(request)
@@ -378,14 +350,11 @@ export async function POST(request: NextRequest) {
     if (msg === "EMPTY_PROMPT") {
       return NextResponse.json({ success: false, error: "prompt vacío o inválido" }, { status: 400 })
     }
-    console.error(
-      "[forge-agent] PAID_RUN_OPENAI_FAIL — x402/settle was already accepted; no automatic refund (log only).",
-      e,
-    )
+    console.error("[PROTOCOL_ERROR] Energía consumida, fallo de IA", e)
     return NextResponse.json(
       {
         success: false,
-        error: "Fallo del agente IA (OpenAI). El pago ya fue aceptado; revisar logs.",
+        error: "Fallo del agente IA (Gemini). El pago ya fue aceptado; revisar logs.",
         detail: process.env.NODE_ENV === "development" ? msg : undefined,
       },
       { status: 500 },

@@ -18,7 +18,7 @@ PHASE es un sistema de **Pagos Agénticos** basado en el estándar x402. Permite
 | **PHASE_LIQ** (Token SEP-41) | `CDW3T2DXLNGMQDZLMINEF3QHXYDB3F4ZJOGQSKW6QYABA4HMUFRG7DXC` | Token de liquidez |
 | **PHASE_CORE** (Protocolo) | `CDXZ2HWPSAU3DKACNGTTY3WM6FKN5LPNGMAYFW4KBF74P42RK6SFDRGP` | x402 Facilitator |
 
-**Stellar Expert (testnet):** [PHASE_CORE](https://stellar.expert/explorer/testnet/contract/CDXZ2HWPSAU3DKACNGTTY3WM6FKN5LPNGMAYFW4KBF74P42RK6SFDRGP) · [PHASER_LIQ](https://stellar.expert/explorer/testnet/contract/CDW3T2DXLNGMQDZLMINEF3QHXYDB3F4ZJOGQSKW6QYABA4HMUFRG7DXC)
+**Stellar Expert (testnet):** [PHASE_CORE](https://stellar.expert/explorer/testnet/contract/CDXZ2HWPSAU3DKACNGTTY3WM6FKN5LPNGMAYFW4KBF74P42RK6SFDRGP) · [PHASERLIQ](https://stellar.expert/explorer/testnet/asset/PHASERLIQ-GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS)
 
 ### Activos de marca (repo)
 

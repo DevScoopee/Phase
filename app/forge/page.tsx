@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { signTransaction } from "@stellar/freighter-api"
 import { ArtistAliasControl } from "@/components/artist-alias-control"
 import { LangToggle } from "@/components/lang-toggle"
@@ -29,8 +29,7 @@ import {
   sendTransaction,
   stroopsToLiqDisplay,
   PHASER_LIQ_SYMBOL,
-  stellarExpertTestnetContractUrl,
-  TOKEN_ADDRESS,
+  stellarExpertPhaserLiqUrl,
   validateFinalContractImageUri,
 } from "@/lib/phase-protocol"
 
@@ -51,7 +50,7 @@ function captureWheelOnRewardsPanel(e: React.WheelEvent<HTMLDivElement>) {
   }
 }
 
-const PHASER_LIQ_EXPERT_HREF = stellarExpertTestnetContractUrl(TOKEN_ADDRESS)
+const PHASER_LIQ_EXPERT_HREF = stellarExpertPhaserLiqUrl()
 
 function PhaserLiqExpertLink({
   className,
@@ -94,6 +93,7 @@ const forgeNavBtn =
   "tactical-interactive-glitch tactical-phosphor inline-flex min-h-[40px] items-center rounded-sm border-2 border-cyan-400/50 bg-cyan-950/45 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.14)] transition-colors hover:border-cyan-300 hover:bg-cyan-900/35 hover:text-white"
 
 type AgentState = "IDLE" | "AWAITING_PAYMENT" | "PROCESSING_PAYMENT" | "FORGING_MATTER" | "COMPLETE"
+type ForgeMode = "ORACLE" | "MANUAL"
 
 const PROTOCOL_HALTED = "[ PROTOCOL_HALTED: ERROR_IN_FUSION_CHAMBER ]"
 
@@ -107,6 +107,13 @@ export default function ForgePage() {
   const [name, setName] = useState("")
   const [priceLiq, setPriceLiq] = useState("1")
   const [anomalyDescription, setAnomalyDescription] = useState("")
+  const [forgeMode, setForgeMode] = useState<ForgeMode>("ORACLE")
+  const [manualFile, setManualFile] = useState<File | null>(null)
+  const [manualImageUrl, setManualImageUrl] = useState("")
+  const [manualLoreDraft, setManualLoreDraft] = useState("")
+  const [manualPreviewObjectUrl, setManualPreviewObjectUrl] = useState<string | null>(null)
+  const [manualDropActive, setManualDropActive] = useState(false)
+  const manualFileInputRef = useRef<HTMLInputElement>(null)
 
   const [agentState, setAgentState] = useState<AgentState>("IDLE")
   const [isMintingCollection, setIsMintingCollection] = useState(false)
@@ -130,7 +137,39 @@ export default function ForgePage() {
   const busy = isMintingCollection || agentFlowBusy
 
   const anomalyFieldLocked = agentFlowBusy || agentState === "COMPLETE"
-  const namePriceLocked = agentFlowBusy || isMintingCollection
+  const namePriceLocked =
+    (forgeMode === "ORACLE" && (agentFlowBusy || agentState === "COMPLETE")) || isMintingCollection
+
+  const tabSwitchLocked = agentFlowBusy || isMintingCollection
+
+  useEffect(() => {
+    if (!manualFile) {
+      setManualPreviewObjectUrl(null)
+      return
+    }
+    const url = URL.createObjectURL(manualFile)
+    setManualPreviewObjectUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [manualFile])
+
+  const selectForgeMode = useCallback(
+    (next: ForgeMode) => {
+      if (next === forgeMode || tabSwitchLocked) return
+      playTacticalUiClick()
+      setError(null)
+      if (next === "MANUAL") {
+        setAgentState("IDLE")
+        setAgentImageUrl(null)
+        setLore(null)
+      } else {
+        setManualFile(null)
+        setManualImageUrl("")
+        setManualLoreDraft("")
+      }
+      setForgeMode(next)
+    },
+    [forgeMode, tabSwitchLocked],
+  )
 
   useEffect(() => {
     void isIpfsUploadConfigured()
@@ -177,7 +216,17 @@ export default function ForgePage() {
     return () => window.clearInterval(id)
   }, [agentState])
 
-  const previewSrc = agentImageUrl ? ipfsOrHttpsDisplayUrl(agentImageUrl) : ""
+  const previewSrc = useMemo(() => {
+    if (forgeMode === "MANUAL") {
+      if (manualPreviewObjectUrl) return manualPreviewObjectUrl
+      const t = manualImageUrl.trim()
+      if (t) return ipfsOrHttpsDisplayUrl(t)
+      return ""
+    }
+    return agentImageUrl ? ipfsOrHttpsDisplayUrl(agentImageUrl) : ""
+  }, [forgeMode, manualPreviewObjectUrl, manualImageUrl, agentImageUrl])
+
+  const previewLoreText = forgeMode === "MANUAL" ? manualLoreDraft.trim() : (lore ?? "")
 
   const resolveImageUriForMint = useCallback(
     async (openAiImageUrl: string): Promise<string> => {
@@ -205,6 +254,108 @@ export default function ForgePage() {
       throw new Error(pickCopy(lang).forge.errors.finalUri)
     },
     [lang],
+  )
+
+  const resolveManualFileForMint = useCallback(
+    async (file: File): Promise<string> => {
+      const ivm = pickCopy(lang).imageValidation
+      const sealed = await composeImageWithPhaseForgeSeal(file)
+      const configured = await isIpfsUploadConfigured().catch(() => false)
+      if (configured) {
+        const uri = await uploadToIPFS(sealed)
+        const v = validateFinalContractImageUri(uri, ivm)
+        if (!v.ok) throw new Error(v.message)
+        return v.value
+      }
+      throw new Error(pickCopy(lang).forge.errors.finalUri)
+    },
+    [lang],
+  )
+
+  const runCreateCollectionTransaction = useCallback(
+    async (
+      finalUri: string,
+      opts: { restoreOracleOnFail: boolean; clearManualOnSuccess: boolean },
+    ) => {
+      const ff = pickCopy(lang).forge
+      const addr = address ?? (await refresh())
+      if (!addr) {
+        setError(ff.errors.connectWallet)
+        return
+      }
+      const trimmedName = name.trim()
+      if (trimmedName.length < 2) {
+        setError(ff.errors.nameShort)
+        return
+      }
+      const stroops = liqToStroops(priceLiq)
+      if (stroops === "0") {
+        setError(ff.errors.priceInvalid)
+        return
+      }
+
+      const existingId = await fetchCreatorCollectionId(addr)
+      if (existingId != null) {
+        setCreatedId(existingId)
+        if (typeof window !== "undefined") {
+          const path = `/chamber?collection=${existingId}`
+          setShareUrl(`${window.location.origin}${path}`)
+        }
+        setError(ff.errors.creatorAlreadyHasCollection.replace("{id}", String(existingId)))
+        return
+      }
+
+      setIsMintingCollection(true)
+      setTickerIdx(0)
+
+      try {
+        const txEnvelopeCreate = await buildCreateCollectionTransaction(addr, trimmedName, stroops, finalUri)
+        const signCreate = await signTransaction(txEnvelopeCreate, {
+          networkPassphrase: NETWORK_PASSPHRASE,
+          address: addr,
+        })
+        if (signCreate.error) throw new Error(signCreate.error.message || "SIGN_FAIL")
+        const signedCreate =
+          (signCreate as { signedTxXdr?: string }).signedTxXdr ||
+          (signCreate as { signedTransaction?: string }).signedTransaction
+        if (!signedCreate) throw new Error("NO_SIGNED_XDR")
+        const sendCreate = await sendTransaction(signedCreate)
+        await getTransactionResult(sendCreate.hash as string)
+
+        const id = await fetchCreatorCollectionId(addr)
+        if (id == null) throw new Error(ff.errors.collectionIdRead)
+        setCreatedId(id)
+        if (typeof window !== "undefined") {
+          const path = `/chamber?collection=${id}`
+          setShareUrl(`${window.location.origin}${path}`)
+        }
+        setAgentState("IDLE")
+        if (opts.clearManualOnSuccess) {
+          setManualFile(null)
+          setManualImageUrl("")
+          setManualLoreDraft("")
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        if (opts.restoreOracleOnFail) setAgentState("COMPLETE")
+        if (isCreatorAlreadyHasCollectionError(msg)) {
+          const id = await fetchCreatorCollectionId(addr)
+          if (id != null) {
+            setCreatedId(id)
+            if (typeof window !== "undefined") {
+              const path = `/chamber?collection=${id}`
+              setShareUrl(`${window.location.origin}${path}`)
+            }
+            setError(ff.errors.creatorAlreadyHasCollection.replace("{id}", String(id)))
+            return
+          }
+        }
+        setError(PROTOCOL_HALTED)
+      } finally {
+        setIsMintingCollection(false)
+      }
+    },
+    [address, lang, name, priceLiq, refresh],
   )
 
   const initiateAgentForge = useCallback(
@@ -336,84 +487,51 @@ export default function ForgePage() {
   }, [address, anomalyDescription, initiateAgentForge, lang, refresh])
 
   const handleMintArtifact = useCallback(async () => {
-    const ff = pickCopy(lang).forge
     if (agentState !== "COMPLETE" || !agentImageUrl) return
-
     setError(null)
-    const addr = address ?? (await refresh())
-    if (!addr) {
-      setError(ff.errors.connectWallet)
-      return
-    }
-
-    const trimmedName = name.trim()
-    if (trimmedName.length < 2) {
-      setError(ff.errors.nameShort)
-      return
-    }
-    const stroops = liqToStroops(priceLiq)
-    if (stroops === "0") {
-      setError(ff.errors.priceInvalid)
-      return
-    }
-
-    const existingId = await fetchCreatorCollectionId(addr)
-    if (existingId != null) {
-      setCreatedId(existingId)
-      if (typeof window !== "undefined") {
-        const path = `/chamber?collection=${existingId}`
-        setShareUrl(`${window.location.origin}${path}`)
-      }
-      setError(ff.errors.creatorAlreadyHasCollection.replace("{id}", String(existingId)))
-      return
-    }
-
-    setIsMintingCollection(true)
-    setTickerIdx(0)
-
     try {
       const finalUri = await resolveImageUriForMint(agentImageUrl)
-      const txEnvelopeCreate = await buildCreateCollectionTransaction(addr, trimmedName, stroops, finalUri)
-      const signCreate = await signTransaction(txEnvelopeCreate, {
-        networkPassphrase: NETWORK_PASSPHRASE,
-        address: addr,
+      await runCreateCollectionTransaction(finalUri, {
+        restoreOracleOnFail: true,
+        clearManualOnSuccess: false,
       })
-      if (signCreate.error) throw new Error(signCreate.error.message || "SIGN_FAIL")
-      const signedCreate =
-        (signCreate as { signedTxXdr?: string }).signedTxXdr ||
-        (signCreate as { signedTransaction?: string }).signedTransaction
-      if (!signedCreate) throw new Error("NO_SIGNED_XDR")
-      const sendCreate = await sendTransaction(signedCreate)
-      await getTransactionResult(sendCreate.hash as string)
+    } catch {
+      setError(PROTOCOL_HALTED)
+    }
+  }, [agentImageUrl, agentState, resolveImageUriForMint, runCreateCollectionTransaction])
 
-      const id = await fetchCreatorCollectionId(addr)
-      if (id == null) throw new Error(ff.errors.collectionIdRead)
-      setCreatedId(id)
-      if (typeof window !== "undefined") {
-        const path = `/chamber?collection=${id}`
-        setShareUrl(`${window.location.origin}${path}`)
+  const handleManualUploadAndMint = useCallback(async () => {
+    if (forgeMode !== "MANUAL") return
+    const ff = pickCopy(lang).forge
+    setError(null)
+    let finalUri: string
+    try {
+      if (manualFile) {
+        finalUri = await resolveManualFileForMint(manualFile)
+      } else if (manualImageUrl.trim()) {
+        finalUri = await resolveImageUriForMint(manualImageUrl.trim())
+      } else {
+        setError(ff.errors.manualNoImage)
+        return
       }
-      setAgentState("IDLE")
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      setAgentState("COMPLETE")
-      if (isCreatorAlreadyHasCollectionError(msg)) {
-        const id = await fetchCreatorCollectionId(addr)
-        if (id != null) {
-          setCreatedId(id)
-          if (typeof window !== "undefined") {
-            const path = `/chamber?collection=${id}`
-            setShareUrl(`${window.location.origin}${path}`)
-          }
-          setError(ff.errors.creatorAlreadyHasCollection.replace("{id}", String(id)))
-          return
-        }
-      }
-      setError(PROTOCOL_HALTED)
-    } finally {
-      setIsMintingCollection(false)
+      setError(msg || PROTOCOL_HALTED)
+      return
     }
-  }, [address, agentImageUrl, agentState, lang, name, priceLiq, refresh, resolveImageUriForMint])
+    await runCreateCollectionTransaction(finalUri, {
+      restoreOracleOnFail: false,
+      clearManualOnSuccess: true,
+    })
+  }, [
+    forgeMode,
+    lang,
+    manualFile,
+    manualImageUrl,
+    resolveImageUriForMint,
+    resolveManualFileForMint,
+    runCreateCollectionTransaction,
+  ])
 
   const copyShare = useCallback(async () => {
     if (!shareUrl) return
@@ -427,7 +545,7 @@ export default function ForgePage() {
   }, [shareUrl, lang])
 
   const shellClass = cn(
-    "tactical-cockpit-forge-shell tactical-frame relative flex h-full min-h-0 flex-col overflow-hidden p-4 text-cyan-100 md:p-6",
+    "tactical-cockpit-forge-shell tactical-frame relative flex min-h-full min-w-0 flex-col p-4 text-cyan-100 md:p-6",
     isMintingCollection && "forge-shell--deploying tactical-btn-forge-primary",
   )
 
@@ -449,7 +567,8 @@ export default function ForgePage() {
     "[ SYSTEM: AGENT_PROCESSING... SYNTHESIZING_VISUAL_MATTER... ]",
   ] as const
 
-  const statusStripActive = agentFlowBusy || isMintingCollection
+  const statusStripActive =
+    forgeMode === "ORACLE" ? agentFlowBusy || isMintingCollection : isMintingCollection
 
   const statusLine = isMintingCollection
     ? f.deployTickers[tickerIdx % f.deployTickers.length]
@@ -473,7 +592,7 @@ export default function ForgePage() {
             : "[ INITIATE_AGENT_PROTOCOL ]"
 
   return (
-    <div className="tactical-command-root tactical-command-root--stable tactical-command-root--cockpit relative flex h-screen max-h-[100dvh] flex-col overflow-hidden font-mono text-foreground antialiased">
+    <div className="tactical-command-root tactical-command-root--stable tactical-command-root--cockpit relative flex h-screen max-h-[100dvh] flex-col overflow-x-hidden overflow-y-hidden font-mono text-foreground antialiased">
       <div className="tactical-film-grain" aria-hidden />
       <div className="tactical-crt-veil" aria-hidden />
       <div className="tactical-crt-fine" aria-hidden />
@@ -497,7 +616,7 @@ export default function ForgePage() {
         </div>
       </header>
 
-      <main className="relative z-10 mx-auto min-h-0 w-full max-w-[100rem] flex-1 overflow-hidden px-3 pb-3 pt-1 md:px-5">
+      <main className="relative z-10 mx-auto min-h-0 w-full max-w-[100rem] flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain px-3 pb-3 pt-1 md:px-5 [-webkit-overflow-scrolling:touch]">
         <div className={shellClass}>
           {statusStripActive && (
             <div className="shrink-0">
@@ -526,12 +645,55 @@ export default function ForgePage() {
           )}
 
           {!statusStripActive && (
-            <p className="mt-1 font-mono text-[9px] font-semibold uppercase tracking-[0.24em] text-cyan-400/90">{f.oracleBadge}</p>
+            <div
+              className="mt-2 flex w-full max-w-xl gap-0 border border-cyan-900/50 bg-black/35"
+              role="tablist"
+              aria-label="Forge mode"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={forgeMode === "ORACLE"}
+                disabled={tabSwitchLocked}
+                onClick={() => selectForgeMode("ORACLE")}
+                className={cn(
+                  "min-h-[40px] flex-1 rounded-none border-0 px-2 py-2.5 font-mono text-[9px] font-bold uppercase tracking-[0.14em] transition-colors sm:px-3 sm:text-[10px]",
+                  forgeMode === "ORACLE"
+                    ? "bg-cyan-950/50 text-cyan-200 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.45),0_0_16px_rgba(34,211,238,0.1)]"
+                    : "bg-transparent text-cyan-900/95 hover:bg-cyan-950/25 hover:text-cyan-700",
+                  tabSwitchLocked && "opacity-50",
+                )}
+              >
+                {f.tabOracle}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={forgeMode === "MANUAL"}
+                disabled={tabSwitchLocked}
+                onClick={() => selectForgeMode("MANUAL")}
+                className={cn(
+                  "min-h-[40px] flex-1 rounded-none border-l border-cyan-900/50 px-2 py-2.5 font-mono text-[9px] font-bold uppercase tracking-[0.14em] transition-colors sm:px-3 sm:text-[10px]",
+                  forgeMode === "MANUAL"
+                    ? "bg-cyan-950/50 text-cyan-200 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.45),0_0_16px_rgba(34,211,238,0.1)]"
+                    : "bg-transparent text-cyan-900/95 hover:bg-cyan-950/25 hover:text-cyan-700",
+                  tabSwitchLocked && "opacity-50",
+                )}
+              >
+                {f.tabManual}
+              </button>
+            </div>
           )}
 
           {!statusStripActive && (
-            <p className="mt-2 line-clamp-4 shrink-0 text-[10px] leading-relaxed text-cyan-100/90 tactical-phosphor sm:text-[11px]">
-              {f.intro}
+            <p className="mt-2 font-mono text-[9px] font-semibold uppercase tracking-[0.24em] text-cyan-400/90">
+              {forgeMode === "ORACLE" ? f.oracleBadge : f.manualBadge}
+            </p>
+          )}
+
+          {!statusStripActive && (
+            <p className="mt-2 line-clamp-6 shrink-0 text-[10px] leading-relaxed text-cyan-100/90 tactical-phosphor sm:text-[11px]">
+              {forgeMode === "ORACLE" ? f.intro : f.manualIntro}
             </p>
           )}
 
@@ -578,26 +740,122 @@ export default function ForgePage() {
             </div>
           )}
 
-          <div className="mt-4 flex min-h-0 flex-1 flex-col gap-5 lg:grid lg:h-full lg:min-h-0 lg:grid-cols-12 lg:gap-8">
-            <div className="flex min-h-0 w-full flex-col gap-2 lg:col-span-5 lg:h-full lg:min-h-0">
-              <div className="custom-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto pr-0.5 lg:pr-0">
-                <div>
-                  <label htmlFor="forge-anomaly" className={inputLabelClass}>
-                    {f.anomalyLabel}
-                  </label>
-                  <textarea
-                    id="forge-anomaly"
-                    value={anomalyDescription}
-                    onChange={(e) => setAnomalyDescription(e.target.value)}
-                    disabled={anomalyFieldLocked}
-                    placeholder={f.placeholders.anomaly}
-                    rows={6}
-                    className={cn(textareaClass, "mt-1")}
-                    autoComplete="off"
-                    spellCheck={lang === "es"}
-                  />
-                  <p className="mt-1 text-[9px] leading-relaxed text-cyan-400/75 sm:text-[10px]">{f.oracleHint}</p>
-                </div>
+          <div className="mt-4 flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:gap-8 lg:items-start">
+            <div className="flex w-full flex-col gap-2 lg:col-span-5">
+              <div className="custom-scrollbar space-y-3 pr-0.5 lg:pr-0">
+                {forgeMode === "ORACLE" ? (
+                  <div>
+                    <label htmlFor="forge-anomaly" className={inputLabelClass}>
+                      {f.anomalyLabel}
+                    </label>
+                    <textarea
+                      id="forge-anomaly"
+                      value={anomalyDescription}
+                      onChange={(e) => setAnomalyDescription(e.target.value)}
+                      disabled={anomalyFieldLocked}
+                      placeholder={f.placeholders.anomaly}
+                      rows={6}
+                      className={cn(textareaClass, "mt-1")}
+                      autoComplete="off"
+                      spellCheck={lang === "es"}
+                    />
+                    <p className="mt-1 text-[9px] leading-relaxed text-cyan-400/75 sm:text-[10px]">{f.oracleHint}</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <input
+                      ref={manualFileInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      className="sr-only"
+                      aria-hidden
+                      tabIndex={-1}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file?.type.startsWith("image/")) setManualFile(file)
+                        e.target.value = ""
+                      }}
+                    />
+                    <div>
+                      <p className={inputLabelClass}>{f.manualDropLabel}</p>
+                      <button
+                        type="button"
+                        disabled={namePriceLocked}
+                        onClick={() => manualFileInputRef.current?.click()}
+                        onDragEnter={(e) => {
+                          e.preventDefault()
+                          setManualDropActive(true)
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault()
+                          e.dataTransfer.dropEffect = "copy"
+                        }}
+                        onDragLeave={(e) => {
+                          e.preventDefault()
+                          setManualDropActive(false)
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault()
+                          setManualDropActive(false)
+                          const file = e.dataTransfer.files?.[0]
+                          if (file?.type.startsWith("image/")) setManualFile(file)
+                        }}
+                        className={cn(
+                          "mt-1 flex min-h-[7.5rem] w-full flex-col items-center justify-center border-2 border-dashed px-3 py-4 text-center transition-colors",
+                          manualDropActive
+                            ? "border-cyan-400/60 bg-cyan-950/35"
+                            : "border-cyan-700/40 bg-black/40 hover:border-cyan-500/45",
+                          namePriceLocked && "pointer-events-none opacity-45",
+                        )}
+                      >
+                        <span className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-200/90">
+                          {manualFile ? manualFile.name : "[ TAP_OR_DROP ]"}
+                        </span>
+                        <span className="mt-1 text-[8px] uppercase tracking-widest text-cyan-600/90">{f.manualDropHint}</span>
+                      </button>
+                      {manualFile ? (
+                        <button
+                          type="button"
+                          disabled={namePriceLocked}
+                          onClick={() => setManualFile(null)}
+                          className="mt-1 font-mono text-[8px] uppercase tracking-widest text-cyan-500/80 underline-offset-2 hover:text-cyan-300"
+                        >
+                          [ CLEAR_FILE ]
+                        </button>
+                      ) : null}
+                    </div>
+                    <div>
+                      <label htmlFor="forge-manual-url" className={inputLabelClass}>
+                        {f.manualUrlLabel}
+                      </label>
+                      <input
+                        id="forge-manual-url"
+                        value={manualImageUrl}
+                        onChange={(e) => setManualImageUrl(e.target.value)}
+                        disabled={namePriceLocked}
+                        placeholder={f.placeholders.manualImageUrl}
+                        className={cn(inputClass, "mt-1 font-mono text-[12px]")}
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="forge-manual-lore" className={inputLabelClass}>
+                        {f.manualLoreLabel}
+                      </label>
+                      <textarea
+                        id="forge-manual-lore"
+                        value={manualLoreDraft}
+                        onChange={(e) => setManualLoreDraft(e.target.value)}
+                        disabled={namePriceLocked}
+                        placeholder={f.manualLorePlaceholder}
+                        rows={5}
+                        className={cn(textareaClass, "mt-1 min-h-[8rem]")}
+                        autoComplete="off"
+                        spellCheck={lang === "es"}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
                   <div>
@@ -672,7 +930,7 @@ export default function ForgePage() {
 
               {address ? (
                 <div
-                  className="custom-scrollbar mt-auto min-h-[12rem] max-h-[min(26rem,55vh)] shrink-0 overflow-y-auto overscroll-y-contain border-t border-cyan-900/50 pt-2 [-webkit-overflow-scrolling:touch]"
+                  className="custom-scrollbar min-h-[12rem] max-h-[min(26rem,55vh)] shrink-0 overflow-y-auto overscroll-y-contain border-t border-cyan-900/50 pt-2 [-webkit-overflow-scrolling:touch]"
                   onWheelCapture={captureWheelOnRewardsPanel}
                 >
                   <LiquidityFaucetControl
@@ -701,7 +959,22 @@ export default function ForgePage() {
                   </button>
                 ) : (
                   <>
-                    {agentState === "COMPLETE" ? (
+                    {forgeMode === "MANUAL" ? (
+                      <button
+                        type="button"
+                        disabled={isMintingCollection}
+                        onClick={() => {
+                          playTacticalUiClick()
+                          void handleManualUploadAndMint().catch(() => {})
+                        }}
+                        className={cn(
+                          "tactical-interactive-glitch w-full border-4 border-double border-[#00ffff] bg-[#00ffff]/5 py-3 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[#00ffff] shadow-[0_0_20px_rgba(0,255,255,0.14)] transition-all hover:bg-[#00ffff]/15 hover:shadow-[0_0_28px_rgba(0,255,255,0.2)] disabled:opacity-40 sm:text-[11px]",
+                          isMintingCollection && "forge-forge-glitch",
+                        )}
+                      >
+                        {isMintingCollection ? statusLine || f.deploying : f.manualUploadMint}
+                      </button>
+                    ) : agentState === "COMPLETE" ? (
                       <button
                         type="button"
                         disabled={isMintingCollection}
@@ -749,14 +1022,14 @@ export default function ForgePage() {
               </div>
             </div>
 
-            <div className="flex min-h-[220px] flex-1 flex-col lg:col-span-7 lg:min-h-0">
+            <div className="flex min-h-[220px] w-full flex-col lg:col-span-7">
               <p className="mb-2 shrink-0 border-b border-cyan-500/35 pb-1.5 text-[9px] font-semibold uppercase tracking-[0.28em] text-cyan-200/95">
                 {f.artPreview}
               </p>
-              <div className="art-retro-monitor flex min-h-0 flex-1 items-center justify-center overflow-hidden px-2 py-2">
+              <div className="art-retro-monitor flex min-h-[min(280px,42vh)] flex-col items-center justify-center overflow-hidden px-2 py-2 lg:min-h-[min(360px,50vh)]">
                 {previewSrc ? (
                   <div className="tactical-holo-wrap relative z-[3] flex h-full max-h-full w-full max-w-full flex-col items-center justify-center gap-2">
-                    {/* eslint-disable-next-line @next/next/no-img-element -- OpenAI / IPFS URLs */}
+                    {/* eslint-disable-next-line @next/next/no-img-element -- Pollinations / IPFS URLs */}
                     <img
                       src={previewSrc}
                       alt=""
@@ -764,18 +1037,22 @@ export default function ForgePage() {
                       loading="lazy"
                       referrerPolicy="no-referrer"
                     />
-                    {lore ? (
+                    {previewLoreText ? (
                       <div className="custom-scrollbar max-h-28 w-full max-w-lg overflow-y-auto border border-cyan-500/25 bg-black/50 px-2 py-1.5 text-left">
                         <p className="text-[8px] font-bold uppercase tracking-widest text-cyan-500/80">{f.lorePreview}</p>
-                        <p className="mt-1 whitespace-pre-wrap font-mono text-[10px] leading-snug text-cyan-100/90">{lore}</p>
+                        <p className="mt-1 whitespace-pre-wrap font-mono text-[10px] leading-snug text-cyan-100/90">
+                          {previewLoreText}
+                        </p>
                       </div>
                     ) : null}
                   </div>
                 ) : (
                   <span className="relative z-[3] px-2 text-center font-mono text-[9px] font-medium uppercase leading-relaxed tracking-[0.2em] text-cyan-400/85">
-                    {f.awaitingFeed}
+                    {forgeMode === "MANUAL" ? f.manualAwaiting : f.awaitingFeed}
                     <br />
-                    <span className="text-[8px] tracking-widest text-cyan-500/70">{f.oracleHint}</span>
+                    <span className="text-[8px] tracking-widest text-cyan-500/70">
+                      {forgeMode === "MANUAL" ? f.manualAwaitingHint : f.oracleHint}
+                    </span>
                   </span>
                 )}
               </div>

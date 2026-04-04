@@ -147,8 +147,8 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
                 description: "ID por defecto CDXZ2…FDRGP (ver env si redesplegaste).",
               },
               {
-                label: "Contrato token PHASERLIQ",
-                href: "https://stellar.expert/explorer/testnet/contract/CDOAXHWC6YJB7U3ELV67HKJY6HEMJFBNRGJK6WZGUAELBWP3WP77RLFD",
+                label: "PHASERLIQ (Stellar Expert)",
+                href: "https://stellar.expert/explorer/testnet/asset/PHASERLIQ-GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS",
                 description: "ID por defecto CDOAX…RLFD — SAC testnet (ver env si usas otro token).",
               },
             ],
@@ -279,15 +279,15 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
         blocks: [
           {
             type: "p",
-            text: "Los importes en pantalla se expresan en PHASERLIQ; la conversión a stroops y las llamadas al contrato token las hace el cliente. Símbolo PHASERLIQ, 7 decimales, nombre on-chain habitual «Phase Liquidity Token». En la Cámara, TOKEN_EXPERT enlaza al contrato del token en Stellar Expert.",
+            text: "Los importes en pantalla se expresan en PHASERLIQ; la conversión a stroops y las llamadas al contrato token las hace el cliente. Símbolo PHASERLIQ, 7 decimales, nombre on-chain habitual «Phase Liquidity Token». En la Cámara, TOKEN_EXPERT enlaza al asset PHASERLIQ en Stellar Expert.",
           },
           {
             type: "links",
             intro: "Contratos de referencia (testnet) y explorador:",
             items: [
               {
-                label: "Token PHASERLIQ (contrato)",
-                href: "https://stellar.expert/explorer/testnet/contract/CDOAXHWC6YJB7U3ELV67HKJY6HEMJFBNRGJK6WZGUAELBWP3WP77RLFD",
+                label: "PHASERLIQ (asset)",
+                href: "https://stellar.expert/explorer/testnet/asset/PHASERLIQ-GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS",
                 description: "ID por defecto del repo; comprobar env si cambiaste TOKEN_CONTRACT_ID.",
               },
               {
@@ -498,8 +498,8 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
                 description: "Default ID CDXZ2…FDRGP (check env if you redeployed).",
               },
               {
-                label: "PHASERLIQ token contract",
-                href: "https://stellar.expert/explorer/testnet/contract/CDOAXHWC6YJB7U3ELV67HKJY6HEMJFBNRGJK6WZGUAELBWP3WP77RLFD",
+                label: "PHASERLIQ (Stellar Expert)",
+                href: "https://stellar.expert/explorer/testnet/asset/PHASERLIQ-GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS",
                 description: "Default ID CDOAX…RLFD — testnet SAC (check env if you use another token).",
               },
             ],
@@ -630,15 +630,15 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
         blocks: [
           {
             type: "p",
-            text: "Amounts are shown in PHASERLIQ; the client converts to stroops and calls the token contract. Symbol PHASERLIQ, 7 decimals, typical on-chain name “Phase Liquidity Token”. In the Chamber, TOKEN_EXPERT links to the token contract on Stellar Expert.",
+            text: "Amounts are shown in PHASERLIQ; the client converts to stroops and calls the token contract. Symbol PHASERLIQ, 7 decimals, typical on-chain name “Phase Liquidity Token”. In the Chamber, TOKEN_EXPERT links to the PHASERLIQ asset on Stellar Expert.",
           },
           {
             type: "links",
             intro: "Default testnet contracts and explorer:",
             items: [
               {
-                label: "PHASERLIQ token contract",
-                href: "https://stellar.expert/explorer/testnet/contract/CDOAXHWC6YJB7U3ELV67HKJY6HEMJFBNRGJK6WZGUAELBWP3WP77RLFD",
+                label: "PHASERLIQ (Stellar Expert)",
+                href: "https://stellar.expert/explorer/testnet/asset/PHASERLIQ-GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS",
                 description: "Repository default ID; verify env if you changed TOKEN_CONTRACT_ID.",
               },
               {

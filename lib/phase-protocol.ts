@@ -30,6 +30,23 @@ export function stellarExpertTestnetContractUrl(contractId: string = CONTRACT_ID
   return `https://stellar.expert/explorer/testnet/contract/${contractId}`
 }
 
+/**
+ * PHASERLIQ en Stellar Expert (vista de **asset** clásico testnet).
+ * @see https://stellar.expert/explorer/testnet/asset/PHASERLIQ-GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS
+ */
+export const PHASER_LIQ_STELLAR_EXPERT_DEFAULT =
+  "https://stellar.expert/explorer/testnet/asset/PHASERLIQ-GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS"
+
+/** Enlace UI/docs para la marca PHASERLIQ. Override: `NEXT_PUBLIC_PHASER_LIQ_EXPERT_URL` o `PHASER_LIQ_EXPERT_URL`. */
+export function stellarExpertPhaserLiqUrl(): string {
+  const e = (typeof process !== "undefined" ? process.env : {}) as NodeJS.ProcessEnv
+  return (
+    e.NEXT_PUBLIC_PHASER_LIQ_EXPERT_URL?.trim() ||
+    e.PHASER_LIQ_EXPERT_URL?.trim() ||
+    PHASER_LIQ_STELLAR_EXPERT_DEFAULT
+  )
+}
+
 /** Certificado JSON tras verificar propiedad (`get_user_phase`) en el cliente. */
 export function downloadPhaseUtilityCertificate(opts: {
   contractId: string

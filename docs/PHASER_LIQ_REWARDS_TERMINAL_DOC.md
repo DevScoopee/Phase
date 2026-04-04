@@ -122,6 +122,16 @@ Errores comunes:
 - Cada claim deja traza en logs del chamber.
 - Recompensa acreditada muestra toast con icono de token.
 
+### Trustline clásica antes del `POST /api/faucet`
+
+Si el servidor tiene configurado el activo clásico (`CLASSIC_LIQ_ASSET_CODE` + `CLASSIC_LIQ_ISSUER_SECRET`), `GET /api/classic-liq?walletAddress=…` devuelve `enabled: true`. En ese caso, el panel **`LiquidityFaucetControl`** (Forja y Cámara):
+
+1. Comprueba si la wallet ya tiene trustline hacia `PHASERLIQ` + issuer.
+2. Si no: construye `changeTrust`, el operador firma en **Freighter**, y el cliente envía el XDR firmado a **`POST /api/classic-liq/trustline`**.
+3. Tras éxito (o si ya había trustline), continúa con **`POST /api/faucet`**.
+
+Referencia arquitectura: [`docs/TECHNICAL.md` §7](./TECHNICAL.md#7-activo-clásico-phaserliq-y-sep-0001).
+
 ---
 
 ## EN - Operational Documentation
@@ -213,6 +223,16 @@ Common error codes:
 - Each quest card renders progress bars from `progressPct`.
 - Claims write narrative logs in the chamber.
 - Successful claim shows token-icon toast feedback.
+
+### Classic trustline before `POST /api/faucet`
+
+When the server enables the classic asset (`CLASSIC_LIQ_ASSET_CODE` + `CLASSIC_LIQ_ISSUER_SECRET`), `GET /api/classic-liq?walletAddress=…` returns `enabled: true`. Then **`LiquidityFaucetControl`** (Forge + Chamber):
+
+1. Checks whether the wallet already trusts `PHASERLIQ` for the configured issuer.
+2. If not: builds `changeTrust`, user signs in **Freighter**, client posts signed XDR to **`POST /api/classic-liq/trustline`**.
+3. On success (or existing trustline), proceeds with **`POST /api/faucet`**.
+
+See [`docs/TECHNICAL.md` §7](./TECHNICAL.md#7-activo-clásico-phaserliq-y-sep-0001).
 
 ```text
 END_OF_DOC :: PHASER_LIQ_REWARDS_TERMINAL_DOC

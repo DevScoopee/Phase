@@ -2,11 +2,16 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { createPortal } from "react-dom"
+import { signTransaction } from "@stellar/freighter-api"
 import { toast } from "sonner"
 import { useLang } from "@/components/lang-context"
 import { TokenIcon } from "@/components/token-icon"
+import {
+  buildClassicTrustlineTransactionXdr,
+  parseSignedTxXdr,
+} from "@/lib/classic-liq"
 import { pickCopy } from "@/lib/phase-copy"
-import { formatLiq } from "@/lib/phase-protocol"
+import { formatLiq, NETWORK_PASSPHRASE } from "@/lib/phase-protocol"
 import { playTacticalUiClick } from "@/lib/tactical-ui-click"
 import { cn } from "@/lib/utils"
 
@@ -32,6 +37,14 @@ type FaucetStatusResponse = {
   rewards?: Partial<Record<RewardType, RewardState>>
 }
 
+type ClassicLiqApiWallet = {
+  enabled: boolean
+  asset?: { code: string; issuer: string }
+  status?: { accountExists?: boolean; hasTrustline?: boolean }
+}
+
+type RewardFlowPhase = "idle" | "trustline" | "transmit"
+
 type Props = {
   address: string | null | undefined
   tokenBalance: string
@@ -54,6 +67,7 @@ export function LiquidityFaucetControl({
   const [status, setStatus] = useState<FaucetStatusResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [loadingReward, setLoadingReward] = useState<RewardType | null>(null)
+  const [rewardFlowPhase, setRewardFlowPhase] = useState<RewardFlowPhase>("idle")
   const [helpOpen, setHelpOpen] = useState(false)
 
   useEffect(() => {
@@ -82,18 +96,92 @@ export function LiquidityFaucetControl({
     void loadStatus().catch(() => setStatus({ enabled: false }))
   }, [loadStatus])
 
+  const ensureClassicTrustlineForReward = useCallback(async (): Promise<boolean> => {
+    if (!address) return true
+    const chamber = pickCopy(lang).chamber
+    const L = chamber.logs
+    let classic: ClassicLiqApiWallet
+    try {
+      const cr = await fetch(
+        `/api/classic-liq?walletAddress=${encodeURIComponent(address)}`,
+        { cache: "no-store" },
+      )
+      classic = (await cr.json().catch(() => ({}))) as ClassicLiqApiWallet
+    } catch {
+      return true
+    }
+    if (!classic.enabled || !classic.asset) return true
+    const hasTrustline = Boolean(classic.status?.hasTrustline)
+    if (hasTrustline) return true
+    if (!classic.status?.accountExists) {
+      onNarrativeLog?.(L.classicTrustlineAccountMissing)
+      toast.error(chamber.rewardsTrustlineAccountMissing)
+      return false
+    }
+    onNarrativeLog?.(L.classicTrustlineEstablishing)
+    onNarrativeLog?.(L.classicTrustlineFreighter)
+    setRewardFlowPhase("trustline")
+    try {
+      const trustTx = await buildClassicTrustlineTransactionXdr(address, classic.asset)
+      const signResult = await signTransaction(trustTx, {
+        networkPassphrase: NETWORK_PASSPHRASE,
+        address,
+      })
+      if (signResult.error) {
+        onNarrativeLog?.(L.classicTrustlineRejected)
+        toast.error(chamber.rewardsTrustlineRejectedToast)
+        return false
+      }
+      const signedXdr = parseSignedTxXdr(signResult)
+      if (!signedXdr) {
+        onNarrativeLog?.(L.classicTrustlineRejected)
+        toast.error(chamber.rewardsTrustlineRejectedToast)
+        return false
+      }
+      const submitRes = await fetch("/api/classic-liq/trustline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ signedXdr }),
+      })
+      const submitData = (await submitRes.json().catch(() => ({}))) as { error?: string }
+      if (!submitRes.ok) {
+        const msg = submitData.error || `HTTP ${submitRes.status}`
+        onNarrativeLog?.(`${L.faucetFailPrefix} ${msg}`)
+        toast.error(msg)
+        return false
+      }
+      onNarrativeLog?.(L.classicTrustlineConfirmed)
+      return true
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      onNarrativeLog?.(`${L.faucetFailPrefix} ${msg}`)
+      toast.error(msg)
+      return false
+    } finally {
+      setRewardFlowPhase("idle")
+    }
+  }, [address, lang, onNarrativeLog])
+
   const request = useCallback(
     async (reward: RewardType) => {
       if (!address || loading || loadingReward) return
       playTacticalUiClick()
       setLoading(true)
       setLoadingReward(reward)
+      setRewardFlowPhase("idle")
       onNarrativeLog?.(
         lang === "es"
           ? `[ SOLICITANDO_RECOMPENSA :: ${reward.toUpperCase()} ]`
           : `[ REQUESTING_REWARD :: ${reward.toUpperCase()} ]`,
       )
       try {
+        const trustOk = await ensureClassicTrustlineForReward()
+        if (!trustOk) {
+          await loadStatus()
+          return
+        }
+
+        setRewardFlowPhase("transmit")
         const res = await fetch("/api/faucet", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -146,9 +234,10 @@ export function LiquidityFaucetControl({
       } finally {
         setLoading(false)
         setLoadingReward(null)
+        setRewardFlowPhase("idle")
       }
     },
-    [address, lang, loadStatus, loading, loadingReward, logs, onNarrativeLog, onRefreshBalance],
+    [address, ensureClassicTrustlineForReward, lang, loadStatus, loading, loadingReward, logs, onNarrativeLog, onRefreshBalance],
   )
 
   const statusLabel = useCallback(
@@ -172,6 +261,9 @@ export function LiquidityFaucetControl({
     state: RewardState | undefined,
   ) => {
     const disabled = loading || loadingReward !== null || !state?.claimable
+    const isActive = loadingReward === reward
+    const trustlineUi = isActive && rewardFlowPhase === "trustline"
+    const transmitUi = isActive && rewardFlowPhase === "transmit"
     const pct = Math.max(0, Math.min(100, state?.claimedAt ? 100 : state?.progressPct ?? 0))
     return (
       <div className="tactical-interactive-glitch rounded border border-cyan-400/30 bg-cyan-950/10 p-2.5 shadow-[inset_0_1px_0_rgba(34,211,238,0.06)]">
@@ -208,6 +300,7 @@ export function LiquidityFaucetControl({
             onClick={() => void request(reward).catch(() => {})}
             className={cn(
               "tactical-phosphor text-[10px] font-semibold uppercase tracking-[0.18em] transition-colors",
+              trustlineUi && "tactical-reward-trustline-establishing border-amber-600/70 text-amber-100",
               Boolean(state?.claimedAt) &&
                 "cursor-not-allowed border border-gray-800 px-3 py-1 text-gray-600 opacity-50",
               !state?.claimedAt &&
@@ -221,9 +314,13 @@ export function LiquidityFaucetControl({
             )}
           >
             {loadingReward === reward
-              ? lang === "es"
-                ? "PROCESANDO..."
-                : "PROCESSING..."
+              ? trustlineUi
+                ? ch.rewardsButtonEstablishingTrustline
+                : transmitUi
+                  ? ch.rewardsButtonTransmittingFunds
+                  : lang === "es"
+                    ? "PROCESANDO..."
+                    : "PROCESSING..."
               : state?.claimedAt
                 ? lang === "es"
                   ? "RECLAMADO"

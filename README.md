@@ -8,6 +8,7 @@ PHASE is a **cyber-brutalist** web application on **Stellar Soroban testnet**: c
 
 | Resource | Description |
 |----------|-------------|
+| **[`docs/TECHNICAL.md`](./docs/TECHNICAL.md)** | **Arquitectura técnica:** stack, rutas, APIs, Soroban/Horizon, env, persistencia, seguridad, diagramas. |
 | **[In-app docs (`/docs`)](http://localhost:3000/docs)** | Full product guide in EN/ES: assets, contracts, architecture, flows, external links. |
 | **[`docs/PHASER_LIQ_REWARDS_TERMINAL_DOC.md`](./docs/PHASER_LIQ_REWARDS_TERMINAL_DOC.md)** | Faucet / genesis / daily / quests API and operator notes. |
 | **[`contracts/README.md`](./contracts/README.md)** | Build, optimize, deploy, and invoke Soroban WASM locally. |
@@ -37,7 +38,7 @@ Values match [`lib/phase-protocol.ts`](./lib/phase-protocol.ts). Override with e
 | Role | Contract ID | Stellar Expert (testnet) |
 |------|-------------|---------------------------|
 | **PHASE Protocol** (collections, phase, NFT utility) | `CDXZ2HWPSAU3DKACNGTTY3WM6FKN5LPNGMAYFW4KBF74P42RK6SFDRGP` | [Open contract ↗](https://stellar.expert/explorer/testnet/contract/CDXZ2HWPSAU3DKACNGTTY3WM6FKN5LPNGMAYFW4KBF74P42RK6SFDRGP) |
-| **PHASERLIQ** (Soroban SAC token, 7 decimals) | `CDOAXHWC6YJB7U3ELV67HKJY6HEMJFBNRGJK6WZGUAELBWP3WP77RLFD` | [Open contract ↗](https://stellar.expert/explorer/testnet/contract/CDOAXHWC6YJB7U3ELV67HKJY6HEMJFBNRGJK6WZGUAELBWP3WP77RLFD) |
+| **PHASERLIQ** (Soroban SAC + classic asset, 7 decimals) | `CDOAXHWC6YJB7U3ELV67HKJY6HEMJFBNRGJK6WZGUAELBWP3WP77RLFD` | [Stellar Expert (asset) ↗](https://stellar.expert/explorer/testnet/asset/PHASERLIQ-GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS) |
 
 **Network**
 

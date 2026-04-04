@@ -34,6 +34,12 @@ export type ChamberLogsCopy = {
   faucetFailPrefix: string
   genesisSupplyRequested: string
   genesisTransferComplete: string
+  /** Narrativa: antes de abrir Freighter para changeTrust (recompensas LIQ). */
+  classicTrustlineEstablishing: string
+  classicTrustlineFreighter: string
+  classicTrustlineConfirmed: string
+  classicTrustlineRejected: string
+  classicTrustlineAccountMissing: string
 }
 
 export type ArtifactLabelsCopy = {
@@ -190,6 +196,18 @@ export const phaseCopy: Record<
       openChamber: string
       collectionIdLabel: string
       registerTitle: string
+      tabOracle: string
+      tabManual: string
+      manualBadge: string
+      manualIntro: string
+      manualDropLabel: string
+      manualDropHint: string
+      manualUrlLabel: string
+      manualLoreLabel: string
+      manualLorePlaceholder: string
+      manualUploadMint: string
+      manualAwaiting: string
+      manualAwaitingHint: string
       deployStatus: string
       agentDeployStatus: string
       deployTickers: readonly [string, string, string, string, string]
@@ -211,11 +229,13 @@ export const phaseCopy: Record<
         fetchAgentImage: string
         finalUri: string
         lowEnergyAgent: string
+        manualNoImage: string
       }
       placeholders: {
         collectionName: string
         price: string
         anomaly: string
+        manualImageUrl: string
       }
     }
     chamber: {
@@ -304,6 +324,14 @@ export const phaseCopy: Record<
       tokenStandardSep41Note: string
       rewardsLiquidityLaneTitle: string
       rewardsMissionChainTitle: string
+      /** Botón recompensa: fase trustline Freighter (ámbar). */
+      rewardsButtonEstablishingTrustline: string
+      /** Botón recompensa: llamada POST /api/faucet. */
+      rewardsButtonTransmittingFunds: string
+      /** Usuario rechazó firmar changeTrust. */
+      rewardsTrustlineRejectedToast: string
+      /** Cuenta sin XLM / no existe en testnet. */
+      rewardsTrustlineAccountMissing: string
       logs: ChamberLogsCopy
       artifact: ArtifactLabelsCopy
     }
@@ -432,7 +460,20 @@ export const phaseCopy: Record<
       copied: "Copied",
       openChamber: "Open chamber",
       collectionIdLabel: "Collection ID",
-      registerTitle: "Oracle channel",
+      registerTitle: "PHASE FORGE — THE ORACLE",
+      tabOracle: "[ ORACLE_PROTOCOL ]",
+      tabManual: "[ MANUAL_OVERRIDE ]",
+      manualBadge: "◈ DIRECT_UPLOAD // NO_X402",
+      manualIntro:
+        "Bypass the Oracle: supply your own image (file or https/ipfs URL), write lore locally, and mint the collection on Soroban in one step. No PHASERLIQ x402 settlement — only ledger fees.",
+      manualDropLabel: "[ DROP_FILE // IMAGE ]",
+      manualDropHint: "PNG · JPEG · WebP — or use URI field below",
+      manualUrlLabel: "[ IMAGE_URI ]",
+      manualLoreLabel: "[ MANUAL_LORE // DESCRIPTION ]",
+      manualLorePlaceholder: "Your artifact lore (off-chain preview only; not written to contract metadata).",
+      manualUploadMint: "[ UPLOAD_AND_MINT_ARTIFACT ]",
+      manualAwaiting: "NO_ARTIFACT_SIGNAL",
+      manualAwaitingHint: "Drop an image or paste https:// or ipfs://",
       deployStatus: "CONTRACT_DEPLOY",
       agentDeployStatus: "ORACLE_PIPELINE",
       deployTickers: [
@@ -450,7 +491,7 @@ export const phaseCopy: Record<
       signingPayment: "[ X402 ] OPENING_FREIGHTER — PHASERLIQ_SETTLE…",
       paywallNegotiating: "[ X402 ] NEGOTIATING_PAYWALL…",
       ipfsOracleHint:
-        "Tip: configure PINATA_JWT on the server so long DALL·E URLs are sealed to ipfs:// before mint (256-char on-chain limit).",
+        "Tip: configure PINATA_JWT on the server so long image URLs (e.g. Pollinations) are sealed to ipfs:// before mint (256-char on-chain limit).",
       errors: {
         connectWallet: "Connect your wallet first.",
         nameShort: "Collection name is too short (min. 2 characters).",
@@ -465,11 +506,13 @@ export const phaseCopy: Record<
         fetchAgentImage: "Could not download generated image for mint.",
         finalUri: "Could not produce a valid on-chain image URI (try enabling IPFS upload).",
         lowEnergyAgent: "Insufficient PHASERLIQ for Oracle x402 settlement (see balance).",
+        manualNoImage: "Provide an image file or a valid https:// or ipfs:// URL.",
       },
       placeholders: {
         collectionName: "Crypto-Art 2026",
         price: "5.0",
         anomaly: "Describe the artifact to forge…",
+        manualImageUrl: "https://… or ipfs://…",
       },
     },
     chamber: {
@@ -562,6 +605,11 @@ export const phaseCopy: Record<
       tokenStandardSep41Note: "PHASERLIQ adheres to SEP-41 (Soroban token interface).",
       rewardsLiquidityLaneTitle: "LIQUIDITY_BOOTSTRAP",
       rewardsMissionChainTitle: "OPERATOR_QUEST_CHAIN",
+      rewardsButtonEstablishingTrustline: "[ ESTABLISHING_TRUSTLINE... ]",
+      rewardsButtonTransmittingFunds: "[ TRANSMITTING_FUNDS... ]",
+      rewardsTrustlineRejectedToast: "[ TRUSTLINE_REQUIRED_TO_RECEIVE_FUNDS ] Approve changeTrust in Freighter.",
+      rewardsTrustlineAccountMissing:
+        "Stellar account not on testnet or unfunded. Add test XLM (Friendbot) before claiming PHASERLIQ.",
       logs: {
         chamberOnline: "[ CHAMBER_ONLINE ] AWAITING_OPERATOR_HANDSHAKE…",
         walletRequest: "[ WALLET ] REQUESTING_SIGNER_CHANNEL…",
@@ -594,6 +642,11 @@ export const phaseCopy: Record<
         faucetFailPrefix: "[ FAUCET_FAULT ]",
         genesisSupplyRequested: "[ SOLICITANDO_ENERGÍA_AL_NÚCLEO... ]",
         genesisTransferComplete: "[ GENESIS_SUPPLY_TRANSFER_OK ] REACTOR_CHARGED",
+        classicTrustlineEstablishing: "[ CLASSIC_PHASERLIQ ] CHECKING_TRUSTLINE_FOR_REWARD...",
+        classicTrustlineFreighter: "[ FREIGHTER ] AWAITING_changeTrust_SIGNATURE...",
+        classicTrustlineConfirmed: "[ TRUSTLINE_OK ] CLASSIC_ASSET_LINE_READY",
+        classicTrustlineRejected: "[ TRUSTLINE_DENIED ] OPERATOR_ABORT",
+        classicTrustlineAccountMissing: "[ ACCOUNT_MISSING ] FUND_TESTNET_XLM_FIRST",
       },
       artifact: {
         registeredDefault: "PHASE_UTILITY_ARTIFACT // REGISTERED",
@@ -755,7 +808,20 @@ export const phaseCopy: Record<
       copied: "Copiado",
       openChamber: "Abrir cámara",
       collectionIdLabel: "ID de colección",
-      registerTitle: "Canal Oráculo",
+      registerTitle: "PHASE FORGE — THE ORACLE",
+      tabOracle: "[ ORACLE_PROTOCOL ]",
+      tabManual: "[ MANUAL_OVERRIDE ]",
+      manualBadge: "◈ CARGA_DIRECTA // SIN_X402",
+      manualIntro:
+        "Sin Oráculo: aportás imagen (archivo o URL https/ipfs), escribís el lore en local y acuñás la colección en Soroban en un paso. Sin liquidación x402 en PHASERLIQ — solo fees de red.",
+      manualDropLabel: "[ SOLTAR_ARCHIVO // IMAGEN ]",
+      manualDropHint: "PNG · JPEG · WebP — o usá el campo URI abajo",
+      manualUrlLabel: "[ URI_IMAGEN ]",
+      manualLoreLabel: "[ LORE_MANUAL // DESCRIPCIÓN ]",
+      manualLorePlaceholder: "Lore del artefacto (solo vista previa; no se escribe en metadatos del contrato).",
+      manualUploadMint: "[ UPLOAD_AND_MINT_ARTIFACT ]",
+      manualAwaiting: "SIN_SEÑAL_ARTEFACTO",
+      manualAwaitingHint: "Soltá una imagen o pegá https:// o ipfs://",
       deployStatus: "DESPLIEGUE_CONTRATO",
       agentDeployStatus: "TUBERÍA_ORÁCULO",
       deployTickers: [
@@ -773,7 +839,7 @@ export const phaseCopy: Record<
       signingPayment: "[ X402 ] ABRIENDO_FREIGHTER — SETTLE_PHASERLIQ…",
       paywallNegotiating: "[ X402 ] NEGOCIANDO_PAYWALL…",
       ipfsOracleHint:
-        "Tip: configurá PINATA_JWT en el servidor para sellar URLs largas de DALL·E a ipfs:// antes del mint (límite 256 caracteres on-chain).",
+        "Tip: configurá PINATA_JWT en el servidor para sellar URLs largas de imagen (p. ej. Pollinations) a ipfs:// antes del mint (límite 256 caracteres on-chain).",
       errors: {
         connectWallet: "Conecta la wallet primero.",
         nameShort: "Nombre de colección demasiado corto (mín. 2 caracteres).",
@@ -788,11 +854,13 @@ export const phaseCopy: Record<
         fetchAgentImage: "No se pudo descargar la imagen generada para el mint.",
         finalUri: "No se pudo obtener una URI de imagen válida on-chain (probá habilitar subida IPFS).",
         lowEnergyAgent: "PHASERLIQ insuficiente para la liquidación x402 del Oráculo (revisá el saldo).",
+        manualNoImage: "Necesitás un archivo de imagen o una URL https:// o ipfs:// válida.",
       },
       placeholders: {
         collectionName: "Cripto-Arte 2026",
         price: "5.0",
         anomaly: "Describe el artefacto a forjar…",
+        manualImageUrl: "https://… o ipfs://…",
       },
     },
     chamber: {
@@ -885,6 +953,12 @@ export const phaseCopy: Record<
       tokenStandardSep41Note: "PHASERLIQ cumple SEP-41 (interfaz de token Soroban).",
       rewardsLiquidityLaneTitle: "ARRANQUE_LIQUIDEZ",
       rewardsMissionChainTitle: "CADENA_MISIONES_OPERADOR",
+      rewardsButtonEstablishingTrustline: "[ ESTABLECIENDO_TRUSTLINE... ]",
+      rewardsButtonTransmittingFunds: "[ TRANSMITIENDO_FONDOS... ]",
+      rewardsTrustlineRejectedToast:
+        "[ TRUSTLINE_REQUERIDA_PARA_RECIBIR ] Aprobá changeTrust en Freighter.",
+      rewardsTrustlineAccountMissing:
+        "La cuenta no está en testnet o sin XLM. Añadí XLM de prueba (Friendbot) antes de reclamar PHASERLIQ.",
       logs: {
         chamberOnline: "[ CÁMARA_EN_LÍNEA ] ESPERANDO_ENLACE_OPERADOR…",
         walletRequest: "[ WALLET ] SOLICITANDO_CANAL_FIRMANTE…",
@@ -917,6 +991,11 @@ export const phaseCopy: Record<
         faucetFailPrefix: "[ FALLO_FAUCET ]",
         genesisSupplyRequested: "[ SOLICITANDO_ENERGÍA_AL_NÚCLEO... ]",
         genesisTransferComplete: "[ GENESIS_SUPPLY_TRANSFER_OK ] REACTOR_CARGADO",
+        classicTrustlineEstablishing: "[ PHASERLIQ_CLÁSICO ] VERIFICANDO_TRUSTLINE_PARA_RECOMPENSA...",
+        classicTrustlineFreighter: "[ FREIGHTER ] ESPERANDO_FIRMA_changeTrust...",
+        classicTrustlineConfirmed: "[ TRUSTLINE_OK ] LÍNEA_ACTIVO_CLÁSICA_LISTA",
+        classicTrustlineRejected: "[ TRUSTLINE_DENEGADA ] ABORTO_OPERADOR",
+        classicTrustlineAccountMissing: "[ CUENTA_INEXISTENTE ] FONDEAR_XLM_TESTNET_PRIMERO",
       },
       artifact: {
         registeredDefault: "ARTEFACTO_UTILIDAD_PHASE // REGISTRADO",

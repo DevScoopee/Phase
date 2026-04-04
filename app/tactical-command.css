@@ -704,6 +704,23 @@
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(0, 255, 255, 0.08);
 }
 
+/* Recompensa LIQ: Freighter / changeTrust (ámbar) */
+@keyframes tactical-reward-trustline-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.35);
+    border-color: rgba(245, 158, 11, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 14px rgba(245, 158, 11, 0.28);
+    border-color: rgba(251, 191, 36, 0.8);
+  }
+}
+
+.tactical-reward-trustline-establishing {
+  animation: tactical-reward-trustline-pulse 1.05s ease-in-out infinite;
+}
+
 /* Esquina: wordmark legible (Next/font IBM Plex Mono en body) */
 .tactical-corner-sigil {
   font-family: var(--font-ibm-plex-mono, ui-monospace), monospace;

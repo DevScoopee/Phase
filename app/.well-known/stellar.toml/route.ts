@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { TOKEN_ADDRESS } from "@/lib/phase-protocol"
+import { TOKEN_ADDRESS, stellarExpertPhaserLiqUrl } from "@/lib/phase-protocol"
 
 const NETWORK_PASSPHRASE = "Test SDF Network ; September 2015"
 
@@ -10,7 +10,7 @@ export async function GET() {
       ? `https://${process.env.VERCEL_URL.trim().replace(/\/+$/, "")}`
       : "http://localhost:3000")
   const icon = `${base}/phaser-liq-token.png`
-  const expert = `https://stellar.expert/explorer/testnet/contract/${TOKEN_ADDRESS}`
+  const expert = stellarExpertPhaserLiqUrl()
 
   const body = `VERSION="2.0.0"
 NETWORK_PASSPHRASE="${NETWORK_PASSPHRASE}"

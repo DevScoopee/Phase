@@ -46,7 +46,7 @@ import {
   isStellarDesyncError,
   parseTokenUriMetadata,
   sendTransaction,
-  stellarExpertTestnetContractUrl,
+  stellarExpertPhaserLiqUrl,
   stroopsToLiqDisplay,
 } from "@/lib/phase-protocol"
 import { PhaseArtifactVisualizer, type ArtifactVerificationMode } from "@/components/phase-artifact-visualizer"
@@ -729,7 +729,7 @@ export function FusionChamber() {
     }
   }, [collectionId, hasPhased, phaseId])
 
-  const expertUrl = stellarExpertTestnetContractUrl(TOKEN_ADDRESS)
+  const expertUrl = stellarExpertPhaserLiqUrl()
   const isOwnerOnChain =
     phased && phaseId != null && tokenOwnerLookupDone && isAuthentic(address, onChainTokenOwner)
   const authenticityPending = phased && phaseId != null && address != null && !tokenOwnerLookupDone
