@@ -200,13 +200,20 @@ export function tokenContractIdForServer(): string {
 /** Marca oficial del combustible x402 en UI (7 decimales; código clásico PHASELQ). */
 export const PHASER_LIQ_SYMBOL = DEFAULT_LIQUIDITY_ASSET_CODE
 
-/** Normaliza símbolo on-chain legacy (`PHASERLIQ`, `PHASER_LIQ`) a la marca UI actual `PHASELQ`. */
+/**
+ * Normaliza símbolo on-chain / Horizon / `.env` legacy a la marca UI **PHASELQ**.
+ * Incluye mayúsculas, `PHASER_LIQ`, bytes nulos de XDR, etc.
+ */
 export function displayPhaserLiqSymbol(onChainSymbol: string | null | undefined): string {
-  const s = (onChainSymbol ?? "").trim()
+  const s = (onChainSymbol ?? "")
+    .trim()
+    .replace(/\0/g, "")
+    .trim()
   if (!s) return PHASER_LIQ_SYMBOL
-  if (s === "PHASER_LIQ" || s === "PHASERLIQ") return PHASER_LIQ_SYMBOL
-  // Código truncado / typo frecuente al pegar en Freighter (esperamos PHASELQ + mismo emisor).
+  const compact = s.replace(/_/g, "").toUpperCase()
+  if (compact === "PHASERLIQ") return PHASER_LIQ_SYMBOL
   if (s.toUpperCase() === "PHASER") return PHASER_LIQ_SYMBOL
+  if (compact === "PHASELQ") return PHASER_LIQ_SYMBOL
   return s
 }
 export const PHASER_LIQ_NAME = "Phase Liquidity Token"
@@ -1266,17 +1273,17 @@ export async function fetchTokenOwnerAddress(
   }
 }
 
-/** Símbolo del token leído on-chain (`symbol()` o fallback `token_symbol()`). */
+/** Símbolo del token leído on-chain (`symbol()` o fallback `token_symbol()`), ya normalizado a marca UI PHASELQ. */
 export async function fetchTokenSymbol(contractId: string = TOKEN_ADDRESS): Promise<string> {
   try {
     const direct = await simulateContractCall(contractId, "symbol", [], READONLY_SIM_SOURCE_G)
-    if (typeof direct === "string" && direct.trim().length > 0) return direct.trim()
+    if (typeof direct === "string" && direct.trim().length > 0) return displayPhaserLiqSymbol(direct.trim())
   } catch {
     /* fallback below */
   }
   try {
     const legacy = await simulateContractCall(contractId, "token_symbol", [], READONLY_SIM_SOURCE_G)
-    if (typeof legacy === "string" && legacy.trim().length > 0) return legacy.trim()
+    if (typeof legacy === "string" && legacy.trim().length > 0) return displayPhaserLiqSymbol(legacy.trim())
   } catch {
     /* fallback below */
   }

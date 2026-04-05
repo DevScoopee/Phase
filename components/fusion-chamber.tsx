@@ -1244,7 +1244,7 @@ export function FusionChamber() {
                     <div>
                       <dt className="text-[12px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{ch.classicAssetLabel}</dt>
                       <dd className="mt-1.5 text-[13px] text-foreground/80">
-                        {classicAsset.code} · {truncateAddress(classicAsset.issuer)}
+                        {displayPhaserLiqSymbol(classicAsset.code)} · {truncateAddress(classicAsset.issuer)}
                       </dd>
                     </div>
                     <div>
