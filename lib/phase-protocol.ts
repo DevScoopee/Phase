@@ -1,6 +1,7 @@
 /** Soroban / PHASE protocol — shared client helpers */
 
 import {
+  Account,
   Address,
   Asset,
   BASE_FEE,
@@ -148,9 +149,53 @@ export function downloadPhaseUtilityCertificate(opts: {
 }
 
 export const RPC_URL = "https://soroban-testnet.stellar.org"
+
+/**
+ * Soroban RPC público no envía CORS; el navegador no puede llamarlo directamente.
+ * En cliente: mismo origen → `/api/soroban-rpc`. Override opcional: `NEXT_PUBLIC_SOROBAN_RPC_PROXY_URL` (URL absoluta con CORS).
+ * Si la app se sirve bajo subruta (p. ej. `https://host/PHASEPROTOCOL`), define `NEXT_PUBLIC_BASE_PATH=/PHASEPROTOCOL`
+ * o deja que se infiera desde `<script src="…/_next/…">` (reverse proxy sin `basePath` en next.config).
+ */
+function inferClientBasePathFromNextScripts(): string {
+  if (typeof document === "undefined") return ""
+  const scripts = document.getElementsByTagName("script")
+  for (let i = 0; i < scripts.length; i++) {
+    const src = scripts[i]?.src
+    if (!src) continue
+    try {
+      const u = new URL(src, window.location.href)
+      if (u.origin !== window.location.origin) continue
+      const idx = u.pathname.indexOf("/_next/")
+      if (idx > 0) return u.pathname.slice(0, idx)
+    } catch {
+      /* ignore */
+    }
+  }
+  return ""
+}
+
+function effectiveSorobanRpcUrl(): string {
+  if (typeof window !== "undefined") {
+    const pub = process.env.NEXT_PUBLIC_SOROBAN_RPC_PROXY_URL?.trim()
+    if (pub && /^https?:\/\//i.test(pub)) return pub
+    const envBase = (process.env.NEXT_PUBLIC_BASE_PATH?.trim() || "").replace(/\/$/, "").replace(/^\/+/, "")
+    const inferred = inferClientBasePathFromNextScripts().replace(/\/$/, "").replace(/^\/+/, "")
+    const base = envBase || inferred
+    const prefix = base ? `/${base}` : ""
+    return `${window.location.origin}${prefix}/api/soroban-rpc`
+  }
+  return process.env.STELLAR_RPC_URL?.trim() || RPC_URL
+}
 /** Classic accounts (G…): sequence comes from Horizon; Soroban RPC does not implement `getAccount`. */
 export const HORIZON_URL = "https://horizon-testnet.stellar.org"
 export const NETWORK_PASSPHRASE = "Test SDF Network ; September 2015"
+
+/**
+ * `TransactionBuilder#setTimeout(n)` fija `max_time` = epoch actual + **n segundos** (no ledgers).
+ * 30s en txs firmadas en wallet provoca `txTooLate` si Freighter tarda en mostrar/firmar.
+ */
+const SIMULATE_TX_TIMEBOUND_SEC = 30
+const WALLET_SIGN_TX_TIMEBOUND_SEC = 600
 
 /** Cuenta clásica G… (56 chars) válida para Freighter / transferencias. */
 export function isValidClassicStellarAddress(addr: string): boolean {
@@ -238,17 +283,34 @@ export function balanceBelowFaucetThreshold(balanceStroops: string): boolean {
 }
 
 /**
+ * Cuenta G en testnet con XLM (fee source mínimo para armar tx de simulación).
+ * Si `NEXT_PUBLIC_SOROBAN_SIM_ACCOUNT` apunta a una G **sin** cuenta en testnet, se usa este fallback.
+ */
+export const DEFAULT_READONLY_SIM_SOURCE_G =
+  "GAVLW5IKB7VFBRJ3EHBE4BRZ5OX3AOW3ICMLMB6KVKCQDO6WJ2SPHDN3"
+
+/**
  * Cuenta G en testnet con fondos, solo como fee source en simulaciones de lectura
- * (`get_collection`, `token_uri`, …). Override: `NEXT_PUBLIC_SOROBAN_SIM_ACCOUNT`.
+ * (`get_collection`, `token_uri`, …). Override: `NEXT_PUBLIC_SOROBAN_SIM_ACCOUNT` (debe existir en testnet).
  */
 export const READONLY_SIM_SOURCE_G =
   typeof process !== "undefined" && process.env.NEXT_PUBLIC_SOROBAN_SIM_ACCOUNT?.trim()
     ? process.env.NEXT_PUBLIC_SOROBAN_SIM_ACCOUNT.trim()
-    : "GAVLW5IKB7VFBRJ3EHBE4BRZ5OX3AOW3ICMLMB6KVKCQDO6WJ2SPHDN3"
+    : DEFAULT_READONLY_SIM_SOURCE_G
+
+/** El SDK rechaza URLs `http://` (p. ej. `http://localhost:3000/api/soroban-rpc`) sin este flag. */
+function newRpcServerForUrl(url: string): rpc.Server {
+  const allowHttp = url.toLowerCase().startsWith("http://")
+  return new rpc.Server(url, allowHttp ? { allowHttp: true } : undefined)
+}
 
 let _rpcServer: rpc.Server | null = null
+let _cachedRpcUrl: string | null = null
 function getRpc(): rpc.Server {
-  if (!_rpcServer) _rpcServer = new rpc.Server(RPC_URL)
+  const url = effectiveSorobanRpcUrl()
+  if (_rpcServer && _cachedRpcUrl === url) return _rpcServer
+  _cachedRpcUrl = url
+  _rpcServer = newRpcServerForUrl(url)
   return _rpcServer
 }
 
@@ -265,6 +327,198 @@ function addressLikeToString(v: unknown): string {
   return ""
 }
 
+let warnedSimFeeSourceFallback = false
+
+class HorizonAccountNotFoundError extends Error {
+  constructor() {
+    super("HORIZON_ACCOUNT_NOT_FOUND")
+    this.name = "HorizonAccountNotFoundError"
+  }
+}
+
+/** Secuencia de cuenta clásica (G…) vía Horizon — tolera fallos del RPC al resolver ledger entries. */
+async function loadClassicAccountFromHorizon(publicKey: string): Promise<Account> {
+  const res = await fetch(`${HORIZON_URL}/accounts/${encodeURIComponent(publicKey)}`, {
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+  })
+  if (res.status === 404) {
+    throw new HorizonAccountNotFoundError()
+  }
+  if (!res.ok) {
+    throw new Error(`Horizon HTTP ${res.status} al leer cuenta ${publicKey.slice(0, 6)}…${publicKey.slice(-4)}`)
+  }
+  const data = (await res.json()) as { sequence?: string }
+  const seq = data.sequence
+  if (seq == null || seq === "") {
+    throw new Error("Horizon devolvió cuenta sin sequence.")
+  }
+  return new Account(publicKey, String(seq))
+}
+
+/**
+ * El SDK a veces lanza el `error` JSON-RPC como objeto `{ code, message }` (no `Error`).
+ * Axios lanza `Error` con "Request failed with status code 503" sin el cuerpo JSON-RPC.
+ */
+function normalizeSorobanSdkError(err: unknown): Error {
+  if (err instanceof Error) {
+    const m = err.message || ""
+    const m503 = m.match(/status code (\d{3})/)
+    const st = m503 ? parseInt(m503[1], 10) : NaN
+    if (st >= 502 && st <= 504) {
+      return new Error(
+        `El RPC Soroban no respondió (HTTP ${st}). Reintenta en unos segundos; si persiste, define ` +
+          `STELLAR_RPC_FALLBACK_URLS o sube SOROBAN_PROXY_FETCH_TIMEOUT_MS en .env.local.`,
+      )
+    }
+    return err
+  }
+  if (err && typeof err === "object") {
+    const o = err as Record<string, unknown>
+    const msg = o.message
+    if (typeof msg === "string" && msg.trim() && typeof o.code === "number") {
+      return new Error(msg.trim())
+    }
+    const res = o.response as { status?: number; data?: unknown } | undefined
+    if (res && typeof res.status === "number" && res.status >= 502 && res.status <= 504) {
+      const data = res.data
+      if (data && typeof data === "object") {
+        const inner = (data as { error?: { message?: string } }).error?.message
+        if (typeof inner === "string" && inner.trim()) return new Error(inner.trim())
+      }
+      return new Error(
+        `El proxy Soroban devolvió HTTP ${res.status}. Reintenta; configura STELLAR_RPC_FALLBACK_URLS o un RPC dedicado.`,
+      )
+    }
+  }
+  if (typeof err === "string") return new Error(err)
+  return new Error(String(err))
+}
+
+function sleepRpcMs(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms))
+}
+
+/**
+ * Backoff exponencial entre intentos: 1s, 2s, 4s, … tras cada fallo transitorio.
+ * `failureIndex` 0 = primer reintento, 1 = segundo, etc.
+ */
+function sorobanExponentialBackoffMs(failureIndex: number): number {
+  const i = Math.max(0, Math.min(failureIndex, 8))
+  return 1000 * 2 ** i
+}
+
+function isTransientRpcFailure(err: unknown): boolean {
+  if (err && typeof err === "object") {
+    const o = err as Record<string, unknown>
+    if (o.code === -32603) return true
+    const res = o.response as { status?: number } | undefined
+    if (res?.status != null && res.status >= 502 && res.status <= 504) return true
+    if (res?.status === 429) return true
+  }
+  if (err instanceof Error) {
+    const m = err.message
+    if (/Request failed with status code (50[234]|429)/i.test(m)) return true
+    if (
+      /timeout|timed out|aborted|ECONNRESET|ETIMEDOUT|fetch failed|bad gateway|service unavailable|socket hang up/i.test(
+        m,
+      )
+    ) {
+      return true
+    }
+    if (/Soroban RPC no disponible|no disponible tras reintentos|upstream|El RPC Soroban no respondió|El proxy Soroban devolvió/i.test(m)) {
+      return true
+    }
+  }
+  return false
+}
+
+async function withSorobanRpcRetries<T>(fn: () => Promise<T>, attempts = 4): Promise<T> {
+  let last: unknown
+  for (let i = 0; i < attempts; i++) {
+    if (i > 0) await sleepRpcMs(sorobanExponentialBackoffMs(i - 1))
+    try {
+      return await fn()
+    } catch (e) {
+      last = e
+      if (!isTransientRpcFailure(e)) {
+        throw normalizeSorobanSdkError(e)
+      }
+      if (i === attempts - 1) break
+    }
+  }
+  throw normalizeSorobanSdkError(last)
+}
+
+async function prepareTransactionWithRetry(server: rpc.Server, tx: Transaction): Promise<Transaction> {
+  return withSorobanRpcRetries(() => server.prepareTransaction(tx))
+}
+
+/**
+ * Cualquier G válida sirve como fee source **solo** para armar el envelope de simulación;
+ * si esa cuenta no existe en testnet (env mal puesto o wallet sin fondear), usamos una G conocida con XLM.
+ */
+async function rpcGetAccountForSimulation(
+  server: rpc.Server,
+  preferredG: string,
+): Promise<Awaited<ReturnType<typeof server.getAccount>>> {
+  try {
+    return await withSorobanRpcRetries(() => server.getAccount(preferredG))
+  } catch (rpcErr) {
+    if (!StrKey.isValidEd25519PublicKey(preferredG) || preferredG === DEFAULT_READONLY_SIM_SOURCE_G) {
+      throw rpcErr
+    }
+    try {
+      return await loadClassicAccountFromHorizon(preferredG)
+    } catch (hzErr) {
+      if (hzErr instanceof HorizonAccountNotFoundError) {
+        if (!warnedSimFeeSourceFallback) {
+          warnedSimFeeSourceFallback = true
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[PHASE] Soroban sim fee source ${preferredG.slice(0, 8)}… not on testnet (unset NEXT_PUBLIC_SOROBAN_SIM_ACCOUNT or fund it). Using built-in sim account.`,
+          )
+        }
+        return await withSorobanRpcRetries(() => server.getAccount(DEFAULT_READONLY_SIM_SOURCE_G))
+      }
+      throw rpcErr
+    }
+  }
+}
+
+/**
+ * Cuenta **fuente** de una tx que firma el usuario: debe existir en testnet con secuencia válida.
+ * El RPC a veces falla (proxy 404, red) y el SDK puede etiquetarlo como “Account not found”; Horizon confirma si la cuenta existe.
+ */
+async function rpcGetUserSourceAccount(
+  server: rpc.Server,
+  userGAddress: string,
+): Promise<Awaited<ReturnType<typeof server.getAccount>>> {
+  const g = userGAddress.trim()
+  if (!StrKey.isValidEd25519PublicKey(g)) {
+    throw new Error("Dirección Stellar inválida: se espera una clave pública G… de 56 caracteres.")
+  }
+  try {
+    return await withSorobanRpcRetries(() => server.getAccount(g))
+  } catch (rpcErr) {
+    try {
+      return await loadClassicAccountFromHorizon(g)
+    } catch (hzErr) {
+      if (hzErr instanceof HorizonAccountNotFoundError) {
+        throw new Error(
+          `Tu cuenta aún no existe en Stellar testnet (hace falta XLM). Fondeala con Friendbot o el creador de cuentas del Laboratory antes de firmar. Wallet: ${g.slice(0, 6)}…${g.slice(-4)}`,
+        )
+      }
+      const rpcMsg = rpcErr instanceof Error ? rpcErr.message : String(rpcErr)
+      const hzMsg = hzErr instanceof Error ? hzErr.message : String(hzErr)
+      throw new Error(
+        `No se pudo cargar tu cuenta para firmar. RPC: ${rpcMsg} · Horizon: ${hzMsg}. ` +
+          `Si la app está bajo una subruta (p. ej. /PHASEPROTOCOL), define NEXT_PUBLIC_BASE_PATH con esa ruta y reinicia.`,
+      )
+    }
+  }
+}
+
 /**
  * Simulación de solo lectura: cada llamada obtiene secuencia actual del fee source, arma un tx nuevo
  * y pide simulación al RPC (sin reutilizar footprint ni resultado de peticiones anteriores).
@@ -276,16 +530,16 @@ async function simulateContractCall(
   feeSourceGAddress: string,
 ): Promise<unknown> {
   const server = getRpc()
-  const acc = await server.getAccount(feeSourceGAddress)
+  const acc = await rpcGetAccountForSimulation(server, feeSourceGAddress)
   const c = new Contract(contractId)
   const tx = new TransactionBuilder(acc, {
     fee: BASE_FEE,
     networkPassphrase: Networks.TESTNET,
   })
     .addOperation(c.call(method, ...args))
-    .setTimeout(30)
+    .setTimeout(SIMULATE_TX_TIMEBOUND_SEC)
     .build()
-  const sim = await server.simulateTransaction(tx)
+  const sim = await withSorobanRpcRetries(() => server.simulateTransaction(tx))
   if (rpc.Api.isSimulationError(sim)) {
     throw new Error(sim.error)
   }
@@ -301,6 +555,9 @@ export type PhaseProtocolChainConfig = {
 
 let phaseProtocolConfigCache: { value: PhaseProtocolChainConfig; at: number } | null = null
 const PHASE_PROTOCOL_CONFIG_TTL_MS = 60_000
+/** Tras un fallo de RPC (p. ej. 503 en ráfaga), no repetir `get_config` al instante. */
+let phaseProtocolConfigFetchFailedAt = 0
+const PHASE_PROTOCOL_CONFIG_FAIL_COOLDOWN_MS = 15_000
 
 function parsePhaseGetConfigNative(native: unknown): PhaseProtocolChainConfig | null {
   if (native == null) return null
@@ -346,15 +603,20 @@ export async function getPhaseProtocolConfigFromChain(): Promise<PhaseProtocolCh
   if (phaseProtocolConfigCache && now - phaseProtocolConfigCache.at < PHASE_PROTOCOL_CONFIG_TTL_MS) {
     return phaseProtocolConfigCache.value
   }
+  if (now - phaseProtocolConfigFetchFailedAt < PHASE_PROTOCOL_CONFIG_FAIL_COOLDOWN_MS) {
+    return phaseProtocolConfigCache?.value ?? null
+  }
   try {
     const native = await simulateContractCall(CONTRACT_ID, "get_config", [], READONLY_SIM_SOURCE_G)
     const parsed = parsePhaseGetConfigNative(native)
+    phaseProtocolConfigFetchFailedAt = 0
     if (parsed) {
       phaseProtocolConfigCache = { value: parsed, at: now }
     }
     return parsed
   } catch {
-    return null
+    phaseProtocolConfigFetchFailedAt = now
+    return phaseProtocolConfigCache?.value ?? null
   }
 }
 
@@ -557,6 +819,9 @@ function maxStroopsString(a: string, b: string): string {
   }
 }
 
+/** Colapsa lecturas simultáneas del mismo G… (evita tormenta de simulaciones al re-renderizar el padre). */
+const tokenBalanceInflight = new Map<string, Promise<string>>()
+
 /**
  * Saldo PHASELQ (liquidez) que ve la UI: máximo entre lecturas SAC (env + emisores conocidos) y suma Horizon
  * de todas las trustlines con el mismo código (cualquier emisor).
@@ -565,16 +830,26 @@ export async function getTokenBalance(address: string): Promise<string> {
   const g = address.trim()
   if (!StrKey.isValidEd25519PublicKey(g)) return "0"
 
-  const [sorobanBi, classicSumBi] = await Promise.all([
-    sorobanPhaserLiqBalanceMaxStroops(g),
-    horizonSumPhaserLiqByCodeStroops(g),
-  ])
-  return maxStroopsString(sorobanBi.toString(), classicSumBi.toString())
+  const existing = tokenBalanceInflight.get(g)
+  if (existing) return existing
+
+  const p = (async () => {
+    const [sorobanBi, classicSumBi] = await Promise.all([
+      sorobanPhaserLiqBalanceMaxStroops(g),
+      horizonSumPhaserLiqByCodeStroops(g),
+    ])
+    return maxStroopsString(sorobanBi.toString(), classicSumBi.toString())
+  })().finally(() => {
+    tokenBalanceInflight.delete(g)
+  })
+
+  tokenBalanceInflight.set(g, p)
+  return p
 }
 
 export async function buildInitiatePhaseTransaction(userAddress: string, collectionId: number = 0) {
   const server = getRpc()
-  const account = await server.getAccount(userAddress)
+  const account = await rpcGetUserSourceAccount(server, userAddress)
   const liquidToken = await getPhaseProtocolAuthorizedTokenContractId()
   warnDevIfEnvTokenDiffersFromChain(liquidToken)
   const c = new Contract(CONTRACT_ID)
@@ -590,10 +865,10 @@ export async function buildInitiatePhaseTransaction(userAddress: string, collect
         nativeToScVal(collectionId, { type: "u64" }),
       ),
     )
-    .setTimeout(30)
+    .setTimeout(WALLET_SIGN_TX_TIMEBOUND_SEC)
     .build()
   // prepareTransaction ejecuta simulateTransaction internamente y sobrescribe el footprint en este tx.
-  const prepared = await server.prepareTransaction(tx)
+  const prepared = await prepareTransactionWithRetry(server, tx)
   return prepared.toXDR()
 }
 
@@ -604,7 +879,7 @@ export async function buildSettleTransaction(
   collectionId: number = 0,
 ) {
   const server = getRpc()
-  const account = await server.getAccount(userAddress)
+  const account = await rpcGetUserSourceAccount(server, userAddress)
   const liquidToken = await getPhaseProtocolAuthorizedTokenContractId()
   warnDevIfEnvTokenDiffersFromChain(liquidToken)
   const c = new Contract(CONTRACT_ID)
@@ -622,9 +897,9 @@ export async function buildSettleTransaction(
         nativeToScVal(collectionId, { type: "u64" }),
       ),
     )
-    .setTimeout(30)
+    .setTimeout(WALLET_SIGN_TX_TIMEBOUND_SEC)
     .build()
-  const prepared = await server.prepareTransaction(tx)
+  const prepared = await prepareTransactionWithRetry(server, tx)
   return prepared.toXDR()
 }
 
@@ -650,7 +925,7 @@ export async function buildTransferPhaseNftTransaction(
 ) {
   const server = getRpc()
   const sourceG = (opts?.transactionSourceAddress ?? fromAddress).trim()
-  const account = await server.getAccount(sourceG)
+  const account = await rpcGetUserSourceAccount(server, sourceG)
   const c = new Contract(CONTRACT_ID)
   const args = [
     Address.fromString(fromAddress).toScVal(),
@@ -664,14 +939,14 @@ export async function buildTransferPhaseNftTransaction(
       networkPassphrase: Networks.TESTNET,
     })
       .addOperation(c.call(fn, ...args))
-      .setTimeout(30)
+      .setTimeout(WALLET_SIGN_TX_TIMEBOUND_SEC)
       .build()
 
   const methods = ["transfer", "xfer", "transfer_phase_nft"] as const
   let lastError: unknown
   for (const fn of methods) {
     try {
-      const prepared = await server.prepareTransaction(build(fn))
+      const prepared = await prepareTransactionWithRetry(server, build(fn))
       return prepared.toXDR()
     } catch (e) {
       lastError = e
@@ -697,9 +972,37 @@ export async function sendTransaction(signedXdr: string) {
   const server = getRpc()
   const parsed = TransactionBuilder.fromXDR(signedXdr, Networks.TESTNET)
   const tx = parsed instanceof FeeBumpTransaction ? parsed.innerTransaction : (parsed as Transaction)
-  const result = await server.sendTransaction(tx)
+  let result: Awaited<ReturnType<typeof server.sendTransaction>> | undefined
+  let lastSendErr: unknown
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await sleepRpcMs(sorobanExponentialBackoffMs(attempt - 1))
+    try {
+      result = await server.sendTransaction(tx)
+      break
+    } catch (e) {
+      lastSendErr = e
+      if (!isTransientRpcFailure(e) || attempt === 2) {
+        throw normalizeSorobanSdkError(e)
+      }
+    }
+  }
+  if (result == null) {
+    throw normalizeSorobanSdkError(lastSendErr)
+  }
   if (result.status === "ERROR") {
     logSorobanRpcResultForDebug("[PHASE Soroban] sendTransaction ERROR (RPC result)", result)
+    let raw = ""
+    try {
+      raw = JSON.stringify(result)
+    } catch {
+      /* ignore */
+    }
+    if (/txTooLate/i.test(raw)) {
+      throw new Error(
+        "Transacción expirada (txTooLate): pasó demasiado tiempo entre armar la tx y enviarla. " +
+          "Vuelve a iniciar el paso y firma en Freighter en los próximos minutos.",
+      )
+    }
     throw new Error("sendTransaction rejected by RPC (see errorResult on server)")
   }
   return result
@@ -709,7 +1012,13 @@ export async function getTransactionResult(txHash: string): Promise<unknown> {
   const server = getRpc()
   for (let i = 0; i < 15; i++) {
     await new Promise((r) => setTimeout(r, 2000))
-    const result = await server.getTransaction(txHash)
+    let result: Awaited<ReturnType<typeof server.getTransaction>>
+    try {
+      result = await server.getTransaction(txHash)
+    } catch (e) {
+      if (i === 14) throw normalizeSorobanSdkError(e)
+      continue
+    }
     if (result.status === rpc.Api.GetTransactionStatus.SUCCESS) return result
     if (result.status === rpc.Api.GetTransactionStatus.FAILED) {
       logSorobanRpcResultForDebug("[PHASE Soroban] getTransaction FAILED (RPC result)", result)
@@ -1220,7 +1529,7 @@ export async function fetchCreatorCollectionId(creatorAddress: string): Promise<
       CONTRACT_ID,
       "get_creator_collection_id",
       [Address.fromString(creatorAddress).toScVal()],
-      creatorAddress,
+      READONLY_SIM_SOURCE_G,
     )
     if (native == null) return null
     const n = numLikeToNumber(native)
@@ -1255,7 +1564,7 @@ export async function buildCreateCollectionTransaction(
   imageUri: string,
 ) {
   const server = getRpc()
-  const account = await server.getAccount(creatorAddress)
+  const account = await rpcGetUserSourceAccount(server, creatorAddress)
   const c = new Contract(CONTRACT_ID)
   const tx = new TransactionBuilder(account, {
     fee: BASE_FEE,
@@ -1270,9 +1579,9 @@ export async function buildCreateCollectionTransaction(
         nativeToScVal(imageUri, { type: "string" }),
       ),
     )
-    .setTimeout(30)
+    .setTimeout(WALLET_SIGN_TX_TIMEBOUND_SEC)
     .build()
-  const prepared = await server.prepareTransaction(tx)
+  const prepared = await prepareTransactionWithRetry(server, tx)
   return prepared.toXDR()
 }
 
@@ -1285,7 +1594,7 @@ export async function fetchUserPhaseArtifact(
       CONTRACT_ID,
       "get_user_phase",
       [Address.fromString(userAddress).toScVal(), nativeToScVal(collectionId, { type: "u64" })],
-      userAddress,
+      READONLY_SIM_SOURCE_G,
     )
     return phaseArtifactFromNative(native)
   } catch {
@@ -1367,14 +1676,24 @@ export async function fetchOwnedPhaseTokenIdsForWallet(
 export async function userOwnsAnyPhaseToken(userAddress: string, scanWindow: number = 400): Promise<boolean> {
   const normalized = extractBaseAddress(userAddress).trim().toUpperCase()
   if (!normalized) return false
+  /** Evita cientos de RTT secuenciales (muy lento vía proxy o RPC remoto). */
+  const CONCURRENCY = 14
   try {
     const total = await fetchPhaseProtocolTotalSupply(CONTRACT_ID)
     if (total <= 0) return false
 
     const from = Math.max(1, total - Math.max(1, scanWindow) + 1)
-    for (let tokenId = total; tokenId >= from; tokenId--) {
-      const owner = await fetchTokenOwnerAddress(CONTRACT_ID, tokenId)
-      if (owner && extractBaseAddress(owner).trim().toUpperCase() === normalized) return true
+    const ids: number[] = []
+    for (let tokenId = total; tokenId >= from; tokenId--) ids.push(tokenId)
+    for (let i = 0; i < ids.length; i += CONCURRENCY) {
+      const chunk = ids.slice(i, i + CONCURRENCY)
+      const hits = await Promise.all(
+        chunk.map(async (tokenId) => {
+          const owner = await fetchTokenOwnerAddress(CONTRACT_ID, tokenId)
+          return Boolean(owner && extractBaseAddress(owner).trim().toUpperCase() === normalized)
+        }),
+      )
+      if (hits.some(Boolean)) return true
     }
     return false
   } catch {

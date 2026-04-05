@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { signTransaction } from "@stellar/freighter-api"
+import { FeeBumpTransaction, Transaction, TransactionBuilder, Networks } from "@stellar/stellar-sdk"
 import { ArtistAliasControl } from "@/components/artist-alias-control"
 import { LangToggle } from "@/components/lang-toggle"
 import { useLang } from "@/components/lang-context"
@@ -36,6 +37,58 @@ import {
   validateFinalContractImageUri,
 } from "@/lib/phase-protocol"
 import { parseSignedTxXdr } from "@/lib/classic-liq"
+import { freighterTestnetMismatchLabel } from "@/lib/freighter-testnet"
+import { toast } from "sonner"
+
+/** Fallos típicos cuando el RPC público de testnet devuelve 502/503/504 o el proxy agota reintentos. */
+function isSorobanRpcCongestionError(err: unknown): boolean {
+  const msg =
+    err instanceof Error
+      ? err.message
+      : err &&
+          typeof err === "object" &&
+          typeof (err as { message?: unknown }).message === "string"
+        ? (err as { message: string }).message
+        : String(err)
+  const m = msg.toLowerCase()
+  return (
+    /\b503\b/.test(m) ||
+    /\b502\b/.test(m) ||
+    /\b504\b/.test(m) ||
+    /status code 50[234]/.test(m) ||
+    /service unavailable|bad gateway|gateway timeout/.test(m) ||
+    /soroban rpc no disponible|no disponible tras reintentos/.test(m) ||
+    /el rpc soroban no respondió|el proxy soroban devolvió/.test(m)
+  )
+}
+
+const SOROBAN_CONGESTED_CODE = "SOROBAN_TESTNET_CONGESTED"
+
+/** Comprueba que el XDR sea una transacción testnet firmable por Freighter (no envía nada a red). */
+function assertValidUnsignedSettleXdr(xdr: string): void {
+  const trimmed = xdr?.trim() ?? ""
+  if (trimmed.length < 48) {
+    throw new Error("XDR inválido: demasiado corto para ser una transacción Stellar.")
+  }
+  try {
+    const parsed = TransactionBuilder.fromXDR(trimmed, Networks.TESTNET)
+    if (parsed instanceof FeeBumpTransaction) {
+      const inner = parsed.innerTransaction
+      if (!inner || !(inner instanceof Transaction)) {
+        throw new Error("Fee bump sin transacción interna esperada.")
+      }
+      return
+    }
+    if (!(parsed instanceof Transaction)) {
+      throw new Error("El XDR no decodifica a una transacción estándar.")
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith("XDR")) throw e
+    if (e instanceof Error && e.message.startsWith("Fee bump")) throw e
+    if (e instanceof Error && e.message.startsWith("El XDR")) throw e
+    throw new Error(`XDR de settle no válido para testnet: ${e instanceof Error ? e.message : String(e)}`)
+  }
+}
 
 function truncateAddress(addr: string) {
   if (!addr || addr.length < 14) return addr
@@ -47,8 +100,17 @@ function mapFusionChamberError(
   err: unknown,
   errors: ReturnType<typeof pickCopy>["forge"]["errors"],
 ): string {
-  const msg = err instanceof Error ? err.message : String(err)
+  const msg =
+    err instanceof Error
+      ? err.message
+      : err &&
+          typeof err === "object" &&
+          typeof (err as { message?: unknown }).message === "string"
+        ? (err as { message: string }).message
+        : String(err)
   switch (msg) {
+    case SOROBAN_CONGESTED_CODE:
+      return errors.sorobanTestnetCongested
     case "FUSION_ABORTED_BY_USER":
       return errors.userAbortedFreighter
     case "ORACLE_OFFLINE_ENERGY_CONSUMED":
@@ -132,7 +194,13 @@ function textWithPhaserLiqLinks(text: string): React.ReactNode {
 const forgeNavBtn =
   "tactical-interactive-glitch tactical-phosphor inline-flex min-h-[40px] items-center rounded-sm border-2 border-cyan-400/50 bg-cyan-950/45 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.14)] transition-colors hover:border-cyan-300 hover:bg-cyan-900/35 hover:text-white"
 
-type AgentState = "IDLE" | "AWAITING_PAYMENT" | "PROCESSING_PAYMENT" | "FORGING_MATTER" | "COMPLETE"
+type AgentState =
+  | "IDLE"
+  | "AWAITING_PAYMENT"
+  | "ARMING_SETTLEMENT"
+  | "PROCESSING_PAYMENT"
+  | "FORGING_MATTER"
+  | "COMPLETE"
 type ForgeMode = "ORACLE" | "MANUAL"
 type OracleImageStyleMode = "adaptive" | "cyber"
 
@@ -172,6 +240,7 @@ export default function ForgePage() {
 
   const agentFlowBusy =
     agentState === "AWAITING_PAYMENT" ||
+    agentState === "ARMING_SETTLEMENT" ||
     agentState === "PROCESSING_PAYMENT" ||
     agentState === "FORGING_MATTER"
 
@@ -232,6 +301,16 @@ export default function ForgePage() {
       setTokenBalance("0")
     }
   }, [address, refresh])
+
+  const onTrustlineRequestConnect = useCallback(async () => {
+    await connect()
+    return refresh()
+  }, [connect, refresh])
+
+  const onTrustlineReady = useCallback(async () => {
+    setProtocolReady(true)
+    await refreshLiqBalance()
+  }, [refreshLiqBalance])
 
   useEffect(() => {
     void refreshLiqBalance().catch(() => {})
@@ -323,6 +402,11 @@ export default function ForgePage() {
       const addr = address ?? (await refresh())
       if (!addr) {
         setError(ff.errors.connectWallet)
+        return
+      }
+      const wrongNet = await freighterTestnetMismatchLabel()
+      if (wrongNet) {
+        setError(ff.errors.freighterWrongNetwork.replace("{network}", wrongNet))
         return
       }
       const trimmedName = name.trim()
@@ -468,15 +552,58 @@ export default function ForgePage() {
       const requiredStroops = String(challenge?.amount ?? REQUIRED_AMOUNT)
 
       // 2) Pago on-chain: invoke `settle` en el contrato PHASE (PHASELQ), no transfer de NFT
-      setAgentState("PROCESSING_PAYMENT")
       const invoiceId = Math.floor(Math.random() * 1_000_000)
-      const unsignedXdr = await buildSettleTransaction(payerAddress, requiredStroops, invoiceId, 0)
-      const signResult = await signTransaction(unsignedXdr, {
-        networkPassphrase: NETWORK_PASSPHRASE,
-        address: payerAddress,
-      })
+      setAgentState("ARMING_SETTLEMENT")
+      let unsignedXdr: string
+      try {
+        unsignedXdr = await buildSettleTransaction(payerAddress, requiredStroops, invoiceId, 0)
+      } catch (armErr) {
+        console.error("[forge-agent] buildSettleTransaction failed (RPC / simulación / contrato)", armErr)
+        setAgentState("IDLE")
+        if (isSorobanRpcCongestionError(armErr)) {
+          const line = pickCopy(lang).forge.errors.sorobanTestnetCongested
+          toast.error(line)
+          throw new Error(SOROBAN_CONGESTED_CODE)
+        }
+        throw armErr
+      }
+
+      try {
+        assertValidUnsignedSettleXdr(unsignedXdr)
+      } catch (xdrErr) {
+        console.error("[forge-agent] XDR de settle inválido tras buildSettleTransaction", xdrErr)
+        setAgentState("IDLE")
+        throw xdrErr
+      }
+
+      setAgentState("PROCESSING_PAYMENT")
+      const tx = {
+        kind: "settle_unsigned_xdr",
+        xdrLength: unsignedXdr.length,
+        xdrPrefix: unsignedXdr.slice(0, 72),
+        invoiceId,
+        requiredStroops,
+        payerPreview: `${payerAddress.slice(0, 6)}…${payerAddress.slice(-4)}`,
+      }
+      console.log("Transacción armada, llamando a Freighter...", tx)
+
+      let signResult: Awaited<ReturnType<typeof signTransaction>>
+      try {
+        signResult = await signTransaction(unsignedXdr, {
+          networkPassphrase: NETWORK_PASSPHRASE,
+          address: payerAddress,
+        })
+      } catch (freighterThrow) {
+        console.error(
+          "[forge-agent] signTransaction lanzó excepción (¿Freighter cerrado, red distinta o extensión bloqueada?)",
+          freighterThrow,
+        )
+        setAgentState("IDLE")
+        throw freighterThrow
+      }
       if (signResult.error) {
         console.error("[forge-agent] Freighter rejected settle signature", signResult.error)
+        setAgentState("IDLE")
         throw new Error("FUSION_ABORTED_BY_USER")
       }
       const signedXdr =
@@ -485,6 +612,7 @@ export default function ForgePage() {
         (signResult as { signedTransaction?: string }).signedTransaction
       if (!signedXdr) {
         console.error("[forge-agent] No signed XDR returned from Freighter", signResult)
+        setAgentState("IDLE")
         throw new Error("NO_SIGNED_XDR")
       }
 
@@ -594,6 +722,12 @@ export default function ForgePage() {
       return
     }
 
+    const wrongNet = await freighterTestnetMismatchLabel()
+    if (wrongNet) {
+      setError(ff.errors.freighterWrongNetwork.replace("{network}", wrongNet))
+      return
+    }
+
     const prompt = anomalyDescription.trim()
     if (prompt.length < 4) {
       setError(ff.errors.anomalyShort)
@@ -606,8 +740,17 @@ export default function ForgePage() {
         setError(ff.errors.lowEnergyAgent)
         return
       }
-    } catch {
-      setError(ff.errors.lowEnergyAgent)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      if (
+        /503|502|504|429|timeout|timed out|RPC|proxy|Soroban|disponible|status code|network|ECONNRESET|fetch failed/i.test(
+          msg,
+        )
+      ) {
+        setError(ff.errors.rpcBalanceCheckFailed)
+      } else {
+        setError(ff.errors.lowEnergyAgent)
+      }
       return
     }
 
@@ -641,6 +784,12 @@ export default function ForgePage() {
     const ff = pickCopy(lang).forge
     if (!protocolReady) {
       setError(ff.mint_blocked_msg)
+      return
+    }
+
+    const wrongNetManual = await freighterTestnetMismatchLabel()
+    if (wrongNetManual) {
+      setError(ff.errors.freighterWrongNetwork.replace("{network}", wrongNetManual))
       return
     }
 
@@ -721,22 +870,26 @@ export default function ForgePage() {
     ? f.deployTickers[tickerIdx % f.deployTickers.length]
     : agentState === "PROCESSING_PAYMENT"
       ? "[ x402_PAYMENT_REQUIRED // AWAITING_SIGNATURE ]"
-      : agentState === "FORGING_MATTER"
-        ? forgingTerminalLines[agentTickerIdx % forgingTerminalLines.length]
-        : agentState === "AWAITING_PAYMENT"
-          ? "[ CONTACTING_ORACLE... ]"
-          : ""
+      : agentState === "ARMING_SETTLEMENT"
+        ? "[ x402 // SOROBAN_PREPARE_SETTLE — RPC… ]"
+        : agentState === "FORGING_MATTER"
+          ? forgingTerminalLines[agentTickerIdx % forgingTerminalLines.length]
+          : agentState === "AWAITING_PAYMENT"
+            ? "[ CONTACTING_ORACLE... ]"
+            : ""
 
   const initiatePrimaryLabel =
     agentState === "IDLE"
       ? "[ INITIATE_AGENT_PROTOCOL ]"
       : agentState === "AWAITING_PAYMENT"
         ? "[ CONTACTING_ORACLE... ]"
-        : agentState === "PROCESSING_PAYMENT"
-          ? "[ x402_PAYMENT_REQUIRED // AWAITING_SIGNATURE ]"
-          : agentState === "FORGING_MATTER"
-            ? forgingTerminalLines[agentTickerIdx % forgingTerminalLines.length]
-            : "[ INITIATE_AGENT_PROTOCOL ]"
+        : agentState === "ARMING_SETTLEMENT"
+          ? "[ x402 // PREPARING_SETTLE_TX… ]"
+          : agentState === "PROCESSING_PAYMENT"
+            ? "[ x402_PAYMENT_REQUIRED // AWAITING_SIGNATURE ]"
+            : agentState === "FORGING_MATTER"
+              ? forgingTerminalLines[agentTickerIdx % forgingTerminalLines.length]
+              : "[ INITIATE_AGENT_PROTOCOL ]"
 
   const showCollectionLivePanel = shareUrl != null && createdId != null
 
@@ -779,7 +932,10 @@ export default function ForgePage() {
                   "mb-2 border-b border-[#00ffff]/30 pb-2 font-mono text-[9px] uppercase tracking-[0.18em]",
                   agentState === "PROCESSING_PAYMENT" && "forge-x402-blink",
                   agentState === "FORGING_MATTER" && "forge-forge-glitch text-[#00ffff]/90",
-                  (agentState === "AWAITING_PAYMENT" || isMintingCollection) && "text-[#00ffff]/90",
+                  (agentState === "AWAITING_PAYMENT" ||
+                    agentState === "ARMING_SETTLEMENT" ||
+                    isMintingCollection) &&
+                    "text-[#00ffff]/90",
                 )}
               >
                 {statusLine}
@@ -854,14 +1010,8 @@ export default function ForgePage() {
 
           <TrustlineButton
             address={address}
-            onRequestConnect={async () => {
-              await connect()
-              return refresh()
-            }}
-            onReady={async () => {
-              setProtocolReady(true)
-              await refreshLiqBalance()
-            }}
+            onRequestConnect={onTrustlineRequestConnect}
+            onReady={onTrustlineReady}
           />
 
           {error && (

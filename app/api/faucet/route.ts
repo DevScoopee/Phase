@@ -31,8 +31,8 @@ import {
   userOwnsAnyPhaseToken,
 } from "@/lib/phase-protocol"
 
-/** Vercel Hobby ~10s: el poll largo anterior (20×1.5s) cortaba la función → 502 del gateway. */
-export const maxDuration = 25
+/** Vercel: Hobby ~10s; Pro/Enterprise permite más — subir si el faucet sigue en 504. */
+export const maxDuration = 60
 
 /** Sin caché de respuesta de ruta: cada POST vuelve a simular/preparar en cadena. */
 export const dynamic = 'force-dynamic'
@@ -66,6 +66,20 @@ type QuestProgress = {
   completed: boolean
   progressPct: number
   requirementText: string
+}
+
+/** GET /api/faucet llama `readQuestProgress` muchas veces; cache corto evita re-escanear el ledger en cada render. */
+const questProgressCache = new Map<string, { at: number; data: Record<QuestId, QuestProgress> }>()
+const QUEST_PROGRESS_CACHE_TTL_MS = 5000
+
+async function readQuestProgressCached(wallet: string | null): Promise<Record<QuestId, QuestProgress>> {
+  if (!wallet) return readQuestProgress(null)
+  const now = Date.now()
+  const hit = questProgressCache.get(wallet)
+  if (hit && now - hit.at < QUEST_PROGRESS_CACHE_TTL_MS) return hit.data
+  const data = await readQuestProgress(wallet)
+  questProgressCache.set(wallet, { at: now, data })
+  return data
 }
 
 type RewardStatus = {
@@ -182,16 +196,22 @@ async function readQuestProgress(wallet: string | null): Promise<Record<QuestId,
   }
 
   try {
-    const creatorCollectionId = await fetchCreatorCollectionId(wallet)
+    const [creatorCollectionId, defaultPhase] = await Promise.all([
+      fetchCreatorCollectionId(wallet),
+      checkHasPhased(wallet, 0),
+    ])
     const hasCollection = Boolean(creatorCollectionId && creatorCollectionId > 0)
 
-    const defaultPhase = await checkHasPhased(wallet, 0)
     let creatorPhase = { phased: false }
     if (creatorCollectionId && creatorCollectionId > 0) {
       creatorPhase = await checkHasPhased(wallet, creatorCollectionId)
     }
     const quickSettlementMatch = defaultPhase.phased || creatorPhase.phased
-    const anyOwnedSettlement = quickSettlementMatch ? true : await userOwnsAnyPhaseToken(wallet)
+    /** Acotado: el quest solo necesita “¿mint reciente?”; `get_user_phase` ya cubre el caso habitual. */
+    const QUEST_OWNER_SCAN_WINDOW = 200
+    const anyOwnedSettlement = quickSettlementMatch
+      ? true
+      : await userOwnsAnyPhaseToken(wallet, QUEST_OWNER_SCAN_WINDOW)
     const hasSettlement = quickSettlementMatch || anyOwnedSettlement
 
     return {
@@ -249,7 +269,7 @@ function claimStatusForReward(claim: WalletClaims, reward: RewardType, now: numb
 async function buildWalletStatus(wallet: string | null, claims: FaucetClaims) {
   const now = Date.now()
   const claim = wallet ? claims[wallet] ?? {} : {}
-  const questProgress = await readQuestProgress(wallet)
+  const questProgress = await readQuestProgressCached(wallet)
   const rawGenesis = claimStatusForReward(claim, "genesis", now)
   const rawDaily = claimStatusForReward(claim, "daily", now)
   const rawQuestConnect = claimStatusForReward(claim, "quest_connect_wallet", now)
@@ -313,6 +333,7 @@ export async function GET(req: NextRequest) {
 }
 
 async function markClaim(wallet: string, reward: RewardType) {
+  questProgressCache.delete(wallet)
   const claims = await readClaims()
   const walletClaim = claims[wallet] ?? {}
   walletClaim.faucetPending = undefined
@@ -479,6 +500,9 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     )
   }
+
+  /** Cada intento de claim debe ver el ledger al día (p. ej. acabas de hacer settle). */
+  questProgressCache.delete(userAddress)
 
   const reward = parseRewardType(body.reward)
   const claims = await readClaims()
@@ -673,7 +697,27 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const account = await server.getAccount(source)
+    let account: Awaited<ReturnType<typeof server.getAccount>>
+    try {
+      account = await server.getAccount(source)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      if (/not found/i.test(msg)) {
+        return NextResponse.json(
+          {
+            error:
+              "La cuenta que firma el faucet no existe en testnet (o el RPC no la encuentra). " +
+              "Comprueba ADMIN_SECRET_KEY / FAUCET_DISTRIBUTOR_SECRET_KEY y fondea esa G con Friendbot.",
+            code: "FAUCET_SIGNER_ACCOUNT_NOT_FOUND_RPC",
+            detail: msg,
+            signer: source,
+            hint: `https://friendbot.stellar.org/?addr=${encodeURIComponent(source)}`,
+          },
+          { status: 503 },
+        )
+      }
+      throw e
+    }
     const c = new Contract(tokenId)
     const amountSc = nativeToScVal(BigInt(rewardAmountStroops(reward)), { type: "i128" })
     const tx = new TransactionBuilder(account, {

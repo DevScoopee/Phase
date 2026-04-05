@@ -294,6 +294,12 @@ export const phaseCopy: Record<
         fetchAgentImage: string
         finalUri: string
         lowEnergyAgent: string
+        /** Saldo no comprobado por fallo temporal del RPC (no confundir con PHASELQ bajo). */
+        rpcBalanceCheckFailed: string
+        /** RPC Soroban testnet saturado (503 / overload). */
+        sorobanTestnetCongested: string
+        /** Freighter en mainnet u otra red; `{network}` = nombre que reporta Freighter. */
+        freighterWrongNetwork: string
         manualNoImage: string
         /** Usuario cerró Freighter / rechazó la firma del settle x402 */
         userAbortedFreighter: string
@@ -640,6 +646,12 @@ export const phaseCopy: Record<
         fetchAgentImage: "Could not download generated image for mint.",
         finalUri: "Could not produce a valid on-chain image URI (try enabling IPFS upload).",
         lowEnergyAgent: "Insufficient PHASELQ for Oracle x402 settlement (see balance).",
+        rpcBalanceCheckFailed:
+          "Could not read your PHASELQ balance (Soroban RPC timed out or errored). Wait a few seconds and try again, or set STELLAR_RPC_FALLBACK_URLS in .env.local.",
+        sorobanTestnetCongested:
+          "Stellar Testnet is congested (HTTP 503). Please retry in a few seconds.",
+        freighterWrongNetwork:
+          "Freighter is not on Stellar testnet (current: {network}). Switch network in Freighter to Testnet, then retry.",
         manualNoImage: "Provide an image file or a valid https:// or ipfs:// URL.",
         userAbortedFreighter: "Payment cancelled in Freighter (x402 PHASELQ settle was not signed).",
         oracleOfflineAfterPayment:
@@ -1050,6 +1062,12 @@ export const phaseCopy: Record<
         fetchAgentImage: "No se pudo descargar la imagen generada para el mint.",
         finalUri: "No se pudo obtener una URI de imagen válida on-chain (probá habilitar subida IPFS).",
         lowEnergyAgent: "PHASELQ insuficiente para la liquidación x402 del Oráculo (revisá el saldo).",
+        rpcBalanceCheckFailed:
+          "No se pudo leer tu saldo PHASELQ (el RPC Soroban falló o hizo timeout). Esperá unos segundos y reintentá, o configurá STELLAR_RPC_FALLBACK_URLS en .env.local.",
+        sorobanTestnetCongested:
+          "La red de Stellar Testnet está congestionada (Error 503). Por favor, reintenta en unos segundos.",
+        freighterWrongNetwork:
+          "Freighter no está en Stellar testnet (red actual: {network}). Cambiá a Testnet en Freighter y reintentá.",
         manualNoImage: "Necesitás un archivo de imagen o una URL https:// o ipfs:// válida.",
         userAbortedFreighter: "Pago cancelado en Freighter (no se firmó el settle x402 en PHASELQ).",
         oracleOfflineAfterPayment:

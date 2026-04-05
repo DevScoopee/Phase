@@ -1,3 +1,47 @@
+const MAX_EDGE = 2048
+const JPEG_QUALITY = 0.86
+
+/**
+ * Reduce imágenes grandes antes de subir (Vercel suele cortar con 413 si el body supera ~4.5 MB).
+ */
+export async function shrinkImageBlobForUpload(blob: Blob): Promise<Blob> {
+  if (typeof window === "undefined" || !blob.type.startsWith("image/")) {
+    return blob
+  }
+  if (blob.size < 2_400_000) {
+    return blob
+  }
+  try {
+    const bmp = await createImageBitmap(blob)
+    try {
+      let w = bmp.width
+      let h = bmp.height
+      if (w > MAX_EDGE || h > MAX_EDGE) {
+        const scale = MAX_EDGE / Math.max(w, h)
+        w = Math.max(1, Math.round(w * scale))
+        h = Math.max(1, Math.round(h * scale))
+      }
+      const canvas = document.createElement("canvas")
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return blob
+      ctx.drawImage(bmp, 0, 0, w, h)
+      const out = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob((b) => resolve(b), "image/jpeg", JPEG_QUALITY),
+      )
+      if (out && out.size > 0 && out.size < blob.size) {
+        return out
+      }
+      return blob
+    } finally {
+      bmp.close()
+    }
+  } catch {
+    return blob
+  }
+}
+
 /** `true` if the server exposes a configured upload endpoint (checked via GET, no secrets leaked). */
 export async function isIpfsUploadConfigured(): Promise<boolean> {
   try {
@@ -14,9 +58,11 @@ export async function isIpfsUploadConfigured(): Promise<boolean> {
  * Uploads a `Blob` or `File` via `POST /api/ipfs`. Returns a content URI for `create_collection`.
  */
 export async function uploadToIPFS(fileOrBlob: Blob | File): Promise<string> {
+  const prepared = await shrinkImageBlobForUpload(fileOrBlob)
   const fd = new FormData()
-  const name = fileOrBlob instanceof File ? fileOrBlob.name : "phase-art.png"
-  fd.append("file", fileOrBlob, name)
+  const baseName = fileOrBlob instanceof File ? fileOrBlob.name.replace(/\.[^.]+$/, "") : "phase-art"
+  const name = prepared.type === "image/jpeg" ? `${baseName}.jpg` : fileOrBlob instanceof File ? fileOrBlob.name : "phase-art.png"
+  fd.append("file", prepared, name)
 
   const res = await fetch("/api/ipfs", { method: "POST", body: fd })
   let data: { uri?: string; error?: string } = {}

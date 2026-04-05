@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { signTransaction } from "@stellar/freighter-api"
 import { useLang } from "@/components/lang-context"
 import { TokenIcon } from "@/components/token-icon"
@@ -46,6 +46,10 @@ async function fetchNativeXlmBalance(address: string): Promise<number> {
 export function TrustlineButton({ address, onRequestConnect, onReady, className }: Props) {
   const { lang } = useLang()
   const ff = pickCopy(lang).forge
+  const onReadyRef = useRef(onReady)
+  const onRequestConnectRef = useRef(onRequestConnect)
+  onReadyRef.current = onReady
+  onRequestConnectRef.current = onRequestConnect
   const asset = useMemo(() => classicLiqAssetConfigFromPublicEnv(), [])
   const [walletAddress, setWalletAddress] = useState<string | null>(address ?? null)
   const [uiState, setUiState] = useState<TrustlineUiState>("STANDBY")
@@ -65,7 +69,7 @@ export function TrustlineButton({ address, onRequestConnect, onReady, className 
       if (status.hasTrustline) {
         setUiState("READY")
         setMessage(ff.trustline_msg_initialized)
-        await onReady?.()
+        await onReadyRef.current?.()
       } else if (xlm < 2) {
         setUiState("GET_TESTNET_XLM")
         setMessage(ff.trustline_msg_empty_account)
@@ -74,7 +78,7 @@ export function TrustlineButton({ address, onRequestConnect, onReady, className 
         setMessage("")
       }
     },
-    [asset, ff.trustline_msg_empty_account, ff.trustline_msg_initialized, onReady],
+    [asset, ff.trustline_msg_empty_account, ff.trustline_msg_initialized],
   )
 
   useEffect(() => {
@@ -101,8 +105,8 @@ export function TrustlineButton({ address, onRequestConnect, onReady, className 
     }
 
     let addr = walletAddress
-    if (!addr && onRequestConnect) {
-      const next = await onRequestConnect()
+    if (!addr && onRequestConnectRef.current) {
+      const next = await onRequestConnectRef.current()
       addr = next ?? null
       setWalletAddress(addr)
     }
@@ -179,7 +183,7 @@ export function TrustlineButton({ address, onRequestConnect, onReady, className 
 
       setUiState("READY")
       setMessage(ff.trustline_msg_protocol_ready)
-      await onReady?.()
+      await onReadyRef.current?.()
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       setUiState("STANDBY")
@@ -195,8 +199,6 @@ export function TrustlineButton({ address, onRequestConnect, onReady, className 
     ff.trustline_msg_empty_account,
     ff.trustline_msg_protocol_ready,
     ff.trustline_msg_waiting_confirmation,
-    onReady,
-    onRequestConnect,
     uiState,
     walletAddress,
   ])
