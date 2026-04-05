@@ -11,6 +11,7 @@
  * Variables (.env.local en la raíz):
  *   CLASSIC_LIQ_ISSUER_SECRET     — obligatorio; secret del emisor (firma el payment).
  *   CLASSIC_LIQ_DISTRIBUTOR_PUBLIC — G… del distribuidor (opcional si abajo hay secret).
+ *   FAUCET_DISTRIBUTOR_PUBLIC_KEY — mismo uso, alias opcional.
  *   FAUCET_DISTRIBUTOR_SECRET_KEY — si no hay PUBLIC, se usa la G derivada de este secret.
  *   NEXT_PUBLIC_CLASSIC_LIQ_ASSET_CODE / NEXT_PUBLIC_CLASSIC_LIQ_ISSUER — asset (defaults PHASELQ + GAX… del proyecto).
  *   CLASSIC_LIQ_ISSUER_PAYMENT_AMOUNT — opcional; default 100000.0000000 (7 decimales).
@@ -50,7 +51,9 @@ function assetCodeFromEnv(): string {
 }
 
 function resolveDistributorPublic(): string | null {
-  const pub = process.env.CLASSIC_LIQ_DISTRIBUTOR_PUBLIC?.trim()
+  const pub =
+    process.env.CLASSIC_LIQ_DISTRIBUTOR_PUBLIC?.trim() ||
+    process.env.FAUCET_DISTRIBUTOR_PUBLIC_KEY?.trim()
   if (pub && StrKey.isValidEd25519PublicKey(pub)) return pub
   const distSecret = process.env.FAUCET_DISTRIBUTOR_SECRET_KEY?.trim()
   if (distSecret && distSecret.length >= 20) {
@@ -127,7 +130,7 @@ async function main() {
   const dest = resolveDistributorPublic()
   if (!dest) {
     console.error(
-      "Define CLASSIC_LIQ_DISTRIBUTOR_PUBLIC (G…) o FAUCET_DISTRIBUTOR_SECRET_KEY para indicar el distribuidor.",
+      "Define CLASSIC_LIQ_DISTRIBUTOR_PUBLIC, FAUCET_DISTRIBUTOR_PUBLIC_KEY (G…) o FAUCET_DISTRIBUTOR_SECRET_KEY para indicar el distribuidor.",
     )
     process.exit(1)
   }

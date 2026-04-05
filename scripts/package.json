@@ -20,6 +20,7 @@
     "setup:phase-v2": "tsx setup-phase-v2.ts",
     "set:issuer-home-domain": "tsx set-issuer-home-domain.ts",
     "issuer-to-distributor": "tsx issuer-pay-distributor.ts",
+    "distributor-trust-and-pay": "tsx distributor-trust-and-payment.ts",
     "reset:phase": "tsx reset-phase.ts"
   },
   "dependencies": {

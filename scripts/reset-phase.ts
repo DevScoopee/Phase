@@ -1,5 +1,5 @@
 /**
- * Reset de identidades testnet para PHASERLIQ clásico + distribuidor con liquidez.
+ * Reset de identidades testnet para PHASELQ clásico + distribuidor con liquidez.
  *
  * Crea issuer + distributor, fondea con Friendbot, trustline, pago masivo al distribuidor.
  * Imprime variables para `.env.local` y el comando Stellar CLI para desplegar el SAC.
@@ -11,13 +11,16 @@
  *   npm run reset:phase
  *
  * Después, despliega el Stellar Asset Contract (SAC) en testnet:
- *   stellar contract asset deploy --asset PHASERLIQ:<ISSUER_G> --network testnet
+ *   stellar contract asset deploy --asset PHASELQ:<ISSUER_G> --network testnet
  * Copia el Contract ID (C…) a:
  *   NEXT_PUBLIC_TOKEN_CONTRACT_ID
  *   NEXT_PUBLIC_PHASER_TOKEN_ID
  *
  * Opcional: publicar home_domain para stellar.toml / Stellar Expert:
  *   cd scripts && CLASSIC_LIQ_ISSUER_SECRET=<issuer secret> npm run set:issuer-home-domain
+ *
+ * Si ya tienes issuer + distribuidor en .env.local y solo falta trustline + primer pago:
+ *   npm run classic:distributor-trust-and-pay  →  scripts/distributor-trust-and-payment.ts
  */
 import * as dotenv from "dotenv"
 import * as path from "node:path"
@@ -32,8 +35,8 @@ dotenv.config({ path: path.join(__dirname, ".env") })
 
 const HORIZON_URL = process.env.HORIZON_TESTNET_URL?.trim() || "https://horizon-testnet.stellar.org"
 const NETWORK_PASSPHRASE = Networks.TESTNET
-/** Override: `RESET_PHASE_ASSET_CODE=PHASELQ` si tu app usa ese código en testnet. */
-const ASSET_CODE = process.env.RESET_PHASE_ASSET_CODE?.trim() || "PHASERLIQ"
+/** Override: p. ej. `RESET_PHASE_ASSET_CODE=PHASERLIQ` solo si mantienes un código legacy distinto. */
+const ASSET_CODE = process.env.RESET_PHASE_ASSET_CODE?.trim() || "PHASELQ"
 /** Cantidad enviada al distribuidor (formato Stellar, 7 decimales). */
 const INITIAL_DISTRIBUTOR_AMOUNT = process.env.RESET_PHASE_MINT_AMOUNT?.trim() || "1000000.0000000"
 
@@ -70,7 +73,7 @@ async function main() {
   const issuer = Keypair.random()
   const distributor = Keypair.random()
 
-  console.log("ISSUER (emisor del asset PHASERLIQ)")
+  console.log(`ISSUER (emisor del asset ${ASSET_CODE})`)
   console.log(`  Public:  ${issuer.publicKey()}`)
   console.log(`  Secret:  ${issuer.secret()}`)
   console.log("")
@@ -90,7 +93,7 @@ async function main() {
 
   const phaserLiq = new Asset(ASSET_CODE, issuer.publicKey())
 
-  console.log("Creando trustline del distribuidor hacia PHASERLIQ…")
+  console.log(`Creando trustline del distribuidor hacia ${ASSET_CODE}…`)
   const accountDist = await server.loadAccount(distributor.publicKey())
   const txTrust = new TransactionBuilder(accountDist, {
     fee: BASE_FEE,

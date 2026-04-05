@@ -9,10 +9,10 @@ Esta guía te ayuda a configurar correctamente las variables de entorno para evi
 **Causa**: Has configurado tu dirección de wallet Freighter (G...) en lugar del Contract ID del token (C...).
 
 **Solución**:
-1. El token PHASERLIQ debe estar desplegado como Stellar Asset Contract (SAC)
+1. El token PHASELQ debe estar desplegado como Stellar Asset Contract (SAC)
 2. Obtén el Contract ID correcto:
    ```bash
-   stellar contract asset deploy --asset PHASERLIQ:GISSUER --network testnet
+   stellar contract asset deploy --asset PHASELQ:GISSUER --network testnet
    ```
 3. El comando devolverá un Contract ID que comienza con "C" (56 caracteres)
 4. Configura ese valor en `NEXT_PUBLIC_PHASER_TOKEN_ID`
@@ -22,17 +22,17 @@ Esta guía te ayuda a configurar correctamente las variables de entorno para evi
 **Causa**: El faucet está configurado en modo mint, pero la cuenta firmante no es el issuer del asset.
 
 **Solución - Opción A (modo mint)**:
-- `ADMIN_SECRET_KEY` debe ser el secret key de la cuenta que emitió el asset PHASERLIQ
+- `ADMIN_SECRET_KEY` debe ser el secret key de la cuenta que emitió el asset PHASELQ
 - Esta cuenta debe tener fondos de XLM para pagar fees de Soroban
 
 **Solución - Opción B (modo transfer - recomendado)**:
 - Configura `FAUCET_DISTRIBUTOR_SECRET_KEY` en lugar de `ADMIN_SECRET_KEY`
-- Esta cuenta debe tener saldo de PHASERLIQ (previamente acuñado)
+- Esta cuenta debe tener saldo de PHASELQ (previamente acuñado)
 - Esta cuenta debe tener XLM para fees de red
 
-### Error 3: "Falta la trustline PHASERLIQ"
+### Error 3: "Falta la trustline PHASELQ"
 
-**Causa**: El usuario intenta recibir PHASERLIQ pero no ha establecido la trustline en su wallet.
+**Causa**: El usuario intenta recibir PHASELQ pero no ha establecido la trustline en su wallet.
 
 **Solución para usuarios**:
 1. Conectar wallet en la página /forge
@@ -65,8 +65,8 @@ cp .env.local.example .env.local
 stellar contract deploy --wasm phase_protocol.wasm --network testnet
 # → Guarda el Contract ID (C...) como NEXT_PUBLIC_PHASE_PROTOCOL_ID
 
-# Desplegar el SAC para PHASERLIQ (si no existe)
-stellar contract asset deploy --asset PHASERLIQ:GISSUER --network testnet
+# Desplegar el SAC para PHASELQ (si no existe)
+stellar contract asset deploy --asset PHASELQ:GISSUER --network testnet
 # → Guarda el Contract ID como NEXT_PUBLIC_PHASER_TOKEN_ID
 ```
 
@@ -94,7 +94,7 @@ Este comando verifica:
 ### Para el protocolo (obligatorio)
 
 ```bash
-# Contract ID del token PHASERLIQ (Soroban)
+# Contract ID del token PHASELQ (Soroban)
 NEXT_PUBLIC_PHASER_TOKEN_ID=C...
 
 # Contract ID del protocolo PHASE (Soroban)
@@ -115,7 +115,7 @@ FAUCET_DISTRIBUTOR_SECRET_KEY=S...
 
 ```bash
 # Código del asset
-NEXT_PUBLIC_CLASSIC_LIQ_ASSET_CODE=PHASERLIQ
+NEXT_PUBLIC_CLASSIC_LIQ_ASSET_CODE=PHASELQ
 
 # Issuer del asset (dirección G...)
 NEXT_PUBLIC_CLASSIC_LIQ_ISSUER=G...
@@ -144,7 +144,7 @@ npm run setup:phase-v2
 
 1. Busca el issuer del asset: https://stellar.expert/explorer/testnet/account/GISSUER
 2. Ve a la sección "Assets"
-3. Haz clic en "Contract ID" del PHASERLIQ
+3. Haz clic en "Contract ID" del PHASELQ
 4. Verifica que coincida con tu `NEXT_PUBLIC_PHASER_TOKEN_ID`
 
 ## 🚨 Checklist Pre-Deploy
@@ -152,7 +152,7 @@ npm run setup:phase-v2
 - [ ] `npm run diagnose` pasa sin errores
 - [ ] La cuenta del faucet tiene >5 XLM
 - [ ] El modo mint: ADMIN_SECRET_KEY es el issuer
-- [ ] El modo transfer: distribuidor tiene saldo PHASERLIQ
+- [ ] El modo transfer: distribuidor tiene saldo PHASELQ
 - [ ] Trustline del asset clásico configurada correctamente
 - [ ] `NEXT_PUBLIC_CLASSIC_LIQ_ISSUER` coincide con el issuer real
 - [ ] steller.toml está accesible en `/.well-known/stellar.toml`

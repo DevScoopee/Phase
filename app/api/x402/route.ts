@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
-import { CONTRACT_ID, REQUIRED_AMOUNT, TOKEN_ADDRESS } from "@/lib/phase-protocol"
+import {
+  PHASER_LIQ_SYMBOL,
+  phaseProtocolContractIdForServer,
+  REQUIRED_AMOUNT,
+  stroopsToLiqDisplay,
+  tokenContractIdForServer,
+} from "@/lib/phase-protocol"
 
 export const dynamic = 'force-dynamic'
+
+const PHASE_PROTOCOL_CONTRACT = phaseProtocolContractIdForServer()
+const PHASE_LIQ_TOKEN_CONTRACT = tokenContractIdForServer()
 
 const X402_NETWORK = "stellar:testnet"
 
@@ -66,10 +75,11 @@ export async function GET(request: NextRequest) {
     protocol: "x402",
     version: "2",
     network: X402_NETWORK,
-    token: CONTRACT_ID,
-    contract_id: CONTRACT_ID,
-    token_contract: TOKEN_ADDRESS,
+    token: PHASE_LIQ_TOKEN_CONTRACT,
+    contract_id: PHASE_PROTOCOL_CONTRACT,
+    token_contract: PHASE_LIQ_TOKEN_CONTRACT,
     amount: parseRequiredAmount(),
+    priceDisplay: `${stroopsToLiqDisplay(REQUIRED_AMOUNT)} ${PHASER_LIQ_SYMBOL}`,
     facilitator,
     invoice: `inv_${Date.now()}`,
     resource: request.nextUrl.pathname,
@@ -88,7 +98,7 @@ export async function GET(request: NextRequest) {
       headers: {
         "WWW-Authenticate": `x402 token="${challengeBase64}", amount="${challenge.amount}", facilitator="${facilitator}", network="${X402_NETWORK}"`,
         "X-Required-Amount": REQUIRED_AMOUNT,
-        "X-Token-Address": TOKEN_ADDRESS,
+        "X-Token-Address": PHASE_LIQ_TOKEN_CONTRACT,
         "X-Facilitator": facilitator,
         "X-X402-Network": X402_NETWORK,
       },

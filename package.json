@@ -10,6 +10,7 @@
     "diagnose": "tsx diagnose-env.ts",
     "set:issuer-home-domain": "cd scripts && npm run set:issuer-home-domain",
     "classic:issuer-to-distributor": "cd scripts && npm run issuer-to-distributor",
+    "classic:distributor-trust-and-pay": "cd scripts && npm run distributor-trust-and-pay",
     "setup:phase-v2": "cd scripts && npm run setup:phase-v2",
     "reset:phase": "cd scripts && npm run reset:phase",
     "start": "next start"

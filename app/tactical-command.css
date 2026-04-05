@@ -620,7 +620,26 @@
 .tactical-log-viewport {
   scroll-behavior: smooth;
   scrollbar-width: thin;
-  scrollbar-color: rgba(57, 255, 20, 0.35) rgba(0, 0, 0, 0.4);
+  scrollbar-color: rgba(57, 255, 20, 0.45) rgba(0, 0, 0, 0.55);
+  -webkit-overflow-scrolling: touch;
+}
+
+.tactical-log-viewport::-webkit-scrollbar {
+  width: 8px;
+}
+
+.tactical-log-viewport::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 4px;
+}
+
+.tactical-log-viewport::-webkit-scrollbar-thumb {
+  background: rgba(57, 255, 20, 0.35);
+  border-radius: 4px;
+}
+
+.tactical-log-viewport::-webkit-scrollbar-thumb:hover {
+  background: rgba(57, 255, 20, 0.55);
 }
 
 /* Entrada con “inercia” perceptual: el scroll lo retrasa el cliente */

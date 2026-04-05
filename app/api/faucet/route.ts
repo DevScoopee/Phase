@@ -27,7 +27,7 @@ import {
   NETWORK_PASSPHRASE,
   PHASER_FAUCET_MINT_STROOPS,
   RPC_URL,
-  TOKEN_ADDRESS,
+  tokenContractIdForServer,
   userOwnsAnyPhaseToken,
 } from "@/lib/phase-protocol"
 
@@ -36,6 +36,8 @@ export const maxDuration = 25
 
 /** Sin caché de respuesta de ruta: cada POST vuelve a simular/preparar en cadena. */
 export const dynamic = 'force-dynamic'
+
+const PHASE_LIQ_TOKEN_CONTRACT = tokenContractIdForServer()
 
 const DAILY_WINDOW_MS = 24 * 60 * 60 * 1000
 const FAUCET_PENDING_TTL_MS = 8 * 60 * 1000
@@ -154,7 +156,7 @@ async function fetchNativeXlmBalance(gAddress: string): Promise<number | null> {
 
 /** Mismo contrato token que el resto de la app (`lib/phase-protocol.ts`), ya validado como C…. */
 function serverTokenContractId(): string {
-  return TOKEN_ADDRESS
+  return PHASE_LIQ_TOKEN_CONTRACT
 }
 
 function rewardAmountStroops(reward: RewardType): string {
@@ -580,7 +582,7 @@ export async function POST(req: NextRequest) {
 
     // Validación adicional: verificar que el tokenId coincida con el SAC esperado
     if (tokenId !== sacExpected) {
-      console.warn("[faucet] Warning: TOKEN_ADDRESS no coincide con el SAC derivado del asset clásico", {
+      console.warn("[faucet] Warning: PHASE_LIQ_TOKEN_CONTRACT no coincide con el SAC derivado del asset clásico", {
         configured: tokenId,
         expectedFromClassic: sacExpected,
       })

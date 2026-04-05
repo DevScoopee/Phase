@@ -12,9 +12,25 @@ import {
 } from "@/lib/classic-liq"
 import { humanizePhaseHostErrorMessage } from "@/lib/phase-host-error"
 import { pickCopy } from "@/lib/phase-copy"
-import { formatLiq, isPhaseUnauthorizedError, NETWORK_PASSPHRASE } from "@/lib/phase-protocol"
+import { extractBaseAddress } from "@stellar/stellar-sdk"
+import {
+  formatLiq,
+  getPublicClassicLiqIssuerG,
+  isPhaseUnauthorizedError,
+  NETWORK_PASSPHRASE,
+} from "@/lib/phase-protocol"
 import { playTacticalUiClick } from "@/lib/tactical-ui-click"
 import { cn } from "@/lib/utils"
+
+function comparableStellarAccountG(addr: string): string {
+  const t = addr.trim()
+  if (!t) return ""
+  try {
+    return extractBaseAddress(t).trim().toUpperCase()
+  } catch {
+    return t.toUpperCase()
+  }
+}
 
 type RewardType = "genesis" | "daily" | "quest_connect_wallet" | "quest_first_collection" | "quest_first_settle"
 
@@ -56,6 +72,24 @@ type Props = {
   compact?: boolean
   onNarrativeLog?: (line: string) => void
   onRefreshBalance: () => void | Promise<void>
+  /**
+   * Cámara: si el NFT está en custodia del emisor PHASELQ (G…), expone **Collect** → el servidor firma `transfer(issuer → usuario)`.
+   * Si `owner_of` ya es la wallet conectada, el bloque no se muestra.
+   */
+  freighterNftCollect?: { tokenId: number } | null
+  /**
+   * Cámara (columna derecha): oculta el toggle VER/OCULTAR solo de la cadena de misiones;
+   * el panel completo se pliega desde el wrapper exterior.
+   */
+  hideInlineMissionToggle?: boolean
+  /** Oculta genesis + daily (p. ej. quests solo bajo el reactor). */
+  omitLiquidityLane?: boolean
+  /** Oculta QUEST_01..03 (p. ej. columna derecha solo colectar). */
+  omitMissionChain?: boolean
+  /** Oculta cabecera de progreso + barra (la cámara pone título propio arriba). */
+  omitHeader?: boolean
+  /** Oculta bloque Freighter COLLECT (vive con liquidez en columna derecha). */
+  omitFreighterNftBlock?: boolean
 }
 
 export function LiquidityFaucetControl({
@@ -65,6 +99,12 @@ export function LiquidityFaucetControl({
   compact = false,
   onNarrativeLog,
   onRefreshBalance,
+  freighterNftCollect = null,
+  hideInlineMissionToggle = false,
+  omitLiquidityLane = false,
+  omitMissionChain = false,
+  omitHeader = false,
+  omitFreighterNftBlock = false,
 }: Props) {
   const { lang } = useLang()
   const ch = pickCopy(lang).chamber
@@ -83,7 +123,16 @@ export function LiquidityFaucetControl({
   const [loadingReward, setLoadingReward] = useState<RewardType | null>(null)
   const [rewardFlowPhase, setRewardFlowPhase] = useState<RewardFlowPhase>("idle")
   const [helpOpen, setHelpOpen] = useState(false)
-  const [missionsOpen, setMissionsOpen] = useState(!compact)
+  /** En compact (Forge lateral) las quests deben verse sin pulsar VER; el botón sigue permitiendo colapsar. */
+  const [missionsOpen, setMissionsOpen] = useState(true)
+  const [nftCollectBusy, setNftCollectBusy] = useState(false)
+  /** null = sin comprobar; loading / resultado de owner on-chain para Collect. */
+  const [nftCollectEligibility, setNftCollectEligibility] = useState<
+    | null
+    | { status: "loading" }
+    | { status: "ready"; viewerIsOwner: boolean; onChainOwner: string }
+    | { status: "error"; message: string }
+  >(null)
 
   useEffect(() => {
     if (!helpOpen) return
@@ -110,6 +159,67 @@ export function LiquidityFaucetControl({
   useEffect(() => {
     void loadStatus().catch(() => setStatus({ enabled: false }))
   }, [loadStatus])
+
+  useEffect(() => {
+    if (!address || !freighterNftCollect) {
+      setNftCollectEligibility(null)
+      return
+    }
+    let cancelled = false
+    setNftCollectEligibility({ status: "loading" })
+    ;(async () => {
+      try {
+        const vr = await fetch("/api/phase-nft/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tokenId: freighterNftCollect.tokenId,
+            walletAddress: address,
+          }),
+          cache: "no-store",
+        })
+        const vd = (await vr.json().catch(() => ({}))) as {
+          ok?: boolean
+          owner?: string
+          viewerIsOwner?: boolean
+          code?: string
+          detail?: string
+          error?: string
+        }
+        if (cancelled) return
+        if (!vr.ok) {
+          const msg =
+            vd.code === "NFT_NOT_MINTED"
+              ? lang === "es"
+                ? "Token no encontrado en ledger."
+                : "Token not found on ledger."
+              : vd.detail || vd.error || `HTTP ${vr.status}`
+          setNftCollectEligibility({ status: "error", message: msg })
+          return
+        }
+        const owner = typeof vd.owner === "string" ? vd.owner.trim() : ""
+        if (!owner) {
+          setNftCollectEligibility({
+            status: "error",
+            message: lang === "es" ? "Sin propietario on-chain." : "Missing on-chain owner.",
+          })
+          return
+        }
+        setNftCollectEligibility({
+          status: "ready",
+          viewerIsOwner: Boolean(vd.viewerIsOwner),
+          onChainOwner: owner,
+        })
+      } catch (e) {
+        if (cancelled) return
+        const msg = e instanceof Error ? e.message : String(e)
+        setNftCollectEligibility({ status: "error", message: msg })
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [address, freighterNftCollect, lang])
 
   const ensureClassicTrustlineForReward = useCallback(async (): Promise<boolean> => {
     if (!address) return true
@@ -271,6 +381,69 @@ export function LiquidityFaucetControl({
       onRefreshBalance,
     ],
   )
+
+  const handleFreighterNftCollect = useCallback(async () => {
+    if (!address || !freighterNftCollect) return
+    playTacticalUiClick()
+    setNftCollectBusy(true)
+    try {
+      const res = await fetch("/api/phase-nft/custodian-release", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tokenId: freighterNftCollect.tokenId,
+          recipientWallet: address,
+        }),
+        cache: "no-store",
+      })
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean
+        hash?: string | null
+        error?: string
+        detail?: string
+        code?: string
+      }
+      if (!res.ok) {
+        const msg =
+          data.code === "NOT_ISSUER_CUSTODY"
+            ? lang === "es"
+              ? "El NFT no está en custodia del emisor configurado (quizá ya está en tu wallet)."
+              : "This NFT is not held by the configured issuer (it may already be in your wallet)."
+            : data.detail || data.error || `HTTP ${res.status}`
+        onNarrativeLog?.(
+          lang === "es" ? `[ NFT_COLLECT_FAIL ] ${msg}` : `[ NFT_COLLECT_FAIL ] ${msg}`,
+        )
+        toast.error(normalizeToastError(msg))
+        return
+      }
+      const hash = typeof data.hash === "string" ? data.hash : undefined
+      toast.success(
+        lang === "es"
+          ? `NFT enviado a tu wallet${hash ? `. Hash: ${hash}` : ""}`
+          : `NFT sent to your wallet${hash ? `. Hash: ${hash}` : ""}`,
+      )
+      if (hash) onNarrativeLog?.(`${logs.tracePrefix} ${hash}`)
+      setNftCollectEligibility({
+        status: "ready",
+        viewerIsOwner: true,
+        onChainOwner: address,
+      })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      toast.error(normalizeToastError(msg))
+      onNarrativeLog?.(`${logs.faucetFailPrefix} ${msg}`)
+    } finally {
+      setNftCollectBusy(false)
+    }
+  }, [
+    address,
+    freighterNftCollect,
+    lang,
+    logs.faucetFailPrefix,
+    logs.tracePrefix,
+    normalizeToastError,
+    onNarrativeLog,
+  ])
 
   const statusLabel = useCallback(
     (reward: RewardState | undefined) => {
@@ -442,6 +615,25 @@ export function LiquidityFaucetControl({
         )
       : null
 
+  const showHeader = !omitHeader
+  const showLiquidityLane = !omitLiquidityLane
+  const showMissionChain = !omitMissionChain
+  const issuerG = getPublicClassicLiqIssuerG()
+  const showFreighterBlock =
+    !omitFreighterNftBlock &&
+    Boolean(freighterNftCollect && address) &&
+    nftCollectEligibility?.status === "ready" &&
+    !nftCollectEligibility.viewerIsOwner &&
+    comparableStellarAccountG(nftCollectEligibility.onChainOwner) === comparableStellarAccountG(issuerG)
+
+  const showCustodyHint =
+    !omitFreighterNftBlock &&
+    Boolean(freighterNftCollect && address) &&
+    nftCollectEligibility?.status === "ready" &&
+    !nftCollectEligibility.viewerIsOwner &&
+    !showFreighterBlock &&
+    comparableStellarAccountG(nftCollectEligibility.onChainOwner) !== comparableStellarAccountG(issuerG)
+
   return (
     <section
       className={cn(
@@ -451,11 +643,57 @@ export function LiquidityFaucetControl({
       )}
     >
       {helpModal}
-      <header className={compact ? "mb-1.5" : "mb-2.5"}>
-        <div className="flex items-center justify-between gap-2">
-          <p className="tactical-phosphor min-w-0 flex-1 text-[11px] uppercase tracking-[0.22em] text-cyan-100 sm:text-xs">
-            {ch.rewardsSectionTitle}
-          </p>
+      {showHeader ? (
+        <header className={compact ? "mb-1.5" : "mb-2.5"}>
+          <div className="flex items-center justify-between gap-2">
+            {hideInlineMissionToggle ? (
+              <p className="tactical-phosphor min-w-0 flex-1 text-[10px] uppercase tracking-[0.18em] text-cyan-300/85 sm:text-[11px]">
+                {ch.rewardsQuestProgress}{" "}
+                <span className="tabular-nums text-cyan-100/95">
+                  {status?.questOverview
+                    ? `${status.questOverview.completed}/${status.questOverview.total}`
+                    : "—/—"}
+                </span>
+              </p>
+            ) : (
+              <p className="tactical-phosphor min-w-0 flex-1 text-[11px] uppercase tracking-[0.22em] text-cyan-100 sm:text-xs">
+                {ch.rewardsSectionTitle}
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                playTacticalUiClick()
+                setHelpOpen(true)
+              }}
+              aria-label={ch.rewardsHelpAria}
+              title={ch.rewardsHelpAria}
+              className="tactical-interactive-glitch tactical-phosphor flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-cyan-400/50 bg-cyan-950/40 text-sm font-bold text-cyan-200 transition hover:border-cyan-300 hover:bg-cyan-900/50 hover:text-white"
+            >
+              ?
+            </button>
+          </div>
+          <div className={hideInlineMissionToggle ? "mt-1.5" : compact ? "mt-1" : "mt-2"}>
+            <div className={cn("w-full overflow-hidden rounded bg-cyan-950/70", compact ? "h-1.5" : "h-2")}>
+              <div
+                className="h-full bg-cyan-300/80 transition-all"
+                style={{ width: `${status?.questOverview?.progressPct ?? 0}%` }}
+              />
+            </div>
+            {!hideInlineMissionToggle ? (
+              <p className={cn("text-[10px] uppercase tracking-[0.16em] text-cyan-300/75", compact ? "mt-1" : "mt-1.5")}>
+                {ch.rewardsQuestProgress}{" "}
+                <span className="tabular-nums">
+                  {status?.questOverview
+                    ? `${status.questOverview.completed}/${status.questOverview.total}`
+                    : "—/—"}
+                </span>
+              </p>
+            ) : null}
+          </div>
+        </header>
+      ) : (
+        <div className={cn("mb-1.5 flex justify-end", compact && "mb-1")}>
           <button
             type="button"
             onClick={() => {
@@ -464,50 +702,82 @@ export function LiquidityFaucetControl({
             }}
             aria-label={ch.rewardsHelpAria}
             title={ch.rewardsHelpAria}
-            className="tactical-interactive-glitch tactical-phosphor flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-cyan-400/50 bg-cyan-950/40 text-sm font-bold text-cyan-200 transition hover:border-cyan-300 hover:bg-cyan-900/50 hover:text-white"
+            className="tactical-interactive-glitch tactical-phosphor flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-cyan-400/50 bg-cyan-950/40 text-xs font-bold text-cyan-200 transition hover:border-cyan-300 hover:bg-cyan-900/50 hover:text-white sm:h-8 sm:w-8 sm:text-sm"
           >
             ?
           </button>
         </div>
-        <div className={compact ? "mt-1" : "mt-2"}>
-          <div className={cn("w-full overflow-hidden rounded bg-cyan-950/70", compact ? "h-1.5" : "h-2")}>
-            <div
-              className="h-full bg-cyan-300/80 transition-all"
-              style={{ width: `${status?.questOverview?.progressPct ?? 0}%` }}
-            />
-          </div>
-          <p className={cn("text-[10px] uppercase tracking-[0.16em] text-cyan-300/75", compact ? "mt-1" : "mt-1.5")}>
-            {ch.rewardsQuestProgress}{" "}
-            <span className="tabular-nums">
-              {status?.questOverview
-                ? `${status.questOverview.completed}/${status.questOverview.total}`
-                : "—/—"}
-            </span>
+      )}
+      {showFreighterBlock && freighterNftCollect ? (
+        <div
+          className={cn(
+            "mb-2 rounded border border-violet-400/35 bg-violet-950/20 px-2 py-2",
+            compact && "mb-1.5 py-1.5",
+          )}
+        >
+          <p className="text-[9px] font-semibold uppercase tracking-widest text-violet-200/90">
+            {lang === "es" ? "FREIGHTER · NFT (SEP-20)" : "FREIGHTER · NFT (SEP-20)"}
+          </p>
+          <p className="mt-1 text-[9px] leading-snug text-violet-100/75">
+            {lang === "es"
+              ? `Token #${freighterNftCollect.tokenId}: el NFT está en custodia del emisor (${issuerG.slice(0, 6)}…). Collect envía transfer(issuer → tu wallet) firmado por el servidor.`
+              : `Token #${freighterNftCollect.tokenId}: NFT is held by the issuer (${issuerG.slice(0, 6)}…). Collect sends transfer(issuer → your wallet), signed by the server.`}
+          </p>
+          <button
+            type="button"
+            disabled={nftCollectBusy}
+            onClick={() => void handleFreighterNftCollect()}
+            className="tactical-interactive-glitch mt-2 w-full border border-violet-400/55 py-2 text-[10px] font-bold uppercase tracking-widest text-violet-100 hover:border-violet-300 disabled:opacity-50"
+          >
+            {nftCollectBusy
+              ? lang === "es"
+                ? "ENVIANDO..."
+                : "SENDING..."
+              : "COLLECT"}
+          </button>
+        </div>
+      ) : showCustodyHint && freighterNftCollect ? (
+        <div
+          className={cn(
+            "mb-2 rounded border border-amber-500/35 bg-amber-950/20 px-2 py-2",
+            compact && "mb-1.5 py-1.5",
+          )}
+        >
+          <p className="text-[9px] font-semibold uppercase tracking-widest text-amber-200/90">
+            {lang === "es" ? "NFT · NO EN CUSTODIA DEL EMISOR" : "NFT · NOT IN ISSUER CUSTODY"}
+          </p>
+          <p className="mt-1 text-[9px] leading-snug text-amber-100/80">
+            {lang === "es"
+              ? `Token #${freighterNftCollect.tokenId}: el owner on-chain no es el emisor PHASELQ; el botón COLLECT no aplica. Usá el pedestal (Add manually en Freighter) con la dirección del contrato y el Token ID.`
+              : `Token #${freighterNftCollect.tokenId}: on-chain owner is not the PHASELQ issuer; COLLECT is not available. Use the pedestal “Add manually” fields (contract + Token ID) in Freighter Collectibles.`}
           </p>
         </div>
-      </header>
-      <div className="tactical-quest-flow__lane">
-        <p className="tactical-quest-flow__lane-title">{ch.rewardsLiquidityLaneTitle}</p>
-        <div className={cn("grid grid-cols-1 sm:grid-cols-2", compact ? "gap-1.5" : "gap-2.5")}>
-          {rewardButton(
-            "genesis",
-            "GENESIS SUPPLY",
-            lang === "es" ? "Carga inicial para wallets nuevas." : "Initial bootstrap supply for new wallets.",
-            status?.rewards?.genesis,
-          )}
-          {rewardButton(
-            "daily",
-            "DAILY RECHARGE",
-            lang === "es" ? "Recarga diaria para pruebas en testnet." : "Daily recharge for testnet experimentation.",
-            status?.rewards?.daily,
-          )}
+      ) : null}
+      {showLiquidityLane ? (
+        <div className="tactical-quest-flow__lane">
+          <p className="tactical-quest-flow__lane-title">{ch.rewardsLiquidityLaneTitle}</p>
+          <div className={cn("flex w-full flex-col", compact ? "gap-2" : "gap-3")}>
+            {rewardButton(
+              "genesis",
+              "GENESIS SUPPLY",
+              lang === "es" ? "Carga inicial para wallets nuevas." : "Initial bootstrap supply for new wallets.",
+              status?.rewards?.genesis,
+            )}
+            {rewardButton(
+              "daily",
+              "DAILY RECHARGE",
+              lang === "es" ? "Recarga diaria para pruebas en testnet." : "Daily recharge for testnet experimentation.",
+              status?.rewards?.daily,
+            )}
+          </div>
         </div>
-      </div>
+      ) : null}
+      {showMissionChain ? (
       <div className="tactical-quest-flow__missions">
         <div className="tactical-quest-flow__rail" aria-hidden />
         <div className="flex items-center justify-between gap-2 pl-5">
           <p className="tactical-quest-flow__chain-title">{ch.rewardsMissionChainTitle}</p>
-          {compact ? (
+          {compact && !hideInlineMissionToggle ? (
             <button
               type="button"
               onClick={() => {
@@ -521,7 +791,7 @@ export function LiquidityFaucetControl({
             </button>
           ) : null}
         </div>
-        {compact && !missionsOpen ? (
+        {compact && !hideInlineMissionToggle && !missionsOpen ? (
           <div className="mt-1 ml-5 rounded border border-cyan-900/45 bg-black/35 px-2 py-1 text-[9px] uppercase tracking-[0.18em] text-cyan-300/85">
             {lang === "es" ? "RESUMEN" : "SUMMARY"} · {missionClaimedCount}/3 ·{" "}
             {lang === "es" ? "LISTAS" : "READY"} {missionReadyCount}
@@ -555,6 +825,7 @@ export function LiquidityFaucetControl({
           </div>
         )}
       </div>
+      ) : null}
     </section>
   )
 }

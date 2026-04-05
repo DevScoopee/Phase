@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react"
 import { signTransaction } from "@stellar/freighter-api"
 import { toast } from "sonner"
 import { ArtistAliasControl } from "@/components/artist-alias-control"
@@ -34,6 +34,7 @@ import {
   fetchCollectionInfo,
   fetchCollectionSupply,
   fetchCollectionsCatalog,
+  fetchPhaseUtilityNftCount,
   fetchTokenOwnerAddress,
   fetchTokenSymbol,
   fetchTokenUriString,
@@ -67,6 +68,36 @@ function truncateAddress(addr: string) {
 function formatPowerBp(bp: number) {
   const safeBp = Math.min(10_000, Math.max(0, bp))
   return `${Math.round(safeBp / 100)}%`
+}
+
+function ChamberLogStream({
+  lines,
+  endRef,
+}: {
+  lines: { id: number; text: string }[]
+  endRef: RefObject<HTMLDivElement | null>
+}) {
+  return (
+    <>
+      {lines.map((l, i) => {
+        const fault = /FAIL|Failed|ERROR|FAULT|ABORT|REJECT|denied|timeout|sequence|desync/i.test(l.text)
+        return (
+          <div
+            key={l.id}
+            className={cn(
+              !fault &&
+                "tactical-log-line mb-2 border-l-2 border-[#39ff14]/35 pl-2.5 font-mono text-[11px] leading-relaxed tracking-wide text-[#7df5d8] sm:text-xs sm:leading-relaxed",
+              fault && "tactical-log-emergency mb-2 font-mono text-[11px] leading-relaxed sm:text-xs",
+            )}
+            style={!fault ? { animationDelay: `${Math.min(i, 8) * 65}ms` } : undefined}
+          >
+            <span className="break-words whitespace-pre-wrap">{l.text}</span>
+          </div>
+        )
+      })}
+      <div ref={endRef} />
+    </>
+  )
 }
 
 function ChamberCatalogThumb({ collectionId, src }: { collectionId: number; src: string }) {
@@ -145,7 +176,8 @@ export function FusionChamber() {
   }, [searchParams])
 
   const { address, connect, disconnect, connecting, refresh, artistAlias } = useWallet()
-  const logEndRef = useRef<HTMLDivElement>(null)
+  const logEndModalRef = useRef<HTMLDivElement>(null)
+  const logEndDockRef = useRef<HTMLDivElement>(null)
   const logId = useRef(0)
   const [lines, setLines] = useState<{ id: number; text: string }[]>([])
 
@@ -171,6 +203,9 @@ export function FusionChamber() {
   /** `owner_of(phaseId)` — verificación de originalidad vs wallet conectada. */
   const [onChainTokenOwner, setOnChainTokenOwner] = useState<string | null>(null)
   const [tokenOwnerLookupDone, setTokenOwnerLookupDone] = useState(false)
+  /** `balance(wallet)` en contrato PHASE (recuento NFT utilidad). */
+  const [phaseLedgerNftCount, setPhaseLedgerNftCount] = useState<string | null>(null)
+  const [phaseLedgerNftCountDone, setPhaseLedgerNftCountDone] = useState(false)
   const [tokenUriLookupDone, setTokenUriLookupDone] = useState(false)
   const [tokenUriExists, setTokenUriExists] = useState(false)
   const [collectionSupply, setCollectionSupply] = useState<{ minted: number; cap: number } | null>(null)
@@ -248,6 +283,32 @@ export function FusionChamber() {
       cancelled = true
     }
   }, [phaseId])
+
+  useEffect(() => {
+    if (!address) {
+      setPhaseLedgerNftCount(null)
+      setPhaseLedgerNftCountDone(false)
+      return
+    }
+    let cancelled = false
+    setPhaseLedgerNftCountDone(false)
+    void fetchPhaseUtilityNftCount(address)
+      .then((c) => {
+        if (!cancelled) {
+          setPhaseLedgerNftCount(c)
+          setPhaseLedgerNftCountDone(true)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPhaseLedgerNftCount("0")
+          setPhaseLedgerNftCountDone(true)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [address, hasPhased, phaseId])
 
   useEffect(() => {
     if (!hasPhased || phaseId == null || phaseId <= 0) {
@@ -454,10 +515,17 @@ export function FusionChamber() {
   useEffect(() => {
     if (!logsOpen) return
     const t = window.setTimeout(() => {
-      logEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+      logEndModalRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
     }, 160)
     return () => window.clearTimeout(t)
   }, [lines, logsOpen])
+
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      logEndDockRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+    }, 160)
+    return () => window.clearTimeout(t)
+  }, [lines])
 
   useEffect(() => {
     if (!logsOpen) return
@@ -876,7 +944,8 @@ export function FusionChamber() {
 
   const copyClassicAssetForManualAdd = useCallback(async () => {
     if (!classicAsset) return
-    const payload = `${classicAsset.code}:${classicAsset.issuer}`
+    const code = displayPhaserLiqSymbol(classicAsset.code)
+    const payload = `${code}:${classicAsset.issuer}`
     try {
       await navigator.clipboard.writeText(payload)
       toast.success(
@@ -893,15 +962,30 @@ export function FusionChamber() {
     async (label: string, value: string) => {
       try {
         await navigator.clipboard.writeText(value)
+        const preview = value.length > 48 ? `${value.slice(0, 22)}…${value.slice(-10)}` : value
         toast.success(
           lang === "es"
-            ? `${label} copiado para Freighter.`
-            : `${label} copied for Freighter.`,
+            ? `${label} copiado: ${preview}`
+            : `${label} copied: ${preview}`,
         )
       } catch {
         toast.error(
           lang === "es" ? `No se pudo copiar ${label}.` : `Could not copy ${label}.`,
         )
+      }
+    },
+    [lang],
+  )
+
+  const copyFreighterCollectibleBundle = useCallback(
+    async (contract: string, numericTokenId: string) => {
+      const c = pickCopy(lang).chamber
+      const payload = `${contract.trim()}\n${numericTokenId.trim()}`
+      try {
+        await navigator.clipboard.writeText(payload)
+        toast.success(c.freighterCopyBundleToast)
+      } catch {
+        toast.error(lang === "es" ? "No se pudo copiar el bloque para Freighter." : "Could not copy Freighter block.")
       }
     },
     [lang],
@@ -970,6 +1054,11 @@ export function FusionChamber() {
     Boolean(onChainTokenOwner) &&
     tokenUriExists
   const manualAddEnabled = phased && phaseId != null && phaseId > 0
+  /** Freighter “Token ID” = entero, sin `#`; evita confundir con asset `CODE:issuer`. */
+  const nftNumericTokenIdStr = useMemo(() => {
+    if (phaseId == null || !Number.isFinite(Number(phaseId))) return ""
+    return String(Math.max(0, Math.floor(Number(phaseId))))
+  }, [phaseId])
 
   const artifactVerificationMode: ArtifactVerificationMode = useMemo(() => {
     if (hasPhased && phaseId != null && phaseId > 0 && address) return "verified"
@@ -1017,11 +1106,22 @@ export function FusionChamber() {
             type="button"
             onClick={() => {
               playTacticalUiClick()
-              setLogsOpen((o) => !o)
+              if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
+                document.getElementById("chamber-log-dock")?.scrollIntoView({
+                  behavior: "smooth",
+                  block: "nearest",
+                })
+              } else {
+                setLogsOpen((o) => !o)
+              }
             }}
             aria-expanded={logsOpen}
             aria-controls="chamber-logs-panel"
-            className={cn(chamberNavLink, "cursor-pointer", logsOpen && "border-cyan-300/80 text-white")}
+            className={cn(
+              chamberNavLink,
+              "cursor-pointer",
+              logsOpen && "max-lg:border-cyan-300/80 max-lg:text-white",
+            )}
           >
             {ch.logsToggle}
           </button>
@@ -1323,8 +1423,16 @@ export function FusionChamber() {
           />
 
           <div className="tactical-cockpit-stage__content relative flex h-full min-h-0 flex-1 flex-col overflow-hidden px-3 py-3 sm:px-5 sm:py-4 lg:px-6 lg:py-4">
+          <div
+            className={cn(
+              "relative z-10 flex min-h-0 w-full max-w-[min(76rem,100%)] flex-1 flex-col gap-3 overflow-hidden lg:mx-auto lg:max-w-none",
+              address &&
+                "lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(18.5rem,22rem)] lg:items-stretch lg:gap-4 lg:overflow-visible",
+            )}
+          >
+          <div className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden lg:min-h-0">
           {/* Exhibition pedestal — NFT de utilidad PHASE (Soroban) */}
-          <div className="relative z-10 mx-auto mb-0 flex min-h-0 w-full max-w-[min(76rem,100%)] flex-1 flex-col">
+          <div className="relative z-10 mx-auto mb-0 flex min-h-0 w-full max-w-[min(76rem,100%)] flex-1 flex-col lg:mx-0 lg:max-w-none">
             <p className="tactical-phosphor mb-0.5 shrink-0 text-center text-[10px] uppercase tracking-[0.32em] text-cyan-500/60 sm:text-[11px]">
               ◈ {ch.exhibitionPedestal}
             </p>
@@ -1343,14 +1451,34 @@ export function FusionChamber() {
                   </p>
                 </div>
               ) : phased && phaseId != null && address ? (
-                <div className="grid w-full max-h-full min-h-0 grid-cols-1 items-stretch gap-2 overflow-hidden md:grid-cols-[minmax(0,1.25fr)_minmax(22rem,1fr)]">
+                <div className="flex w-full max-h-full min-h-0 flex-col gap-2 overflow-hidden">
+                  {isOwnerOnChain ? (
+                    <div className="shrink-0 rounded-lg border border-[#39ff14]/55 bg-gradient-to-b from-[rgba(57,255,20,0.12)] to-[rgba(0,0,0,0.35)] px-3 py-3 shadow-[0_0_32px_rgba(57,255,20,0.2),inset_0_1px_0_rgba(125,245,216,0.25)] sm:px-4 sm:py-3.5">
+                      <Link
+                        href="/dashboard"
+                        onClick={() => playTacticalUiClick()}
+                        className="tactical-phosphor-green block text-center text-[10px] font-extrabold uppercase leading-snug tracking-[0.22em] text-[#39ff14] transition [text-shadow:0_0_18px_rgba(57,255,20,0.45)] hover:text-[#7df5d8] sm:text-[11px]"
+                      >
+                        {ch.artifactSecuredLedgerVault}
+                      </Link>
+                      <p className="mt-2 text-center font-mono text-[8px] uppercase tracking-[0.2em] text-[#7df5d8]/80 sm:text-[9px]">
+                        owner_of(#{Math.max(0, Math.floor(phaseId))}) ≡ wallet ·{" "}
+                        {phaseLedgerNftCountDone
+                          ? ch.artifactLedgerBalanceContract.replace("{count}", phaseLedgerNftCount ?? "0")
+                          : lang === "es"
+                            ? "SINCRONIZANDO balance()…"
+                            : "SYNCING balance()…"}
+                      </p>
+                    </div>
+                  ) : null}
+                  <div className="grid min-h-0 flex-1 grid-cols-1 items-stretch gap-2 overflow-hidden md:grid-cols-[minmax(0,1.25fr)_minmax(22rem,1fr)]">
                   <div className="flex min-h-0 flex-col items-center gap-1.5 overflow-hidden sm:gap-2">
                     <p className="mb-0.5 shrink-0 text-center text-[8px] uppercase tracking-[0.35em] text-muted-foreground">
                       {ch.artifactAsciiView}
                     </p>
                     <PhaseArtifactVisualizer
                       mode="verified"
-                      contractId={TOKEN_ADDRESS}
+                      contractId={CONTRACT_ID}
                       ownerTruncated={
                         onChainTokenOwner ? truncateAddress(onChainTokenOwner) : truncateAddress(address)
                       }
@@ -1388,10 +1516,26 @@ export function FusionChamber() {
                             {artifactPublicCollectionName}
                           </span>
                         </div>
-                        <div className="flex items-center justify-between gap-2 border-b border-cyan-900/45 pb-1.5">
-                          <span className="text-[9px] uppercase tracking-[0.14em] text-cyan-400/80">CONTRACT_ADDR</span>
-                          <span className="min-w-0 max-w-[62%] truncate text-right font-mono text-[11px] text-cyan-100/90">
-                            {TOKEN_ADDRESS.slice(0, 4)}…{TOKEN_ADDRESS.slice(-4)}
+                        <div className="flex flex-col gap-1 border-b border-cyan-900/45 pb-1.5">
+                          <span className="text-[9px] uppercase tracking-[0.14em] text-cyan-400/80">
+                            {ch.onChainMetaNftContractLabel}
+                          </span>
+                          <span
+                            className="break-all text-right font-mono text-[10px] leading-snug text-cyan-100/90"
+                            title={CONTRACT_ID}
+                          >
+                            {CONTRACT_ID}
+                          </span>
+                        </div>
+                        <div className="flex flex-col gap-1 border-b border-cyan-900/45 pb-1.5">
+                          <span className="text-[9px] uppercase tracking-[0.14em] text-cyan-400/80">
+                            {ch.onChainMetaPhaselqSacLabel}
+                          </span>
+                          <span
+                            className="break-all text-right font-mono text-[10px] leading-snug text-cyan-100/75"
+                            title={TOKEN_ADDRESS}
+                          >
+                            {TOKEN_ADDRESS}
                           </span>
                         </div>
                         <div className="flex items-center justify-between gap-2">
@@ -1433,18 +1577,15 @@ export function FusionChamber() {
                         </div>
                       </div>
                     </div>
+                    {manualAddEnabled ? (
                     <div className="w-full rounded border border-cyan-500/35 bg-cyan-950/20 px-3.5 py-3.5">
                       <p className="text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-cyan-200">
                         {ch.freighterManualAddTitle}
                       </p>
-                      <p className="mt-1.5 text-left text-[12px] leading-relaxed text-cyan-100/85">{ch.freighterManualAddBody}</p>
-                      {!manualAddEnabled ? (
-                        <p className="mt-2.5 rounded border border-amber-500/35 bg-amber-950/20 px-2.5 py-2.5 text-[11px] leading-relaxed text-amber-200/90">
-                          {lang === "es"
-                            ? "Aún no hay token de collectible para esta colección. Completa la fusión/mint y luego pulsa SYNC."
-                            : "No collectible token exists yet for this collection. Complete fusion/mint and then press SYNC."}
-                        </p>
-                      ) : !freighterCollectibleReady ? (
+                      <p className="mt-1.5 text-left text-[12px] leading-relaxed text-cyan-100/85">
+                        {isOwnerOnChain ? ch.freighterOwnerOnChainAddBody : ch.freighterManualAddBody}
+                      </p>
+                      {!freighterCollectibleReady ? (
                         <p className="mt-2.5 rounded border border-amber-500/35 bg-amber-950/20 px-2.5 py-2.5 text-[11px] leading-relaxed text-amber-200/90">
                           {!isOwnerOnChain
                             ? lang === "es"
@@ -1459,7 +1600,18 @@ export function FusionChamber() {
                           {ch.freighterManualAddTroubleshoot}
                         </p>
                       )}
-                      <div className={cn("mt-3 space-y-2.5 border-t border-cyan-500/20 pt-2.5", !manualAddEnabled && "opacity-55")}>
+                      <div className="mt-3 space-y-2.5 border-t border-cyan-500/20 pt-2.5">
+                        <button
+                          type="button"
+                          disabled={!nftNumericTokenIdStr}
+                          onClick={() => {
+                            playTacticalUiClick()
+                            void copyFreighterCollectibleBundle(CONTRACT_ID, nftNumericTokenIdStr).catch(() => {})
+                          }}
+                          className="tactical-interactive-glitch w-full border border-cyan-400/60 bg-cyan-950/35 py-2 text-[10px] font-bold uppercase tracking-widest text-cyan-100 hover:border-cyan-300 disabled:opacity-45"
+                        >
+                          {ch.freighterCopyBundleButton}
+                        </button>
                         <div className="rounded border border-cyan-500/20 bg-black/35 px-2 py-1.5">
                           <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-300/85">
                             {lang === "es" ? "Collection Address" : "Collection Address"}
@@ -1484,13 +1636,14 @@ export function FusionChamber() {
                           <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-300/85">Token ID</p>
                           <div className="mt-1 flex items-center gap-2">
                             <p className="min-w-0 flex-1 break-all font-mono text-[11px] leading-relaxed text-cyan-100/95">
-                              {String(phaseId)}
+                              {nftNumericTokenIdStr || "—"}
                             </p>
                             <button
                               type="button"
+                              disabled={!nftNumericTokenIdStr}
                               onClick={() => {
                                 playTacticalUiClick()
-                                void copyFreighterCollectibleField("Token ID", String(phaseId)).catch(() => {})
+                                void copyFreighterCollectibleField("Token ID", nftNumericTokenIdStr).catch(() => {})
                               }}
                               className="shrink-0 rounded border border-cyan-500/45 px-2 py-0.5 text-[10px] uppercase tracking-widest text-cyan-200 hover:border-cyan-300 hover:text-white"
                             >
@@ -1500,6 +1653,8 @@ export function FusionChamber() {
                         </div>
                       </div>
                     </div>
+                    ) : null}
+                  </div>
                   </div>
                 </div>
               ) : collectionLoadState === "loading" && collectionId > 0 ? (
@@ -1537,7 +1692,7 @@ export function FusionChamber() {
                   </p>
                   <PhaseArtifactVisualizer
                     mode={artifactVerificationMode === "verifying" ? "verifying" : "locked"}
-                    contractId={TOKEN_ADDRESS}
+                    contractId={CONTRACT_ID}
                     ownerTruncated={address ? truncateAddress(address) : ch.offline}
                     serial={0}
                     energyLevelBp={0}
@@ -1562,7 +1717,7 @@ export function FusionChamber() {
           {!phased ? (
             <div
               className={cn(
-                "relative z-10 mx-auto flex w-full max-w-[min(52rem,100%)] shrink-0 flex-col items-stretch gap-1.5 px-1 sm:px-2",
+                "relative z-10 mx-auto flex w-full max-w-[min(52rem,100%)] shrink-0 flex-col items-stretch gap-1.5 px-1 sm:px-2 lg:mx-0 lg:max-w-none",
                 genesisLoading && "tactical-reactor-filling",
               )}
             >
@@ -1604,23 +1759,75 @@ export function FusionChamber() {
               </button>
             </div>
           ) : (
-            <p className="tactical-phosphor-green relative z-10 text-center text-[10px] uppercase tracking-widest text-[#39ff14]/90">
+            <p className="tactical-phosphor-green relative z-10 text-center text-[10px] uppercase tracking-widest text-[#39ff14]/90 lg:text-left">
               ● {ch.solidStateStandby}
             </p>
           )}
 
           {address ? (
-            <LiquidityFaucetControl
-              address={address}
-              tokenBalance={tokenBalance}
-              onNarrativeLog={appendLog}
-              onRefreshBalance={refreshStatus}
-              compact
-              className="relative z-10 mx-auto mt-1.5 w-full max-w-[min(52rem,100%)] px-0 sm:mt-2"
-            />
+            <div className="relative z-10 mt-3 w-full shrink-0 border-t border-cyan-500/15 pt-2.5">
+              <p className="tactical-phosphor mb-1.5 text-center text-[10px] uppercase tracking-[0.28em] text-cyan-500/70 sm:text-[11px] lg:text-left">
+                ◇ {ch.reactorQuestsSectionTitle}
+              </p>
+              <LiquidityFaucetControl
+                address={address}
+                tokenBalance={tokenBalance}
+                onNarrativeLog={appendLog}
+                onRefreshBalance={refreshStatus}
+                compact
+                hideInlineMissionToggle
+                omitLiquidityLane
+                omitFreighterNftBlock
+                className="border-cyan-500/25 bg-black/40 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.05)]"
+                freighterNftCollect={null}
+              />
+            </div>
           ) : null}
 
-          <div className="relative z-10 mt-2 w-full min-h-0 max-w-[min(52rem,100%)] shrink-0 border-t border-cyan-500/15 pt-2">
+          </div>
+
+          {address ? (
+            <aside className="relative z-10 mt-1 flex w-full min-h-0 shrink-0 flex-col gap-2 lg:mt-0 lg:h-full lg:max-h-full lg:min-h-0 lg:overflow-hidden lg:self-stretch">
+              <div className="tactical-frame shrink-0 border border-cyan-400/40 bg-black/45 p-2 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.06)]">
+                <p className="tactical-phosphor mb-1.5 border-b border-cyan-500/20 pb-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-100/95">
+                  ▣ {ch.collectInfoPanelTitle}
+                </p>
+                <LiquidityFaucetControl
+                  address={address}
+                  tokenBalance={tokenBalance}
+                  onNarrativeLog={appendLog}
+                  onRefreshBalance={refreshStatus}
+                  compact
+                  omitHeader
+                  omitMissionChain
+                  className="rounded-none border-0 bg-transparent p-0 shadow-none"
+                  freighterNftCollect={
+                    phased && phaseId != null && tokenOwnerLookupDone && !isOwnerOnChain
+                      ? { tokenId: phaseId }
+                      : null
+                  }
+                />
+              </div>
+
+              <div
+                id="chamber-log-dock"
+                className="tactical-frame-panel hidden min-h-[10rem] min-w-0 flex-1 flex-col overflow-hidden border-2 border-[#39ff14]/40 bg-black/90 shadow-[inset_0_0_0_1px_rgba(57,255,20,0.08)] lg:flex lg:max-h-[min(44vh,400px)] lg:min-h-[11rem]"
+              >
+                <div className="flex shrink-0 items-center justify-between gap-2 border-b border-green-500/25 px-3 py-2">
+                  <h2 className="tactical-phosphor-green text-[10px] uppercase tracking-[0.28em] text-[#39ff14]/85 sm:text-[11px]">
+                    ┃ {ch.systemLogs}
+                  </h2>
+                  <span className="tactical-phosphor-green text-[9px] text-[#39ff14]/85 sm:text-[10px]">● {ch.live}</span>
+                </div>
+                <div className="custom-scrollbar tactical-log-viewport tactical-log-viewport--analog min-h-0 min-h-[7rem] flex-1 overflow-y-auto overscroll-y-contain px-3 py-2.5 pr-2">
+                  <ChamberLogStream lines={lines} endRef={logEndDockRef} />
+                </div>
+              </div>
+            </aside>
+          ) : null}
+          </div>
+
+          <div className="relative z-10 mt-2 w-full min-h-0 max-w-[min(52rem,100%)] shrink-0 border-t border-cyan-500/15 pt-2 lg:max-w-none">
             <div className="mb-2 flex items-center justify-between gap-2">
               <p className="tactical-phosphor text-[10px] font-semibold uppercase tracking-[0.25em] text-cyan-300/90">
                 ▣ {ch.community}
@@ -1645,7 +1852,11 @@ export function FusionChamber() {
               </p>
             )}
             {catalogLoadState === "done" && (
-              <div className="flex max-h-[4rem] max-w-full gap-1.5 overflow-x-auto overflow-y-hidden pb-0.5 [-ms-overflow-style:none] [scrollbar-width:thin]">
+              <div
+                className={cn(
+                  "flex w-full min-w-0 max-w-full items-start gap-1.5 overflow-x-auto overflow-y-hidden pb-0.5 [-ms-overflow-style:none] [scrollbar-width:thin]",
+                )}
+              >
                 <Link
                   href="/chamber"
                   className={cn(
@@ -1656,12 +1867,16 @@ export function FusionChamber() {
                   )}
                   title={ch.defaultPool}
                 >
-                  <div className="flex aspect-square items-center justify-center border-b border-foreground/15 bg-[oklch(0.05_0_0)]">
+                  <div
+                    className={cn(
+                      "flex aspect-square w-full shrink-0 items-center justify-center border-b border-foreground/15 bg-[oklch(0.05_0_0)]",
+                    )}
+                  >
                     <span className="px-1 text-center text-[8px] font-bold uppercase tracking-widest text-cyan-300/90">
                       #0
                     </span>
                   </div>
-                  <div className="px-1 py-1.5 text-center">
+                  <div className="min-h-0 px-1.5 py-1.5 text-center">
                     <p className="truncate text-[7px] font-semibold uppercase tracking-tighter text-cyan-200/95">
                       {ch.defaultPool}
                     </p>
@@ -1690,7 +1905,11 @@ export function FusionChamber() {
                         )}
                         title={c.name || `Collection #${c.collectionId}`}
                       >
-                        <div className="flex aspect-square items-center justify-center overflow-hidden border-b border-foreground/15 bg-[oklch(0.08_0.02_220)]">
+                        <div
+                          className={cn(
+                            "flex aspect-square w-full shrink-0 items-center justify-center overflow-hidden border-b border-foreground/15 bg-[oklch(0.08_0.02_220)]",
+                          )}
+                        >
                           {thumb ? (
                             <ChamberCatalogThumb collectionId={c.collectionId} src={thumb} />
                           ) : (
@@ -1699,7 +1918,7 @@ export function FusionChamber() {
                             </span>
                           )}
                         </div>
-                        <div className="px-1 py-1.5 text-center">
+                        <div className="min-h-0 px-1.5 py-1.5 text-center">
                           <p className="truncate text-[7px] uppercase tracking-tighter text-cyan-400/90">#{c.collectionId}</p>
                           {creatorAliasByWallet[c.creator] ? (
                             <p className="truncate text-[6px] uppercase tracking-tighter text-cyan-300/90">
@@ -1727,7 +1946,7 @@ export function FusionChamber() {
         <>
           <button
             type="button"
-            className="fixed inset-0 z-[140] cursor-default border-0 bg-black/50 p-0"
+            className="fixed inset-0 z-[140] cursor-default border-0 bg-black/50 p-0 lg:hidden"
             aria-label={ch.logsClose}
             onClick={() => setLogsOpen(false)}
           />
@@ -1736,21 +1955,21 @@ export function FusionChamber() {
             role="dialog"
             aria-modal="true"
             aria-label={ch.systemLogs}
-            className="fixed bottom-3 left-1/2 z-[150] w-[min(20rem,calc(100vw-1.25rem))] max-w-[20rem] -translate-x-1/2 md:left-auto md:right-4 md:translate-x-0"
+            className="fixed bottom-3 left-1/2 z-[150] w-[min(20rem,calc(100vw-1.25rem))] max-w-[20rem] -translate-x-1/2 md:left-auto md:right-4 md:translate-x-0 lg:hidden"
           >
             <div
               className={cn(
-                "tactical-frame-panel flex max-h-[min(42vh,260px)] flex-col overflow-hidden border-2 border-[#39ff14]/45 bg-black/95 shadow-[0_12px_40px_rgba(0,0,0,0.75)] backdrop-blur-sm",
+                "tactical-frame-panel flex max-h-[min(52vh,340px)] min-h-0 flex-col overflow-hidden border-2 border-[#39ff14]/45 bg-black/95 shadow-[0_12px_40px_rgba(0,0,0,0.75)] backdrop-blur-sm",
               )}
               onClick={(e) => e.stopPropagation()}
               onKeyDown={(e) => e.stopPropagation()}
             >
-              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-green-500/25 px-2.5 py-1.5">
-                <h2 className="tactical-phosphor-green text-[9px] uppercase tracking-[0.35em] text-[#39ff14]/75">
+              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-green-500/25 px-3 py-2">
+                <h2 className="tactical-phosphor-green text-[10px] uppercase tracking-[0.28em] text-[#39ff14]/85 sm:text-[11px]">
                   ┃ {ch.systemLogs}
                 </h2>
                 <div className="flex items-center gap-2">
-                  <span className="tactical-phosphor-green text-[8px] text-[#39ff14]/80">● {ch.live}</span>
+                  <span className="tactical-phosphor-green text-[9px] text-[#39ff14]/85 sm:text-[10px]">● {ch.live}</span>
                   <button
                     type="button"
                     onClick={() => setLogsOpen(false)}
@@ -1761,23 +1980,8 @@ export function FusionChamber() {
                   </button>
                 </div>
               </div>
-              <div className="tactical-log-viewport tactical-log-viewport--analog min-h-[7rem] flex-1 overflow-y-auto px-2 py-2 pr-1 text-[9px] leading-[1.45] text-[#5eead4]/92">
-                {lines.map((l, i) => {
-                  const fault = /FAIL|Failed|ERROR|FAULT|ABORT|REJECT|denied|timeout|sequence|desync/i.test(l.text)
-                  return (
-                    <div
-                      key={l.id}
-                      className={cn(
-                        !fault && "tactical-log-line mb-1 border-l-2 border-[#39ff14]/25 pl-2 font-mono",
-                        fault && "tactical-log-emergency font-mono",
-                      )}
-                      style={!fault ? { animationDelay: `${Math.min(i, 8) * 65}ms` } : undefined}
-                    >
-                      {l.text}
-                    </div>
-                  )
-                })}
-                <div ref={logEndRef} />
+              <div className="custom-scrollbar tactical-log-viewport tactical-log-viewport--analog min-h-0 min-h-[8rem] flex-1 overflow-y-auto overscroll-y-contain px-3 py-2.5 pr-2">
+                <ChamberLogStream lines={lines} endRef={logEndModalRef} />
               </div>
             </div>
           </div>

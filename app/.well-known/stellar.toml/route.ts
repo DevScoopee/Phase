@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { stellarTomlPhaserLiqCurrencyRows } from "@/lib/classic-liq"
-import { TOKEN_ADDRESS, stellarExpertPhaserLiqUrl } from "@/lib/phase-protocol"
+import { stellarExpertPhaserLiqUrl, tokenContractIdForServer } from "@/lib/phase-protocol"
+
+const PHASE_LIQ_TOKEN_CONTRACT = tokenContractIdForServer()
 
 const NETWORK_PASSPHRASE = "Test SDF Network ; September 2015"
 const PRODUCTION_SITE = "https://www.phasee.xyz"
@@ -45,7 +47,7 @@ display_decimals=7`
 NETWORK_PASSPHRASE="${NETWORK_PASSPHRASE}"
 ACCOUNTS=${accountsToml}
 # Site-wide Soroban / docs (root-level; keep [[CURRENCIES]] SEP-clean for indexers)
-PHASER_LIQ_PRIMARY_CONTRACT_ID="${TOKEN_ADDRESS}"
+PHASER_LIQ_PRIMARY_CONTRACT_ID="${PHASE_LIQ_TOKEN_CONTRACT}"
 PHASER_LIQ_ICON="${icon}"
 PHASER_LIQ_STELLAR_EXPERT="${expertPrimary}"
 PHASER_LIQ_X402_DOCS="https://developers.stellar.org/docs/build/agentic-payments/x402"

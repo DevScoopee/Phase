@@ -380,6 +380,10 @@ export const phaseCopy: Record<
       collectionLinkTitle: string
       faucetButton: string
       rewardsSectionTitle: string
+      /** Columna derecha: genesis/daily + Freighter collect (sin quests). */
+      collectInfoPanelTitle: string
+      /** Bajo THE_REACTOR: cadena de misiones (quests). */
+      reactorQuestsSectionTitle: string
       rewardsHelpAria: string
       rewardsHelpClose: string
       rewardsHelpModalTitle: string
@@ -394,6 +398,19 @@ export const phaseCopy: Record<
       freighterManualAddTitle: string
       freighterManualAddBody: string
       freighterManualAddTroubleshoot: string
+      /** Pedestal: ya sos owner on-chain; Freighter no lista solo — Add manually. */
+      freighterOwnerOnChainAddBody: string
+      /** Meta pedestal: contrato PHASE (NFT SEP-20), no el SAC PHASELQ. */
+      onChainMetaNftContractLabel: string
+      /** Meta pedestal: contrato SAC del token fungible PHASELQ (liquidez). */
+      onChainMetaPhaselqSacLabel: string
+      /** Un clic: portapapeles = línea1 contrato C… NFT, línea2 id numérico (sin #). */
+      freighterCopyBundleButton: string
+      freighterCopyBundleToast: string
+      /** Pedestal: dueño on-chain del token = wallet; enlace a /dashboard. */
+      artifactSecuredLedgerVault: string
+      /** Lectura `balance(wallet)` en contrato PHASE; `{count}` = entero. */
+      artifactLedgerBalanceContract: string
       protocolStackLabel: string
       /** Subtítulo bajo saldo PHASELQ — liquidez SEP-41. */
       tokenStandardSep41Note: string
@@ -694,6 +711,8 @@ export const phaseCopy: Record<
       collectionLinkTitle: "Collection #{id}",
       faucetButton: "[ ⚡ RECHARGE_PHASELQ ]",
       rewardsSectionTitle: "[ LIQ_REWARDS ]",
+      collectInfoPanelTitle: "COLLECT // LIQUIDITY + FREIGHTER",
+      reactorQuestsSectionTitle: "OPERATOR_QUESTS // REACTOR_LANE",
       rewardsHelpAria: "Help: PHASELQ and reward programs",
       rewardsHelpClose: "Close",
       rewardsHelpModalTitle: "PHASELQ & rewards",
@@ -712,6 +731,15 @@ export const phaseCopy: Record<
         "If it does not appear automatically: Freighter -> Collectibles -> Add manually.",
       freighterManualAddTroubleshoot:
         "If Freighter shows “Collectible not found”, verify Collection Address + Token ID exactly as shown below and retry after 30-90s (indexing delay).",
+      freighterOwnerOnChainAddBody:
+        "You already own this NFT on the PHASE contract. Freighter does not always show Soroban collectibles automatically: open Collectibles → Add manually and paste the Collection address + Token ID below (same network: testnet).",
+      onChainMetaNftContractLabel: "NFT_PROTOCOL_CONTRACT",
+      onChainMetaPhaselqSacLabel: "PHASELQ_SAC (fungible)",
+      freighterCopyBundleButton: "[ COPY FOR FREIGHTER · CONTRACT + TOKEN ID ]",
+      freighterCopyBundleToast:
+        "Copied 2 lines: (1) PHASE NFT contract C… for “Collection”, (2) numeric Token ID. Paste into Freighter → Collectibles → Add manually.",
+      artifactSecuredLedgerVault: "[ ARTIFACT SECURED IN LEDGER // VIEW IN PHASE VAULT ]",
+      artifactLedgerBalanceContract: "CONTRACT balance() · {count} utility NFT(s) attributed to this wallet",
       protocolStackLabel:
         "x402 · PHASELQ = Soroban fungible (SEP-41) · forged artifact = immutable utility NFT (metadata SEP-20)",
       tokenStandardSep41Note: "PHASELQ adheres to SEP-41 (Soroban token interface).",
@@ -1080,6 +1108,8 @@ export const phaseCopy: Record<
       collectionLinkTitle: "Colección #{id}",
       faucetButton: "[ ⚡ SOLICITAR_PHASELQ ]",
       rewardsSectionTitle: "[ RECOMPENSAS_LIQ ]",
+      collectInfoPanelTitle: "COLECTAR // LIQUIDEZ + FREIGHTER",
+      reactorQuestsSectionTitle: "QUESTS_OPERADOR // CARRIL_REACTOR",
       rewardsHelpAria: "Ayuda: PHASELQ y recompensas",
       rewardsHelpClose: "Cerrar",
       rewardsHelpModalTitle: "PHASELQ y recompensas",
@@ -1098,6 +1128,15 @@ export const phaseCopy: Record<
         "Si no aparece automático: Freighter -> Collectibles -> Add manually.",
       freighterManualAddTroubleshoot:
         "Si Freighter muestra “Collectible not found”, verifica Collection Address + Token ID exactamente como aparecen abajo y reintenta en 30-90s (delay de indexación).",
+      freighterOwnerOnChainAddBody:
+        "Ya sos el propietario on-chain del NFT en el contrato PHASE. Freighter no siempre lista coleccionables Soroban solos: abrí Collectibles → Add manually y pegá la dirección de colección + Token ID de abajo (misma red: testnet).",
+      onChainMetaNftContractLabel: "CONTRATO_NFT_PHASE",
+      onChainMetaPhaselqSacLabel: "PHASELQ_SAC (fungible)",
+      freighterCopyBundleButton: "[ COPIAR PARA FREIGHTER · CONTRATO + ID ]",
+      freighterCopyBundleToast:
+        "Copiado en 2 líneas: (1) contrato C… del NFT PHASE para “Collection”, (2) Token ID numérico (sin #). Pegá en Freighter → Collectibles → Add manually.",
+      artifactSecuredLedgerVault: "[ ARTEFACTO ASEGURADO EN LEDGER // VER EN BÓVEDA PHASE ]",
+      artifactLedgerBalanceContract: "CONTRACT balance() · {count} NFT(s) de utilidad atribuidos a esta wallet",
       protocolStackLabel:
         "x402 · PHASELQ = fungible Soroban (SEP-41) · artefacto forjado = NFT de utilidad inmutable (metadata SEP-20)",
       tokenStandardSep41Note: "PHASELQ cumple SEP-41 (interfaz de token Soroban).",

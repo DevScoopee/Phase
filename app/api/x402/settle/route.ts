@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
-import { REQUIRED_AMOUNT, TOKEN_ADDRESS } from "@/lib/phase-protocol"
+import { REQUIRED_AMOUNT, tokenContractIdForServer } from "@/lib/phase-protocol"
 
 export const dynamic = 'force-dynamic'
+
+const PHASE_LIQ_TOKEN_CONTRACT = tokenContractIdForServer()
 
 type LocalX402Token = {
   invoice?: string
@@ -45,7 +47,7 @@ export async function POST(request: NextRequest) {
       invoice: payload?.invoice ?? null,
       amount: payload?.amount ?? null,
       payer: user,
-      token_contract: TOKEN_ADDRESS,
+      token_contract: PHASE_LIQ_TOKEN_CONTRACT,
       note: "Local settlement shim (demo compatibility)",
     })
   } catch {

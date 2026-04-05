@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
-import { REQUIRED_AMOUNT, TOKEN_ADDRESS } from "@/lib/phase-protocol"
+import { REQUIRED_AMOUNT, tokenContractIdForServer } from "@/lib/phase-protocol"
 
 export const dynamic = 'force-dynamic'
+
+const PHASE_LIQ_TOKEN_CONTRACT = tokenContractIdForServer()
 
 const X402_NETWORK = "stellar:testnet"
 
@@ -25,7 +27,7 @@ export async function GET(request: NextRequest) {
     },
     assets: [
       {
-        token_contract: TOKEN_ADDRESS,
+        token_contract: PHASE_LIQ_TOKEN_CONTRACT,
         amount: Number.parseInt(REQUIRED_AMOUNT, 10),
       },
     ],

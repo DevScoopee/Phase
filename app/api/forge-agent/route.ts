@@ -2,6 +2,7 @@ import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from "@google/ge
 import { NextRequest, NextResponse } from "next/server"
 import {
   Address,
+  extractBaseAddress,
   FeeBumpTransaction,
   rpc,
   scValToNative,
@@ -16,13 +17,15 @@ import {
   type PaymentRequirements,
 } from "x402-stellar"
 import {
-  CONTRACT_ID,
   getPhaseProtocolConfigFromChain,
   NETWORK_PASSPHRASE,
+  phaseProtocolContractIdForServer,
   READONLY_SIM_SOURCE_G,
+  PHASER_LIQ_SYMBOL,
   REQUIRED_AMOUNT,
   RPC_URL,
-  TOKEN_ADDRESS,
+  stroopsToLiqDisplay,
+  tokenContractIdForServer,
 } from "@/lib/phase-protocol"
 import { logUnknownStellarError } from "@/lib/stellar"
 import { warnPhaserLiqSacMismatchOnce } from "@/lib/phaser-liq-sac-warn"
@@ -35,9 +38,14 @@ export const runtime = "nodejs"
 export const maxDuration = 120
 export const dynamic = 'force-dynamic'
 
+const PHASE_PROTOCOL_CONTRACT = phaseProtocolContractIdForServer()
+const PHASE_LIQ_TOKEN_CONTRACT = tokenContractIdForServer()
+
 const X402_NETWORK = "stellar:testnet"
-/** Texto fijo del paywall (spec producto). */
-const FORGE_PRICE_DISPLAY = "1.00 PHASER_LIQ"
+
+function forgePriceDisplay(): string {
+  return `${stroopsToLiqDisplay(REQUIRED_AMOUNT)} ${PHASER_LIQ_SYMBOL}`
+}
 
 /** Estilo unificado para Nano Banana (imagen) — blueprint / isométrico / cyber-brutalist. */
 const FORGE_IMAGE_STYLE_BLOCK =
@@ -118,11 +126,13 @@ function buildLegacyChallenge(request: NextRequest): LegacyChallenge {
     protocol: "x402",
     version: "2",
     network: X402_NETWORK,
-    token: CONTRACT_ID,
-    contract_id: CONTRACT_ID,
-    token_contract: TOKEN_ADDRESS,
+    /** Contrato SAC PHASELQ (lo que se transfiere en `settle`). */
+    token: PHASE_LIQ_TOKEN_CONTRACT,
+    /** Contrato del protocolo PHASE (`settle` / NFT). */
+    contract_id: PHASE_PROTOCOL_CONTRACT,
+    token_contract: PHASE_LIQ_TOKEN_CONTRACT,
     amount: parseRequiredAmountInt(),
-    priceDisplay: FORGE_PRICE_DISPLAY,
+    priceDisplay: forgePriceDisplay(),
     facilitator: facilitatorUrl(request),
     invoice: `forge_${Date.now()}`,
     resource: request.nextUrl.pathname,
@@ -144,10 +154,10 @@ function buildOfficialPaymentRequirements(request: NextRequest): PaymentRequirem
       mimeType: "application/json",
       payTo,
       maxTimeoutSeconds: 600,
-      asset: TOKEN_ADDRESS,
+      asset: PHASE_LIQ_TOKEN_CONTRACT,
       extra: {
-        phaserLiqContract: TOKEN_ADDRESS,
-        phaseProtocolContract: CONTRACT_ID,
+        phaserLiqContract: PHASE_LIQ_TOKEN_CONTRACT,
+        phaseProtocolContract: PHASE_PROTOCOL_CONTRACT,
         requiredAmountStroops: REQUIRED_AMOUNT,
       },
     })
@@ -167,7 +177,7 @@ function forgeAgentPaymentRequired(
   const body: ForgeAgentPaymentRequiredResponse = {
     success: false,
     error: "Payment Required",
-    priceDisplay: FORGE_PRICE_DISPLAY,
+    priceDisplay: forgePriceDisplay(),
     message:
       "Se requiere pago en PHASELQ (challenge x402 + opcional paymentRequirements Stellar). Tras confirmar on-chain, reintenta con el header Authorization o con settlementTxHash en el body.",
     challenge,
@@ -181,7 +191,7 @@ function forgeAgentPaymentRequired(
     headers: {
       "WWW-Authenticate": `x402 token="${challengeBase64}", amount="${challenge.amount}", facilitator="${facilitator}", network="${X402_NETWORK}"`,
       "X-Required-Amount": REQUIRED_AMOUNT,
-      "X-Token-Address": TOKEN_ADDRESS,
+      "X-Token-Address": PHASE_LIQ_TOKEN_CONTRACT,
       "X-Facilitator": facilitator,
       "X-X402-Network": X402_NETWORK,
     },
@@ -209,9 +219,14 @@ async function verifyOfficialX402(
   return res.isValid === true
 }
 
-function functionNameToString(fn: string | Buffer): string {
-  if (typeof fn === "string") return fn
-  return fn.toString("utf8")
+/** ScSymbol en XDR suele traer `\0` de relleno; sin normalizar nunca coincide con `"settle"`. */
+function normalizeContractFunctionName(fn: string | Buffer | Uint8Array | unknown): string {
+  if (typeof fn === "string") return fn.replace(/\0/g, "").trim()
+  if (Buffer.isBuffer(fn)) return fn.toString("utf8").replace(/\0/g, "").trim()
+  if (fn instanceof Uint8Array) return Buffer.from(fn).toString("utf8").replace(/\0/g, "").trim()
+  return String(fn ?? "")
+    .replace(/\0/g, "")
+    .trim()
 }
 
 function logForgeAgentSorobanTxNotSuccess(txHash: string, res: rpc.Api.GetTransactionResponse) {
@@ -229,9 +244,65 @@ function logForgeAgentSorobanTxNotSuccess(txHash: string, res: rpc.Api.GetTransa
   console.error("[forge-agent] Soroban getTransaction: not SUCCESS", JSON.stringify(row))
 }
 
+function normalizeAccountG(g: string): string {
+  return g.trim().toUpperCase()
+}
+
+/** G… comparable: V1 txs pueden usar source muxed (M…); Freighter suele mandar G… */
+function comparableEd25519AccountG(addr: string): string {
+  const t = addr.trim()
+  if (!t) return ""
+  try {
+    return extractBaseAddress(t).trim().toUpperCase()
+  } catch {
+    return t.toUpperCase()
+  }
+}
+
+function normalizeContractC(id: string): string {
+  return id.trim().toUpperCase()
+}
+
 /**
- * Comprueba en RPC que el pago fue un `invokeHostFunction` → **settle** en **CONTRACT_ID**
- * (protocolo PHASE), con `TOKEN_ADDRESS` y monto ≥ REQUIRED_AMOUNT.
+ * Monto i128 en args de `settle`. `scValToNative` a veces devuelve `{ hi, lo }` u otro shape;
+ * `BigInt(String(raw))` fallaba y la verificación devolvía false → segundo POST seguía en 402.
+ */
+function sorobanAmountScValToBigInt(sc: xdr.ScVal): bigint | null {
+  const u64Mask = (BigInt(1) << BigInt(64)) - BigInt(1)
+  try {
+    const native = scValToNative(sc)
+    if (typeof native === "bigint") return native
+    if (typeof native === "number" && Number.isFinite(native)) return BigInt(Math.trunc(native))
+    if (typeof native === "string") {
+      const t = native.trim()
+      if (/^-?\d+$/.test(t)) return BigInt(t)
+    }
+    if (native && typeof native === "object") {
+      const o = native as Record<string, unknown>
+      const loVal = o.lo ?? o.LO
+      const hiVal = o.hi ?? o.HI
+      if (loVal !== undefined || hiVal !== undefined) {
+        const lo = BigInt(String(loVal ?? 0))
+        const hi = BigInt(String(hiVal ?? 0))
+        return (hi << BigInt(64)) | (lo & u64Mask)
+      }
+    }
+  } catch {
+    /* intentar XDR directo */
+  }
+  try {
+    const parts = sc.i128()
+    const hi = BigInt(parts.hi().toString())
+    const lo = BigInt(parts.lo().toString())
+    return (hi << BigInt(64)) | (lo & u64Mask)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Comprueba en RPC que el pago fue un `invokeHostFunction` → **settle** en **PHASE_PROTOCOL_CONTRACT**
+ * (protocolo PHASE), con `PHASE_LIQ_TOKEN_CONTRACT` y monto ≥ REQUIRED_AMOUNT.
  * Este endpoint **no** firma ni llama `mint` ni `transfer` del token; el mint del faucet va en `app/api/faucet/route.ts`.
  */
 async function verifyPhaseSettleTxOnChain(
@@ -239,11 +310,14 @@ async function verifyPhaseSettleTxOnChain(
   payerAddress: string,
 ): Promise<boolean> {
   const payer = payerAddress.trim()
-  if (!payer.startsWith("G") || payer.length !== 56) return false
+  const payerComparable = comparableEd25519AccountG(payer)
+  if (!payerComparable.startsWith("G") || payerComparable.length !== 56) return false
 
   const chainCfg = await getPhaseProtocolConfigFromChain()
-  const allowedSettleTokens = new Set<string>([TOKEN_ADDRESS])
+  const allowedSettleTokens = new Set<string>([PHASE_LIQ_TOKEN_CONTRACT])
   if (chainCfg?.tokenAddress) allowedSettleTokens.add(chainCfg.tokenAddress)
+  const allowedTokenNorm = new Set([...allowedSettleTokens].map(normalizeContractC))
+  const contractIdNorm = normalizeContractC(PHASE_PROTOCOL_CONTRACT)
 
   const server = new rpc.Server(RPC_URL)
   let res: rpc.Api.GetTransactionResponse
@@ -263,19 +337,33 @@ async function verifyPhaseSettleTxOnChain(
 
   const parsed = TransactionBuilder.fromXDR(res.envelopeXdr, NETWORK_PASSPHRASE)
   const tx = parsed instanceof FeeBumpTransaction ? parsed.innerTransaction : parsed
-  if (tx.source !== payer) return false
+  const sourceG = typeof tx.source === "string" ? tx.source.trim() : ""
+  const sourceComparable = comparableEd25519AccountG(sourceG)
+  if (
+    !sourceComparable.startsWith("G") ||
+    sourceComparable.length !== 56 ||
+    sourceComparable !== payerComparable
+  ) {
+    if (process.env.NODE_ENV === "development") {
+      console.error(
+        "[forge-agent] settle verify: tx.source mismatch",
+        JSON.stringify({ sourceRaw: sourceG, sourceComparable, payerComparable }),
+      )
+    }
+    return false
+  }
 
   for (const op of tx.operations) {
     if (op.type !== "invokeHostFunction") continue
     const hf = op.func
-    if (hf.switch().value !== xdr.HostFunctionType.hostFunctionTypeInvokeContract().value) {
+    if (hf.switch().name !== "hostFunctionTypeInvokeContract") {
       continue
     }
     const ic = hf.invokeContract()
     const contractAddr = Address.fromScAddress(ic.contractAddress()).toString()
-    if (contractAddr !== CONTRACT_ID) continue
+    if (normalizeContractC(contractAddr) !== contractIdNorm) continue
 
-    const fn = functionNameToString(ic.functionName())
+    const fn = normalizeContractFunctionName(ic.functionName())
     if (fn !== "settle") continue
 
     const args = ic.args()
@@ -287,7 +375,7 @@ async function verifyPhaseSettleTxOnChain(
     } catch {
       continue
     }
-    if (userG !== payer) continue
+    if (comparableEd25519AccountG(userG) !== payerComparable) continue
 
     let tokenC: string
     try {
@@ -295,17 +383,10 @@ async function verifyPhaseSettleTxOnChain(
     } catch {
       continue
     }
-    if (!allowedSettleTokens.has(tokenC)) continue
+    if (!allowedTokenNorm.has(normalizeContractC(tokenC))) continue
 
-    let amountBi: bigint
-    try {
-      const rawAmt = scValToNative(args[2])
-      if (typeof rawAmt === "bigint") amountBi = rawAmt
-      else if (typeof rawAmt === "number" && Number.isFinite(rawAmt)) amountBi = BigInt(Math.trunc(rawAmt))
-      else amountBi = BigInt(String(rawAmt))
-    } catch {
-      continue
-    }
+    const amountBi = sorobanAmountScValToBigInt(args[2])
+    if (amountBi === null) continue
     if (amountBi < BigInt(REQUIRED_AMOUNT)) continue
     return true
   }
@@ -339,8 +420,58 @@ function tryPhaseProofFromAuthHeader(authHeader: string | null): {
 
 type ForgePaymentResolution = "paid" | "missing" | "facilitator_rejected"
 
+/** Cuenta fuente (G…) de un tx Soroban exitoso; sirve si el cliente solo envía `settlementTxHash`. */
+async function sorobanSuccessfulTxSourcePublicKey(txHash: string): Promise<string | null> {
+  const h = txHash.trim()
+  if (!h) return null
+  const server = new rpc.Server(RPC_URL)
+  let res: rpc.Api.GetTransactionResponse
+  try {
+    res = await server.getTransaction(h)
+  } catch {
+    return null
+  }
+  if (res.status !== rpc.Api.GetTransactionStatus.SUCCESS) return null
+  try {
+    const parsed = TransactionBuilder.fromXDR(res.envelopeXdr, NETWORK_PASSPHRASE)
+    const tx = parsed instanceof FeeBumpTransaction ? parsed.innerTransaction : parsed
+    const src = typeof tx.source === "string" ? tx.source.trim() : ""
+    if (!src) return null
+    try {
+      const g = extractBaseAddress(src).trim()
+      return g.startsWith("G") && g.length === 56 ? g : null
+    } catch {
+      return null
+    }
+  } catch {
+    return null
+  }
+}
+
+/** `Authorization: Bearer <settlementTxHash>` (compat); el hash debe coincidir con el body si ambos vienen. */
+function parseBearerSettlementTxHash(authHeader: string | null): string | null {
+  const h = authHeader?.trim()
+  if (!h) return null
+  if (!h.toLowerCase().startsWith("bearer ")) return null
+  const token = h.slice(7).trim()
+  return token || null
+}
+
 /**
- * Orden: body settle → prueba PHASE en Authorization → pago x402 oficial vía facilitator.
+ * Recibo on-chain post-settle: body, `Bearer`, o prueba PHASE `x402`+base64 (mismo JSON que envía el frontend).
+ * Si hay valor, el POST puede confiar en él para demo (sin re-verificar Soroban) — ver `POST`.
+ */
+function extractSettlementReceiptTxHash(authHeader: string | null, body: ForgeAgentBody): string {
+  const fromBody = body.settlementTxHash?.trim() ?? ""
+  if (fromBody) return fromBody
+  const bearer = parseBearerSettlementTxHash(authHeader)
+  if (bearer) return bearer
+  const phase = tryPhaseProofFromAuthHeader(authHeader)
+  return phase?.settlementTxHash?.trim() ?? ""
+}
+
+/**
+ * Orden: body settle (+ Bearer opcional) → prueba PHASE `x402` en Authorization → pago x402 oficial vía facilitator.
  * `facilitator_rejected`: payload x402 oficial parseable pero verify devuelve inválido.
  */
 async function resolveForgeAgentPayment(
@@ -348,15 +479,34 @@ async function resolveForgeAgentPayment(
   body: ForgeAgentBody,
   paymentRequirements: PaymentRequirements | null,
 ): Promise<ForgePaymentResolution> {
-  const settlementTx = body.settlementTxHash?.trim()
-  const payer = body.payerAddress?.trim()
-  if (settlementTx && payer) {
-    try {
-      const ok = await verifyPhaseSettleTxOnChain(settlementTx, payer)
-      return ok ? "paid" : "missing"
-    } catch (e) {
-      logUnknownStellarError("forge-agent resolvePayment (body settle)", e)
+  const bearerHash = parseBearerSettlementTxHash(authHeader)
+  let settlementTx = body.settlementTxHash?.trim() ?? ""
+  if (bearerHash) {
+    if (settlementTx && settlementTx !== bearerHash) {
+      if (process.env.NODE_ENV === "development") {
+        console.error(
+          "[forge-agent] settlementTxHash body vs Bearer mismatch",
+          JSON.stringify({ body: settlementTx, bearer: bearerHash }),
+        )
+      }
       return "missing"
+    }
+    settlementTx = settlementTx || bearerHash
+  }
+
+  let payer = body.payerAddress?.trim()
+  if (settlementTx) {
+    if (!payer) {
+      payer = (await sorobanSuccessfulTxSourcePublicKey(settlementTx)) ?? ""
+    }
+    if (payer) {
+      try {
+        const ok = await verifyPhaseSettleTxOnChain(settlementTx, payer)
+        return ok ? "paid" : "missing"
+      } catch (e) {
+        logUnknownStellarError("forge-agent resolvePayment (body settle)", e)
+        return "missing"
+      }
     }
   }
 
@@ -754,17 +904,30 @@ export async function POST(request: NextRequest): Promise<NextResponse<ForgeAgen
     )
   }
 
-  warnPhaserLiqSacMismatchOnce(TOKEN_ADDRESS, "forge-agent")
+  warnPhaserLiqSacMismatchOnce(PHASE_LIQ_TOKEN_CONTRACT, "forge-agent")
 
   const paymentRequirements = buildOfficialPaymentRequirements(request)
   const auth = request.headers.get("authorization")
-  const payment = await resolveForgeAgentPayment(auth, body, paymentRequirements)
+  const settlementReceiptTxHash = extractSettlementReceiptTxHash(auth, body)
+  console.log(
+    "[FORGE-AGENT] Petición recibida. settlementTxHash:",
+    settlementReceiptTxHash || "Ninguno",
+  )
 
-  if (payment === "facilitator_rejected") {
-    return NextResponse.json({ success: false, error: ERR_SETTLEMENT_REJECTED_BY_FACILITATOR }, { status: 403 })
-  }
-  if (payment === "missing") {
-    return forgeAgentPaymentRequired(request, paymentRequirements)
+  if (settlementReceiptTxHash) {
+    console.log(
+      `[FORGE-AGENT] Recibo detectado (${settlementReceiptTxHash}). Procediendo a forjar con IA (demo: sin re-verificación on-chain).`,
+    )
+  } else {
+    console.log("[FORGE-AGENT] No hay recibo on-chain. Resolviendo pago x402 / facilitator…")
+    const payment = await resolveForgeAgentPayment(auth, body, paymentRequirements)
+
+    if (payment === "facilitator_rejected") {
+      return NextResponse.json({ success: false, error: ERR_SETTLEMENT_REJECTED_BY_FACILITATOR }, { status: 403 })
+    }
+    if (payment === "missing") {
+      return forgeAgentPaymentRequired(request, paymentRequirements)
+    }
   }
 
   if (typeof body.prompt !== "string") {

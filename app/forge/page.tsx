@@ -35,6 +35,7 @@ import {
   stellarExpertPhaserLiqUrl,
   validateFinalContractImageUri,
 } from "@/lib/phase-protocol"
+import { parseSignedTxXdr } from "@/lib/classic-liq"
 
 function truncateAddress(addr: string) {
   if (!addr || addr.length < 14) return addr
@@ -433,87 +434,135 @@ export default function ForgePage() {
       const ff = pickCopy(lang).forge
       setAgentState("AWAITING_PAYMENT")
 
-      const probe = await fetch("/api/forge-agent", {
+      // 1) Primer POST: solo prompt → el backend responde 402 + challenge x402
+      const first = await fetch("/api/forge-agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: userPrompt, imageStyleMode }),
       })
 
-      if (probe.status !== 402) {
-        const errText = await probe.text().catch(() => "")
-        if (probe.ok) throw new Error(ff.errors.agentNot402)
+      if (first.status !== 402) {
+        const errText = await first.text().catch(() => "")
+        console.error("[forge-agent] expected 402 Payment Required, got", first.status, errText)
+        if (first.ok) throw new Error(ff.errors.agentNot402)
         throw new Error(errText || ff.errors.agentRequest)
       }
 
-      const challengeBody = (await probe.json().catch(() => ({}))) as {
+      let paymentRequiredJson: {
         challenge?: { amount?: number | string }
+        message?: string
+        priceDisplay?: string
       }
-      const requiredAmount = String(challengeBody.challenge?.amount ?? REQUIRED_AMOUNT)
+      try {
+        paymentRequiredJson = (await first.json()) as typeof paymentRequiredJson
+      } catch (e) {
+        console.error("[forge-agent] 402 response body is not valid JSON", e)
+        throw new Error(ff.errors.agentRequest)
+      }
 
+      const challenge = paymentRequiredJson.challenge
+      if (challenge) {
+        console.log("[forge-agent] x402 challenge", challenge)
+      }
+
+      const requiredStroops = String(challenge?.amount ?? REQUIRED_AMOUNT)
+
+      // 2) Pago on-chain: invoke `settle` en el contrato PHASE (PHASELQ), no transfer de NFT
       setAgentState("PROCESSING_PAYMENT")
       const invoiceId = Math.floor(Math.random() * 1_000_000)
-      const txEnvelope = await buildSettleTransaction(payerAddress, requiredAmount, invoiceId, 0)
-      const signResult = await signTransaction(txEnvelope, {
+      const unsignedXdr = await buildSettleTransaction(payerAddress, requiredStroops, invoiceId, 0)
+      const signResult = await signTransaction(unsignedXdr, {
         networkPassphrase: NETWORK_PASSPHRASE,
         address: payerAddress,
       })
       if (signResult.error) {
+        console.error("[forge-agent] Freighter rejected settle signature", signResult.error)
         throw new Error("FUSION_ABORTED_BY_USER")
       }
       const signedXdr =
+        parseSignedTxXdr(signResult) ||
         (signResult as { signedTxXdr?: string }).signedTxXdr ||
         (signResult as { signedTransaction?: string }).signedTransaction
-      if (!signedXdr) throw new Error("NO_SIGNED_XDR")
+      if (!signedXdr) {
+        console.error("[forge-agent] No signed XDR returned from Freighter", signResult)
+        throw new Error("NO_SIGNED_XDR")
+      }
 
       const sendResult = await sendTransaction(signedXdr)
-      await getTransactionResult(sendResult.hash as string)
+      const txHash = sendResult.hash as string
+      if (!txHash) {
+        console.error("[forge-agent] sendTransaction returned no hash", sendResult)
+        throw new Error(ff.errors.agentPay)
+      }
+      await getTransactionResult(txHash)
       await refreshLiqBalance().catch(() => {})
 
       setAgentState("FORGING_MATTER")
       setAgentTickerIdx(0)
 
-      const hash = sendResult.hash as string
-      const x402Proof = btoa(JSON.stringify({ settlementTxHash: hash, payerAddress }))
-
+      // 3) Segundo POST: prueba en body + header `x402` (base64 JSON) como en app/api/forge-agent/route.ts
+      const secondBody = {
+        prompt: userPrompt,
+        settlementTxHash: txHash,
+        payerAddress,
+        imageStyleMode,
+      }
+      const phaseProofB64 = btoa(
+        JSON.stringify({ settlementTxHash: txHash, payerAddress }),
+      )
       const paid = await fetch("/api/forge-agent", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `x402 ${x402Proof}`,
+          Authorization: `x402 ${phaseProofB64}`,
         },
-        body: JSON.stringify({
-          prompt: userPrompt,
-          imageStyleMode,
-          settlementTxHash: hash,
-          payerAddress,
-        }),
+        body: JSON.stringify(secondBody),
       })
 
+      const paidRaw = await paid.text().catch(() => "")
       if (paid.status >= 500) {
+        console.error("[forge-agent] second POST server error", paid.status, paidRaw)
         let serverMessage = ""
         try {
-          const j = (await paid.json()) as { error?: unknown; detail?: unknown }
+          const j = JSON.parse(paidRaw) as { error?: unknown; detail?: unknown }
           const errStr = typeof j.error === "string" ? j.error.trim() : ""
           const detailStr = typeof j.detail === "string" ? j.detail.trim() : ""
           if (errStr) serverMessage = detailStr ? `${errStr} — ${detailStr}` : errStr
           else if (detailStr) serverMessage = detailStr
         } catch {
-          /* cuerpo no JSON */
+          serverMessage = paidRaw
         }
         throw new Error(serverMessage || "ORACLE_OFFLINE_ENERGY_CONSUMED")
       }
       if (!paid.ok) {
-        const t = await paid.text().catch(() => "")
-        throw new Error(t || ff.errors.agentRequest)
+        console.error("[forge-agent] second POST failed after payment", paid.status, paidRaw)
+        let failMsg = paidRaw.trim() || ff.errors.agentRequest
+        try {
+          const j = JSON.parse(paidRaw) as { error?: string; message?: string }
+          if (typeof j.error === "string" && j.error.trim()) failMsg = j.error.trim()
+          else if (typeof j.message === "string" && j.message.trim()) failMsg = j.message.trim()
+        } catch {
+          /* cuerpo no JSON */
+        }
+        throw new Error(failMsg)
       }
 
-      const data = (await paid.json()) as {
+      let data: {
         success?: boolean
         imageUrl?: string
         lore?: string
         description?: string
       }
-      if (!data.imageUrl) throw new Error(ff.errors.agentRequest)
+      try {
+        data = JSON.parse(paidRaw) as typeof data
+      } catch (e) {
+        console.error("[forge-agent] second POST success body is not JSON", e, paidRaw)
+        throw new Error(ff.errors.agentRequest)
+      }
+      if (!data.imageUrl) {
+        console.error("[forge-agent] success payload missing imageUrl", data)
+        throw new Error(ff.errors.agentRequest)
+      }
 
       const loreText = data.lore ?? data.description ?? ""
       setAgentImageUrl(data.imageUrl)
@@ -565,6 +614,7 @@ export default function ForgePage() {
     try {
       await initiateAgentForge(prompt, addr, oracleImageStyleMode)
     } catch (e) {
+      console.error("[forge] Oracle / x402 flow failed", e)
       setAgentState("IDLE")
       setAgentImageUrl(null)
       setLore(null)
@@ -687,6 +737,8 @@ export default function ForgePage() {
           : agentState === "FORGING_MATTER"
             ? forgingTerminalLines[agentTickerIdx % forgingTerminalLines.length]
             : "[ INITIATE_AGENT_PROTOCOL ]"
+
+  const showCollectionLivePanel = shareUrl != null && createdId != null
 
   return (
     <div className="tactical-command-root tactical-command-root--stable tactical-command-root--cockpit relative flex h-screen max-h-[100dvh] flex-col overflow-x-hidden overflow-y-hidden font-mono text-foreground antialiased">
@@ -818,8 +870,8 @@ export default function ForgePage() {
             </div>
           )}
 
-          {shareUrl && createdId != null && (
-            <div className="custom-scrollbar mt-2 max-h-28 shrink-0 overflow-y-auto border-2 border-[#00ffff]/55 bg-[#00ffff]/5 p-2 text-[9px]">
+          {showCollectionLivePanel && (
+            <div className="mt-2 shrink-0 border-2 border-[#00ffff]/55 bg-[#00ffff]/5 p-2 text-[9px]">
               <p className="font-bold uppercase tracking-[0.15em] text-cyan-200">{f.collectionLive}</p>
               <p className="mt-1 font-mono text-[11px] text-cyan-50">
                 {f.collectionIdLabel} <span className="text-cyan-300">#{createdId}</span>
@@ -1144,20 +1196,37 @@ export default function ForgePage() {
               </div>
             </div>
 
-            <div className="flex min-h-[190px] w-full flex-col lg:col-span-7">
+            <div
+              className={cn(
+                "flex w-full flex-col lg:col-span-7",
+                showCollectionLivePanel ? "min-h-0" : "min-h-[190px]",
+              )}
+            >
               <div className="flex min-h-0 w-full flex-col gap-2 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)] lg:items-start lg:gap-4">
                 <div className="min-h-0 w-full">
                   <p className="mb-2 shrink-0 border-b border-cyan-500/35 pb-1.5 text-[9px] font-semibold uppercase tracking-[0.28em] text-cyan-200/95">
                     {f.artPreview}
                   </p>
-                  <div className="art-retro-monitor flex min-h-[min(220px,34vh)] flex-col items-center justify-center overflow-hidden px-2 py-2 lg:min-h-[min(285px,40vh)]">
+                  <div
+                    className={cn(
+                      "art-retro-monitor flex flex-col items-center justify-center overflow-hidden px-2 py-2",
+                      showCollectionLivePanel
+                        ? "min-h-[min(120px,22vh)] lg:min-h-[min(140px,24vh)]"
+                        : "min-h-[min(220px,34vh)] lg:min-h-[min(285px,40vh)]",
+                    )}
+                  >
                     {previewSrc ? (
                       <div className="phase-artifact-preview-clean tactical-holo-wrap relative z-[3] flex h-full max-h-full w-full max-w-full flex-col items-center justify-center gap-2">
                         {/* eslint-disable-next-line @next/next/no-img-element -- Pollinations / IPFS URLs */}
                         <img
                           src={previewSrc}
                           alt=""
-                          className="art-retro-monitor__img tactical-holo-img relative z-[3] max-h-[min(52vh,420px)] max-w-full object-contain"
+                          className={cn(
+                            "art-retro-monitor__img tactical-holo-img relative z-[3] max-w-full object-contain",
+                            showCollectionLivePanel
+                              ? "max-h-[min(28vh,240px)]"
+                              : "max-h-[min(52vh,420px)]",
+                          )}
                           loading="lazy"
                           referrerPolicy="no-referrer"
                         />
@@ -1182,14 +1251,11 @@ export default function ForgePage() {
                   </div>
                 </div>
                 {address ? (
-                  <aside className="tactical-frame ml-auto w-full border-cyan-500/35 bg-black/35 p-2.5 lg:sticky lg:top-2 lg:min-h-[min(20rem,52vh)]">
+                  <aside className="tactical-frame ml-auto w-full border-cyan-500/35 bg-black/35 p-2.5 lg:sticky lg:top-2 lg:self-start">
                     <p className="mb-2 text-[9px] font-semibold uppercase tracking-[0.2em] text-cyan-300/90">
                       {pickCopy(lang).chamber.rewardsSectionTitle}
                     </p>
-                    <div
-                      className="custom-scrollbar max-h-[min(18rem,46vh)] overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]"
-                      onWheelCapture={captureWheelOnRewardsPanel}
-                    >
+                    <div className="w-full" onWheelCapture={captureWheelOnRewardsPanel}>
                       <LiquidityFaucetControl
                         address={address}
                         tokenBalance={tokenBalance}

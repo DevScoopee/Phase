@@ -578,6 +578,7 @@ impl PhaseProtocol {
         env.current_contract_address()
     }
 
+    /// Metadatos a nivel contrato (descubrimiento SEP-20 / wallets). Por token: `token_uri`.
     pub fn name(env: Env) -> String {
         String::from_str(&env, "PHASE Utility Artifact")
     }
@@ -637,6 +638,30 @@ impl PhaseProtocol {
             .get(&DataKey::TokenOwner(token_id))
     }
 
+    /// Alias **SEP-20 / Freighter**: misma firma que suelen exponer los NFT Soroban para descubrimiento en wallet.
+    /// Si `from == to`, es un **no-op** autenticado (el token sigue en la misma cuenta) para forzar una tx visible
+    /// al indexador cuando el mint existió pero la wallet no mostraba el collectible.
+    pub fn transfer(env: Env, from: Address, to: Address, token_id: u64) -> Result<(), PhaseError> {
+        if from == to {
+            from.require_auth();
+            let current: Address = env
+                .storage()
+                .persistent()
+                .get(&DataKey::TokenOwner(token_id))
+                .ok_or(PhaseError::NftNotFound)?;
+            if current != from {
+                return Err(PhaseError::NotNftOwner);
+            }
+            return Ok(());
+        }
+        Self::transfer_phase_nft(env, from, to, token_id)
+    }
+
+    /// Mismo comportamiento que `transfer`; nombre usado en varios ejemplos / tooling Soroban (`xfer`).
+    pub fn xfer(env: Env, from: Address, to: Address, token_id: u64) -> Result<(), PhaseError> {
+        Self::transfer(env, from, to, token_id)
+    }
+
     /// Transfiere el NFT de utilidad PHASE a otra cuenta. El pago en PHASER_LIQ se acuerda P2P;
     /// esta llamada solo mueve la propiedad on-chain (`TokenOwner` + `UserPhase`).
     pub fn transfer_phase_nft(env: Env, from: Address, to: Address, token_id: u64) -> Result<(), PhaseError> {
@@ -688,6 +713,7 @@ impl PhaseProtocol {
             .unwrap_or(0)
     }
 
+    /// JSON `standard: SEP-20` con `name`, `image`, atributos; usado por Freighter / laboratorios.
     pub fn token_uri(env: Env, token_id: u64) -> Option<String> {
         let owner: Address = env.storage().persistent().get(&DataKey::TokenOwner(token_id))?;
         let collection_id: u64 = env

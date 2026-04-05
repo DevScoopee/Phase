@@ -8,8 +8,9 @@ Estos IDs coinciden con `lib/phase-protocol.ts` en la app Next.js. Si redesplieg
 
 | Contrato | Contract ID | Stellar Expert |
 |----------|-------------|----------------|
-| **phase-protocol** (núcleo) | `CDXZ2HWPSAU3DKACNGTTY3WM6FKN5LPNGMAYFW4KBF74P42RK6SFDRGP` | [Ver ↗](https://stellar.expert/explorer/testnet/contract/CDXZ2HWPSAU3DKACNGTTY3WM6FKN5LPNGMAYFW4KBF74P42RK6SFDRGP) |
-| **PHASERLIQ** (SAC; default app `TOKEN_ADDRESS`) | `CDOAXHWC6YJB7U3ELV67HKJY6HEMJFBNRGJK6WZGUAELBWP3WP77RLFD` | [Stellar Expert (asset) ↗](https://stellar.expert/explorer/testnet/asset/PHASERLIQ-GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS) |
+| **phase-protocol** (núcleo) | `CDZKNN7Z756OWAU3GY5WAOJ5BOMUBSZDVDCGLESG734LNEHIUDL3EQL6` | [Ver ↗](https://stellar.expert/explorer/testnet/contract/CDZKNN7Z756OWAU3GY5WAOJ5BOMUBSZDVDCGLESG734LNEHIUDL3EQL6) |
+| **PHASELQ** (SAC; default app `TOKEN_ADDRESS`) | `CCKTFAHWI3MREYMDBFF4VB5ZPIIRVZH6LYYYYW34F6NZU54N2C3MHWBZ` | [Stellar Expert (asset) ↗](https://stellar.expert/explorer/testnet/asset/PHASELQ-GD7VAD4VDVHASKZIJPRORMXLML4RSVLRANYNRCCBWLO5ACOSYQZBSUFI) |
+| **PHASERLIQ** (SAC legacy, emisor GAXR…) | `CDOAXHWC6YJB7U3ELV67HKJY6HEMJFBNRGJK6WZGUAELBWP3WP77RLFD` | [Asset legado ↗](https://stellar.expert/explorer/testnet/asset/PHASERLIQ-GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS) |
 
 - Red: **testnet** · Passphrase: `Test SDF Network ; September 2015`
 - Documentación de producto: [README.md](../README.md) · Guía in-app: ruta `/docs` · Recompensas: [docs/PHASER_LIQ_REWARDS_TERMINAL_DOC.md](../docs/PHASER_LIQ_REWARDS_TERMINAL_DOC.md)
@@ -141,7 +142,7 @@ stellar contract invoke \
   # 10000000 = 1.0 token con 7 decimales
 ```
 
-### 5. Stellar Asset Contract (SAC) del PHASERLIQ clásico — “relanzar” / instalar en testnet
+### 5. Stellar Asset Contract (SAC) del PHASELQ clásico — “relanzar” / instalar en testnet
 
 Para un par **code:issuer** fijo, el **Contract ID del SAC es determinista**: no cambia aunque vuelvas a ejecutar el deploy. Puedes **comprobarlo** sin firmar:
 
@@ -150,13 +151,13 @@ stellar contract id asset \
   --network testnet \
   --rpc-url https://soroban-testnet.stellar.org \
   --network-passphrase "Test SDF Network ; September 2015" \
-  --asset "PHASERLIQ:GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS"
-# → CDOAXHWC6YJB7U3ELV67HKJY6HEMJFBNRGJK6WZGUAELBWP3WP77RLFD (mismo default que lib/phase-protocol.ts)
+  --asset "PHASELQ:GD7VAD4VDVHASKZIJPRORMXLML4RSVLRANYNRCCBWLO5ACOSYQZBSUFI"
+# → CCKTFAHWI3MREYMDBFF4VB5ZPIIRVZH6LYYYYW34F6NZU54N2C3MHWBZ (mismo default que `lib/phase-contract-defaults.ts`)
 ```
 
 Si la CLI se queja de *passphrase missing* o *rpc-url missing*, suele ser config parcial: pasa siempre `--rpc-url` y `--network-passphrase` como arriba (o exporta `STELLAR_RPC_URL` y `STELLAR_NETWORK_PASSPHRASE`).
 
-Si usas otro emisor, sustituye el `G…` en `--asset` (y en `.env` `NEXT_PUBLIC_CLASSIC_LIQ_ISSUER`).
+Si usas otro emisor, sustituye el `G…` en `--asset` (y en `.env` `NEXT_PUBLIC_CLASSIC_LIQ_ISSUER`). Si acuñaste con un **código** distinto (p. ej. `PHASERLIQ` en GAXR…), el `C…` del SAC es otro: despliega con `--asset <CODE>:<ISSUER>` y actualiza `NEXT_PUBLIC_TOKEN_CONTRACT_ID`.
 
 Para **instanciar** el contrato builtin en la red (primera vez o si faltaba), paga fees con una cuenta testnet con XLM (cualquier `G…` con fondos; no tiene que ser el issuer):
 
@@ -165,7 +166,7 @@ stellar contract asset deploy \
   --network testnet \
   --rpc-url https://soroban-testnet.stellar.org \
   --network-passphrase "Test SDF Network ; September 2015" \
-  --asset "PHASERLIQ:GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS" \
+  --asset "PHASELQ:GD7VAD4VDVHASKZIJPRORMXLML4RSVLRANYNRCCBWLO5ACOSYQZBSUFI" \
   --source-account TU_CUENTA_CON_XLM
 ```
 

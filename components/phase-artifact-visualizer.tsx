@@ -461,7 +461,11 @@ export function PhaseArtifactVisualizer({
       <div className="flex items-center justify-between gap-2 border-b border-zinc-800/80 pb-2">
         <span className="shrink-0 text-zinc-600">{labels.monitorContractAddr}</span>
         <div className="flex min-w-0 items-center gap-2">
-          <span className="min-w-0 truncate text-right text-zinc-500" title={contractId || undefined}>
+          <span
+            className="min-w-0 truncate text-right text-zinc-500"
+            title={contractId || undefined}
+            suppressHydrationWarning
+          >
             {contractPublic}
           </span>
           <button
@@ -469,7 +473,7 @@ export function PhaseArtifactVisualizer({
             onClick={() => void copyContractId().catch(() => {})}
             className="ml-3 shrink-0 rounded border border-cyan-500/40 bg-cyan-950/25 px-1.5 py-0.5 text-[8px] font-bold text-cyan-300/90 transition-colors hover:border-cyan-300 hover:text-white"
             title={copiedContract ? "Copied" : "Copy"}
-            aria-label="Copy PHASELQ contract address"
+            aria-label="Copy contract address"
           >
             {copiedContract ? "OK" : "COPY"}
           </button>

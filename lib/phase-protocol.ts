@@ -5,6 +5,7 @@ import {
   Asset,
   BASE_FEE,
   Contract,
+  extractBaseAddress,
   FeeBumpTransaction,
   nativeToScVal,
   Networks,
@@ -60,12 +61,26 @@ function sorobanContractIdFromEnv(
 
 export const CONTRACT_ID = (() => {
   const e = (typeof process !== "undefined" ? process.env : {}) as NodeJS.ProcessEnv
+  // Solo NEXT_PUBLIC_*: PHASE_PROTOCOL_ID (sin prefijo) no existe en el bundle del cliente → hydration mismatch.
+  return sorobanContractIdFromEnv(
+    [e.NEXT_PUBLIC_PHASE_PROTOCOL_ID],
+    DEFAULT_PHASE_CONTRACT,
+    "PHASE protocol (NEXT_PUBLIC_PHASE_PROTOCOL_ID)",
+  )
+})()
+
+/**
+ * Rutas API / solo Node: permite `PHASE_PROTOCOL_ID` si aún no duplicaste el valor en `NEXT_PUBLIC_*`.
+ * No uses esto en componentes cliente.
+ */
+export function phaseProtocolContractIdForServer(): string {
+  const e = process.env
   return sorobanContractIdFromEnv(
     [e.NEXT_PUBLIC_PHASE_PROTOCOL_ID, e.PHASE_PROTOCOL_ID],
     DEFAULT_PHASE_CONTRACT,
-    "PHASE protocol (NEXT_PUBLIC_PHASE_PROTOCOL_ID / PHASE_PROTOCOL_ID)",
+    "PHASE protocol (server: NEXT_PUBLIC_PHASE_PROTOCOL_ID / PHASE_PROTOCOL_ID)",
   )
-})()
+}
 
 /** Contrato PHASE (NFT de utilidad) en Stellar Expert — testnet */
 export function stellarExpertTestnetContractUrl(contractId: string = CONTRACT_ID) {
@@ -155,6 +170,20 @@ export function expectedDefaultPhaserLiqSACContractId(): string {
 /** Contrato del token de liquidez del protocolo (Soroban). */
 export const TOKEN_ADDRESS = (() => {
   const e = (typeof process !== "undefined" ? process.env : {}) as NodeJS.ProcessEnv
+  // Solo NEXT_PUBLIC_* (+ MOCK en servidor de tests); nunca TOKEN_CONTRACT_ID solo-server en UI compartida.
+  return sorobanContractIdFromEnv(
+    [e.NEXT_PUBLIC_PHASER_TOKEN_ID, e.NEXT_PUBLIC_TOKEN_CONTRACT_ID, e.MOCK_TOKEN_ID],
+    DEFAULT_TOKEN_CONTRACT,
+    "PHASELQ token (NEXT_PUBLIC_PHASER_TOKEN_ID / NEXT_PUBLIC_TOKEN_CONTRACT_ID / MOCK_TOKEN_ID)",
+  )
+})()
+
+/**
+ * Rutas API / solo Node: incluye `PHASER_TOKEN_ID`, `TOKEN_CONTRACT_ID` sin prefijo público.
+ * No uses esto en componentes cliente.
+ */
+export function tokenContractIdForServer(): string {
+  const e = process.env
   return sorobanContractIdFromEnv(
     [
       e.NEXT_PUBLIC_PHASER_TOKEN_ID,
@@ -164,9 +193,9 @@ export const TOKEN_ADDRESS = (() => {
       e.MOCK_TOKEN_ID,
     ],
     DEFAULT_TOKEN_CONTRACT,
-    "PHASELQ token (NEXT_PUBLIC_PHASER_TOKEN_ID / NEXT_PUBLIC_TOKEN_CONTRACT_ID / …)",
+    "PHASELQ token (server: NEXT_PUBLIC_* / PHASER_TOKEN_ID / TOKEN_CONTRACT_ID / MOCK_TOKEN_ID)",
   )
-})()
+}
 
 /** Marca oficial del combustible x402 en UI (7 decimales; código clásico PHASELQ). */
 export const PHASER_LIQ_SYMBOL = DEFAULT_LIQUIDITY_ASSET_CODE
@@ -176,6 +205,8 @@ export function displayPhaserLiqSymbol(onChainSymbol: string | null | undefined)
   const s = (onChainSymbol ?? "").trim()
   if (!s) return PHASER_LIQ_SYMBOL
   if (s === "PHASER_LIQ" || s === "PHASERLIQ") return PHASER_LIQ_SYMBOL
+  // Código truncado / typo frecuente al pegar en Freighter (esperamos PHASELQ + mismo emisor).
+  if (s.toUpperCase() === "PHASER") return PHASER_LIQ_SYMBOL
   return s
 }
 export const PHASER_LIQ_NAME = "Phase Liquidity Token"
@@ -590,31 +621,60 @@ export async function buildSettleTransaction(
   return prepared.toXDR()
 }
 
-/** Transfiere el NFT PHASE (`CONTRACT_ID`) al comprador. Requiere WASM desplegado con `transfer_phase_nft`. */
+/**
+ * Transfiere el utility NFT **PHASE** (colección / `token_id` u64).
+ * Usa el **contrato del protocolo** (`CONTRACT_ID` / NFT), no el SAC de PHASELQ (`TOKEN_ADDRESS`).
+ *
+ * Orden de prueba: `transfer` → `xfer` (estilo ejemplo Soroban) → `transfer_phase_nft` (nombre legado en algunos WASM).
+ */
+/**
+ * G… del emisor PHASELQ expuesto al cliente (custodio típico del NFT si el mint quedó en esa cuenta).
+ * Alineado con `classicLiqIssuerFromPublicEnv` / trustline.
+ */
+export function getPublicClassicLiqIssuerG(): string {
+  return classicLiqIssuerFromPublicEnv()
+}
+
 export async function buildTransferPhaseNftTransaction(
   fromAddress: string,
   toAddress: string,
   tokenId: number,
+  opts?: { transactionSourceAddress?: string },
 ) {
   const server = getRpc()
-  const account = await server.getAccount(fromAddress)
+  const sourceG = (opts?.transactionSourceAddress ?? fromAddress).trim()
+  const account = await server.getAccount(sourceG)
   const c = new Contract(CONTRACT_ID)
-  const tx = new TransactionBuilder(account, {
-    fee: BASE_FEE,
-    networkPassphrase: Networks.TESTNET,
-  })
-    .addOperation(
-      c.call(
-        "transfer_phase_nft",
-        Address.fromString(fromAddress).toScVal(),
-        Address.fromString(toAddress).toScVal(),
-        nativeToScVal(tokenId, { type: "u64" }),
-      ),
-    )
-    .setTimeout(30)
-    .build()
-  const prepared = await server.prepareTransaction(tx)
-  return prepared.toXDR()
+  const args = [
+    Address.fromString(fromAddress).toScVal(),
+    Address.fromString(toAddress).toScVal(),
+    nativeToScVal(tokenId, { type: "u64" }),
+  ] as const
+
+  const build = (fn: string) =>
+    new TransactionBuilder(account, {
+      fee: BASE_FEE,
+      networkPassphrase: Networks.TESTNET,
+    })
+      .addOperation(c.call(fn, ...args))
+      .setTimeout(30)
+      .build()
+
+  const methods = ["transfer", "xfer", "transfer_phase_nft"] as const
+  let lastError: unknown
+  for (const fn of methods) {
+    try {
+      const prepared = await server.prepareTransaction(build(fn))
+      return prepared.toXDR()
+    } catch (e) {
+      lastError = e
+    }
+  }
+
+  if (typeof console !== "undefined" && typeof console.log === "function") {
+    console.log("[FORGE] Contract lacks transfer interface", lastError)
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError))
 }
 
 function logSorobanRpcResultForDebug(context: string, result: unknown): void {
@@ -1160,6 +1220,33 @@ function parseOwnerOfReturn(native: unknown): string | null {
   return extractAccountGAddress(native)
 }
 
+/**
+ * Cuenta de NFTs de utilidad PHASE en el **contrato del protocolo** (`CONTRACT_ID`): `balance(owner)` (recuento i128).
+ * No confundir con el saldo PHASELQ en el SAC (`TOKEN_ADDRESS`).
+ */
+export async function fetchPhaseUtilityNftCount(walletG: string): Promise<string> {
+  const g = walletG.trim()
+  if (!StrKey.isValidEd25519PublicKey(g)) return "0"
+  try {
+    const native = await simulateContractCall(
+      CONTRACT_ID,
+      "balance",
+      [Address.fromString(g).toScVal()],
+      READONLY_SIM_SOURCE_G,
+    )
+    if (native == null) return "0"
+    if (typeof native === "bigint") return native.toString()
+    if (typeof native === "number") return String(Math.max(0, Math.trunc(native)))
+    try {
+      return BigInt(String(native)).toString()
+    } catch {
+      return "0"
+    }
+  } catch {
+    return "0"
+  }
+}
+
 /** `owner_of` on-chain → dirección G o `null` si el token no existe / simulación falla. */
 export async function fetchTokenOwnerAddress(
   contractId: string,
@@ -1203,10 +1290,18 @@ export function isAuthentic(
   viewerAddress: string | null | undefined,
   onChainOwnerAddress: string | null | undefined,
 ): boolean {
-  const v = viewerAddress?.trim().toUpperCase()
-  const o = onChainOwnerAddress?.trim().toUpperCase()
-  if (!v || !o) return false
-  return v === o
+  const vRaw = viewerAddress?.trim()
+  const oRaw = onChainOwnerAddress?.trim()
+  if (!vRaw || !oRaw) return false
+  let v: string
+  let o: string
+  try {
+    v = extractBaseAddress(vRaw).trim().toUpperCase()
+    o = extractBaseAddress(oRaw).trim().toUpperCase()
+  } catch {
+    return false
+  }
+  return v.length === 56 && v.startsWith("G") && v === o
 }
 
 export function formatLiq(balance: string) {
