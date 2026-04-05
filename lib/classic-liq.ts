@@ -7,6 +7,7 @@ import {
   StrKey,
   TransactionBuilder,
 } from "@stellar/stellar-sdk"
+import { DEFAULT_LIQUIDITY_ASSET_CODE } from "@/lib/phase-contract-defaults"
 import { HORIZON_URL } from "@/lib/phase-protocol"
 
 export type ClassicLiqAsset = {
@@ -31,8 +32,12 @@ type HorizonAccountResponse = {
   balances?: HorizonBalance[]
 }
 
-/** Emisor clásico PHASERLIQ en testnet (Stellar Expert: PHASERLIQ-GAX…). */
+/** Emisor clásico PHASELQ en testnet (Stellar Expert: PHASELQ-GD7V…). */
 export const DEFAULT_CLASSIC_PHASER_LIQ_ISSUER =
+  "GD7VAD4VDVHASKZIJPRORMXLML4RSVLRANYNRCCBWLO5ACOSYQZBSUFI"
+
+/** Emisor del asset clásico **PHASERLIQ** (código legacy; distinto de PHASELQ). */
+export const LEGACY_PHASERLIQ_ISSUER =
   "GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS"
 
 /** Para `stellar.toml`: siempre un issuer G válido para que wallets enlacen trustline ↔ fila CURRENCIES ↔ image. */
@@ -43,7 +48,7 @@ export function classicLiqIssuerForStellarToml(): string {
 }
 
 export function classicLiqCodeForStellarToml(): string {
-  return process.env.NEXT_PUBLIC_CLASSIC_LIQ_ASSET_CODE?.trim() || "PHASERLIQ"
+  return process.env.NEXT_PUBLIC_CLASSIC_LIQ_ASSET_CODE?.trim() || DEFAULT_LIQUIDITY_ASSET_CODE
 }
 
 export function classicLiqAssetConfigFromPublicEnv(): ClassicLiqAsset | null {
@@ -56,11 +61,62 @@ export function classicLiqAssetConfigFromPublicEnv(): ClassicLiqAsset | null {
 
 /**
  * Contract ID Soroban (C…) del Stellar Asset Contract que envuelve el par clásico (code + issuer).
- * Debe ser el mismo que `NEXT_PUBLIC_TOKEN_CONTRACT_ID` / `TOKEN_CONTRACT_ID` si usas ese asset como PHASERLIQ.
+ * Debe ser el mismo que `NEXT_PUBLIC_TOKEN_CONTRACT_ID` / `TOKEN_CONTRACT_ID` si usas ese asset como PHASELQ.
  * Compruébalo en Stellar Expert: cuenta emisora → sección Assets → enlace «Contract ID».
  */
 export function expectedClassicPhaserLiqSorobanContractId(): string {
   return new Asset(classicLiqCodeForStellarToml(), classicLiqIssuerForStellarToml()).contractId(Networks.TESTNET)
+}
+
+/** Una fila [[CURRENCIES]] en stellar.toml (SAC distinto por emisor). */
+export type StellarTomlPhaserLiqCurrencyRow = {
+  code: string
+  issuer: string
+  script: string
+}
+
+/**
+ * Filas `[[CURRENCIES]]` para stellar.toml: cada par **(code, issuer)** correcto.
+ * Antes se repetía el código PHASELQ para todos los emisores; GAXR emitió **PHASERLIQ**, no PHASELQ → Stellar Expert no enlazaba metadata.
+ *
+ * Stellar Expert solo muestra TOML si la cuenta emisora tiene `home_domain` apuntando al host donde está `/.well-known/stellar.toml`.
+ */
+export function stellarTomlPhaserLiqCurrencyRows(): StellarTomlPhaserLiqCurrencyRow[] {
+  const rows: StellarTomlPhaserLiqCurrencyRow[] = []
+  const seen = new Set<string>()
+
+  const pushPair = (assetCode: string, issuerG: string) => {
+    const iss = issuerG.trim()
+    const c = assetCode.trim()
+    if (!c || !StrKey.isValidEd25519PublicKey(iss)) return
+    const key = `${c}|${iss}`
+    if (seen.has(key)) return
+    seen.add(key)
+    try {
+      const asset = new Asset(c, iss)
+      rows.push({
+        code: c,
+        issuer: iss,
+        script: asset.contractId(Networks.TESTNET),
+      })
+    } catch {
+      /* combinación inválida para Asset */
+    }
+  }
+
+  const primaryIssuer = classicLiqIssuerForStellarToml()
+  const primaryCode = classicLiqCodeForStellarToml()
+
+  pushPair(primaryCode, primaryIssuer)
+  pushPair("PHASERLIQ", LEGACY_PHASERLIQ_ISSUER)
+
+  const defaultIssuer = DEFAULT_CLASSIC_PHASER_LIQ_ISSUER
+  const defaultCode = DEFAULT_LIQUIDITY_ASSET_CODE
+  if (defaultIssuer !== primaryIssuer || defaultCode !== primaryCode) {
+    pushPair(defaultCode, defaultIssuer)
+  }
+
+  return rows
 }
 
 export function isClassicLiqEnabledPublic(): boolean {

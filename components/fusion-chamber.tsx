@@ -12,6 +12,7 @@ import { LiquidityFaucetControl } from "@/components/liquidity-faucet-control"
 import { TokenIcon } from "@/components/token-icon"
 import { useWallet } from "@/components/wallet-provider"
 import { fetchArtistAlias } from "@/lib/artist-profile-client"
+import { humanizePhaseHostErrorMessage } from "@/lib/phase-host-error"
 import { pickCopy } from "@/lib/phase-copy"
 import { cn } from "@/lib/utils"
 import {
@@ -37,6 +38,7 @@ import {
   fetchTokenSymbol,
   fetchTokenUriString,
   formatLiq,
+  getProtocolSettleTokenBalance,
   getTokenBalance,
   getTransactionResult,
   ipfsOrHttpsDisplayUrl,
@@ -53,6 +55,7 @@ import {
 import { PhaseArtifactVisualizer, type ArtifactVerificationMode } from "@/components/phase-artifact-visualizer"
 import { TacticalCornerSigil } from "@/components/tactical-corner-sigil"
 import { playTacticalUiClick } from "@/lib/tactical-ui-click"
+import { viewerSignatureShort } from "@/lib/viewer-signature"
 
 type PaymentPhase = "idle" | "busy" | "error"
 
@@ -61,7 +64,34 @@ function truncateAddress(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`
 }
 
-/** Enlace al asset PHASERLIQ en Stellar Expert (icono + símbolo). */
+function formatPowerBp(bp: number) {
+  const safeBp = Math.min(10_000, Math.max(0, bp))
+  return `${Math.round(safeBp / 100)}%`
+}
+
+function ChamberCatalogThumb({ collectionId, src }: { collectionId: number; src: string }) {
+  const [broken, setBroken] = useState(false)
+  if (!src || broken) {
+    return (
+      <span className="px-1 text-center text-[7px] font-bold uppercase leading-tight text-cyan-500/80">
+        #{collectionId}
+      </span>
+    )
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt=""
+      className="h-full w-full object-cover"
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onError={() => setBroken(true)}
+    />
+  )
+}
+
+/** Enlace al asset PHASELQ en Stellar Expert (icono + símbolo). */
 function PhaserLiqTokenLink({
   href,
   symbol,
@@ -119,7 +149,10 @@ export function FusionChamber() {
   const logId = useRef(0)
   const [lines, setLines] = useState<{ id: number; text: string }[]>([])
 
+  /** Stroops en el SAC que el contrato PHASE usa en `settle` (puede ser 0 con saldo en otro emisor). */
   const [tokenBalance, setTokenBalance] = useState("0")
+  /** Máximo PHASELQ visto (Horizon + SACs) — solo informativo si difiere de `tokenBalance`. */
+  const [walletLiqTotal, setWalletLiqTotal] = useState("0")
   const [hasPhased, setHasPhased] = useState<boolean | null>(null)
   const [phaseId, setPhaseId] = useState<number | null>(null)
   const [energyLevelBp, setEnergyLevelBp] = useState<number | null>(null)
@@ -138,6 +171,8 @@ export function FusionChamber() {
   /** `owner_of(phaseId)` — verificación de originalidad vs wallet conectada. */
   const [onChainTokenOwner, setOnChainTokenOwner] = useState<string | null>(null)
   const [tokenOwnerLookupDone, setTokenOwnerLookupDone] = useState(false)
+  const [tokenUriLookupDone, setTokenUriLookupDone] = useState(false)
+  const [tokenUriExists, setTokenUriExists] = useState(false)
   const [collectionSupply, setCollectionSupply] = useState<{ minted: number; cap: number } | null>(null)
   const [chainTokenSymbol, setChainTokenSymbol] = useState(PHASER_LIQ_SYMBOL)
   const [balanceGlitch, setBalanceGlitch] = useState(false)
@@ -148,8 +183,6 @@ export function FusionChamber() {
   const [classicFundedAt, setClassicFundedAt] = useState<number | null>(null)
   const [classicStatus, setClassicStatus] = useState<ClassicLiqWalletStatus | null>(null)
   const [classicBusy, setClassicBusy] = useState(false)
-  const autoTrustlineAttemptedRef = useRef<Set<string>>(new Set())
-  const autoClassicFundAttemptedRef = useRef<Set<string>>(new Set())
 
   const effectivePriceStroops = useMemo(() => {
     if (collectionId > 0 && collectionInfo?.price) return collectionInfo.price
@@ -219,16 +252,29 @@ export function FusionChamber() {
   useEffect(() => {
     if (!hasPhased || phaseId == null || phaseId <= 0) {
       setArtifactImageFromUri(null)
+      setTokenUriLookupDone(true)
+      setTokenUriExists(false)
       return
     }
     let cancelled = false
+    setTokenUriLookupDone(false)
+    setTokenUriExists(false)
     void fetchTokenUriString(phaseId)
       .then((raw) => {
-        if (cancelled || !raw) return
-        const { image } = parseTokenUriMetadata(raw)
-        if (image && image.trim().length > 0) setArtifactImageFromUri(image.trim())
+        if (cancelled) return
+        const hasUri = Boolean(raw && raw.trim().length > 0)
+        setTokenUriExists(hasUri)
+        if (hasUri && raw) {
+          const { image } = parseTokenUriMetadata(raw)
+          if (image && image.trim().length > 0) setArtifactImageFromUri(image.trim())
+        }
+        setTokenUriLookupDone(true)
       })
-      .catch(() => {})
+      .catch(() => {
+        if (cancelled) return
+        setTokenUriExists(false)
+        setTokenUriLookupDone(true)
+      })
     return () => {
       cancelled = true
     }
@@ -321,16 +367,22 @@ export function FusionChamber() {
       const addr = await refresh()
       if (!addr) {
         setTokenBalance("0")
+        setWalletLiqTotal("0")
         setHasPhased(null)
         setPhaseId(null)
         setEnergyLevelBp(null)
         return
       }
       try {
-        const bal = await getTokenBalance(addr)
-        setTokenBalance(bal)
+        const [settleBal, totalBal] = await Promise.all([
+          getProtocolSettleTokenBalance(addr),
+          getTokenBalance(addr),
+        ])
+        setTokenBalance(settleBal)
+        setWalletLiqTotal(totalBal)
       } catch {
         setTokenBalance("0")
+        setWalletLiqTotal("0")
       }
       const ph = await checkHasPhased(addr, collectionId)
       setHasPhased(ph.phased)
@@ -338,6 +390,7 @@ export function FusionChamber() {
       setEnergyLevelBp(ph.phased ? (ph.energyLevelBp ?? 10_000) : null)
     } catch {
       setTokenBalance("0")
+      setWalletLiqTotal("0")
       setHasPhased(null)
       setPhaseId(null)
       setEnergyLevelBp(null)
@@ -468,13 +521,33 @@ export function FusionChamber() {
         return
       }
       if (isPhaseInsufficientBalanceError(msg)) {
+        const ch = pickCopy(lang).chamber
+        const friendly =
+          humanizePhaseHostErrorMessage(msg, ch.phaseHostContractErrors, ch.phaseHostContractUnknown) ||
+          ch.phaseHostContractErrors[2] ||
+          msg
+        const neededLiq = stroopsToLiqDisplay(effectivePriceStroops)
+        const haveLiq = stroopsToLiqDisplay(tokenBalance)
+        appendLog(`[ INSUFFICIENT_BALANCE ] ${friendly}`)
+        appendLog(`[ READOUT ] ${haveLiq} PHASELQ (UI) · need ≥ ${neededLiq} for this collection`)
         appendLog(logs.lowEnergyWarning)
-        appendLog(`${logs.tracePrefix} ${msg}`)
+        appendLog(`${logs.tracePrefix} HostError Contract #2 — PhaseError::InsufficientBalance`)
+        if (faucetEnabled) {
+          appendLog(
+            lang === "es"
+              ? "[ SUGERENCIA ] Usá el faucet (Genesis o Daily) para PHASELQ en el SAC."
+              : "[ HINT ] Use the faucet (Genesis or Daily) for PHASELQ on the SAC.",
+          )
+        }
         return
       }
-      appendLog(`${logs.runtimeFaultPrefix} ${msg}`)
+      {
+        const ch = pickCopy(lang).chamber
+        const friendly = humanizePhaseHostErrorMessage(msg, ch.phaseHostContractErrors, ch.phaseHostContractUnknown)
+        appendLog(`${logs.runtimeFaultPrefix} ${friendly ?? msg}`)
+      }
     },
-    [appendLog, lang],
+    [appendLog, lang, effectivePriceStroops, tokenBalance, faucetEnabled, stroopsToLiqDisplay],
   )
 
   const rebootProcess = () => {
@@ -496,9 +569,19 @@ export function FusionChamber() {
     const logs = pickCopy(lang).chamber.logs
     if (!address || lowEnergy || x402Tx === "busy" || invalidCollection) return
     try {
-      const bal = await getTokenBalance(address)
-      if (BigInt(bal) < BigInt(effectivePriceStroops)) {
+      // Verificación doble de balance antes de iniciar
+      const bal = await getProtocolSettleTokenBalance(address)
+      const balBigInt = BigInt(bal || "0")
+      const requiredBigInt = BigInt(effectivePriceStroops)
+
+      if (balBigInt < requiredBigInt) {
+        const balDisplay = stroopsToLiqDisplay(bal)
+        const reqDisplay = stroopsToLiqDisplay(effectivePriceStroops)
+        appendLog(`[ BALANCE_CHECK ] Balance: ${balDisplay} PHASELQ, Required: ${reqDisplay} PHASELQ`)
         appendLog(logs.lowEnergyWarning)
+        if (faucetEnabled && balBigInt === BigInt("0")) {
+          appendLog(`[ SUGERENCIA ] Tu balance es 0. Ve al panel del faucet y reclama Genesis Supply o Daily Recharge.`)
+        }
         return
       }
       setX402Tx("busy")
@@ -518,7 +601,25 @@ export function FusionChamber() {
       setMintingArtifact(true)
       appendLog(logs.mintingNft)
       const sendResult = await sendTransaction(signedXdr)
-      await getTransactionResult(sendResult.hash as string)
+      appendLog(`${logs.tracePrefix} Transaction sent, hash: ${String(sendResult.hash).slice(0, 16)}...`)
+
+      // Esperar resultado con mejor manejo de errores
+      try {
+        await getTransactionResult(sendResult.hash as string)
+      } catch (txErr) {
+        const txMsg = txErr instanceof Error ? txErr.message : String(txErr)
+        const ch = pickCopy(lang).chamber
+        const friendly = humanizePhaseHostErrorMessage(
+          txMsg,
+          ch.phaseHostContractErrors,
+          ch.phaseHostContractUnknown,
+        )
+        if (isPhaseInsufficientBalanceError(txMsg)) {
+          throw new Error(friendly ?? ch.phaseHostContractErrors[2] ?? txMsg)
+        }
+        throw txErr
+      }
+
       appendLog(logs.decrypting)
       await new Promise((r) => setTimeout(r, 1100))
       appendLog(logs.x402Ok)
@@ -549,6 +650,15 @@ export function FusionChamber() {
         }
       })(),
   )
+
+  const showLiqIssuerMismatch = useMemo(() => {
+    if (!address) return false
+    try {
+      return BigInt(walletLiqTotal || "0") > BigInt(tokenBalance || "0")
+    } catch {
+      return false
+    }
+  }, [address, walletLiqTotal, tokenBalance])
 
   const playElectronicClick = useCallback(() => {
     if (typeof window === "undefined") return
@@ -589,8 +699,12 @@ export function FusionChamber() {
   }, [address, tokenBalance, playElectronicClick])
 
   const normalizeToastError = useCallback(
-    (msg: string) => (isPhaseUnauthorizedError(msg) ? ch.biometricTrustGateClosed : msg),
-    [ch.biometricTrustGateClosed],
+    (msg: string) => {
+      const h = humanizePhaseHostErrorMessage(msg, ch.phaseHostContractErrors, ch.phaseHostContractUnknown)
+      if (h) return h
+      return isPhaseUnauthorizedError(msg) ? ch.biometricTrustGateClosed : msg
+    },
+    [ch.biometricTrustGateClosed, ch.phaseHostContractErrors, ch.phaseHostContractUnknown],
   )
 
   const requestGenesisSupply = useCallback(async () => {
@@ -740,21 +854,58 @@ export function FusionChamber() {
     requestClassicBootstrap,
   ])
 
-  useEffect(() => {
-    if (!address || !classicEnabled || classicBusy) return
-    if (!classicAsset || !classicStatus || classicStatus.hasTrustline) return
-    if (autoTrustlineAttemptedRef.current.has(address)) return
-    autoTrustlineAttemptedRef.current.add(address)
-    void enableClassicAssetTrustline().catch(() => {})
-  }, [address, classicAsset, classicBusy, classicEnabled, classicStatus, enableClassicAssetTrustline])
+  const collectClassicAsset = useCallback(async () => {
+    if (!address || !classicAsset || !classicEnabled || classicBusy) return
+    if (!classicStatus?.hasTrustline) {
+      await enableClassicAssetTrustline()
+      return
+    }
+    if (!classicFundedAt) {
+      await requestClassicBootstrap()
+    }
+  }, [
+    address,
+    classicAsset,
+    classicEnabled,
+    classicBusy,
+    classicStatus?.hasTrustline,
+    classicFundedAt,
+    enableClassicAssetTrustline,
+    requestClassicBootstrap,
+  ])
 
-  useEffect(() => {
-    if (!address || !classicEnabled || classicBusy) return
-    if (!classicStatus?.hasTrustline || classicFundedAt) return
-    if (autoClassicFundAttemptedRef.current.has(address)) return
-    autoClassicFundAttemptedRef.current.add(address)
-    void requestClassicBootstrap().catch(() => {})
-  }, [address, classicBusy, classicEnabled, classicFundedAt, classicStatus?.hasTrustline, requestClassicBootstrap])
+  const copyClassicAssetForManualAdd = useCallback(async () => {
+    if (!classicAsset) return
+    const payload = `${classicAsset.code}:${classicAsset.issuer}`
+    try {
+      await navigator.clipboard.writeText(payload)
+      toast.success(
+        lang === "es"
+          ? "Asset copiado. Pegalo en Freighter para agregarlo manualmente."
+          : "Asset copied. Paste it in Freighter to add it manually.",
+      )
+    } catch {
+      toast.error(lang === "es" ? "No se pudo copiar el asset." : "Could not copy asset.")
+    }
+  }, [classicAsset, lang])
+
+  const copyFreighterCollectibleField = useCallback(
+    async (label: string, value: string) => {
+      try {
+        await navigator.clipboard.writeText(value)
+        toast.success(
+          lang === "es"
+            ? `${label} copiado para Freighter.`
+            : `${label} copied for Freighter.`,
+        )
+      } catch {
+        toast.error(
+          lang === "es" ? `No se pudo copiar ${label}.` : `Could not copy ${label}.`,
+        )
+      }
+    },
+    [lang],
+  )
 
   const chamberTitle = useMemo(() => {
     const c = pickCopy(lang).chamber
@@ -810,6 +961,15 @@ export function FusionChamber() {
   const isOwnerOnChain =
     phased && phaseId != null && tokenOwnerLookupDone && isAuthentic(address, onChainTokenOwner)
   const authenticityPending = phased && phaseId != null && address != null && !tokenOwnerLookupDone
+  const freighterCollectibleReady =
+    phased &&
+    phaseId != null &&
+    phaseId > 0 &&
+    tokenOwnerLookupDone &&
+    tokenUriLookupDone &&
+    Boolean(onChainTokenOwner) &&
+    tokenUriExists
+  const manualAddEnabled = phased && phaseId != null && phaseId > 0
 
   const artifactVerificationMode: ArtifactVerificationMode = useMemo(() => {
     if (hasPhased && phaseId != null && phaseId > 0 && address) return "verified"
@@ -818,7 +978,10 @@ export function FusionChamber() {
   }, [address, hasPhased, phaseId])
 
   return (
-    <div className="tactical-command-root tactical-command-root--chamber tactical-command-root--cockpit fixed inset-0 z-[100] flex flex-col overflow-hidden font-mono text-foreground">
+    <div
+      className="tactical-command-root tactical-command-root--chamber tactical-command-root--cockpit fixed inset-0 z-[100] flex flex-col overflow-hidden font-mono text-foreground"
+      suppressHydrationWarning
+    >
       <div className="tactical-film-grain" aria-hidden />
       <div className="tactical-crt-veil" aria-hidden />
       <div className="tactical-crt-fine" aria-hidden />
@@ -865,13 +1028,16 @@ export function FusionChamber() {
         </div>
       </header>
 
-      <div className="relative z-[102] grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-hidden lg:grid-cols-[minmax(248px,280px)_minmax(0,1fr)]">
+      <div
+        className="relative z-[102] grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-hidden md:grid-cols-[300px_minmax(0,1fr)]"
+        suppressHydrationWarning
+      >
         {/* STATUS_MONITOR */}
         <aside
           className={cn(
             "tactical-cockpit-aside tactical-chamber-aside relative z-[102] flex min-h-0 flex-col overflow-hidden p-2.5 pl-3 sm:p-3 sm:pl-4 lg:max-h-full lg:pl-5",
-            "max-lg:max-h-[min(52dvh,420px)] max-lg:overflow-y-auto max-lg:overscroll-contain",
-            "max-lg:border-b max-lg:border-cyan-500/15",
+            "max-md:max-h-[min(52dvh,420px)] max-md:overflow-y-auto max-md:overscroll-contain",
+            "max-md:border-b max-md:border-cyan-500/15",
           )}
         >
           <div className="tactical-cockpit-signal" aria-hidden>
@@ -966,6 +1132,11 @@ export function FusionChamber() {
                       className="align-middle text-xs text-cyan-500/90"
                     />
                     <p className="mt-1 text-[8px] leading-snug tracking-wide text-cyan-500/50">{ch.tokenStandardSep41Note}</p>
+                    {showLiqIssuerMismatch ? (
+                      <p className="mt-1.5 text-[8px] leading-snug tracking-wide text-amber-400/95">
+                        {ch.liqBalanceIssuerMismatch.replace("{total}", formatLiq(walletLiqTotal))}
+                      </p>
+                    ) : null}
                   </dd>
                 </div>
                 {classicAsset && (
@@ -1071,44 +1242,61 @@ export function FusionChamber() {
             </button>
           )}
 
-          {address && classicAsset && classicEnabled && !classicStatus?.hasTrustline ? (
-            <button
-              type="button"
-              disabled={classicBusy}
-              onClick={() => {
-                playTacticalUiClick()
-                void enableClassicAssetTrustline().catch(() => {})
-              }}
-              className="tactical-interactive-glitch tactical-btn mt-2 w-full border-cyan-400/55 py-2 text-[9px] uppercase tracking-widest text-cyan-200 disabled:opacity-50"
-            >
-              {classicBusy
-                ? lang === "es"
-                  ? "ACTIVANDO_TRUSTLINE..."
-                  : "ENABLING_TRUSTLINE..."
-                : lang === "es"
-                  ? "[ ACTIVAR_ASSET_EN_FREIGHTER ]"
-                  : "[ ENABLE_ASSET_IN_FREIGHTER ]"}
-            </button>
-          ) : null}
-
-          {address && classicAsset && classicEnabled && classicStatus?.hasTrustline && !classicFundedAt ? (
-            <button
-              type="button"
-              disabled={classicBusy}
-              onClick={() => {
-                playTacticalUiClick()
-                void requestClassicBootstrap().catch(() => {})
-              }}
-              className="tactical-interactive-glitch tactical-btn mt-2 w-full border-emerald-500/55 py-2 text-[9px] uppercase tracking-widest text-emerald-200 disabled:opacity-50"
-            >
-              {classicBusy
-                ? lang === "es"
-                  ? "FONDEANDO_ASSET..."
-                  : "FUNDING_ASSET..."
-                : lang === "es"
-                  ? `[ FONDEAR_ASSET_CLASICO +${classicBootstrapAmount || "0"} ]`
-                  : `[ FUND_CLASSIC_ASSET +${classicBootstrapAmount || "0"} ]`}
-            </button>
+          {address && classicAsset ? (
+            <div className="tactical-frame mt-2.5 border-cyan-300/45 bg-cyan-950/25 px-3 py-2.5 shadow-[0_0_22px_rgba(0,255,255,0.12)]">
+              <p className="text-[9px] font-semibold uppercase tracking-widest text-cyan-200">
+                {lang === "es" ? "2 OPCIONES // ACTIVAR + RECOLECTAR" : "2 OPTIONS // ENABLE + COLLECT"}
+              </p>
+              <div className="mt-2 grid grid-cols-1 gap-2">
+                <button
+                  type="button"
+                  disabled={classicBusy || !classicEnabled || (classicStatus?.hasTrustline && !!classicFundedAt)}
+                  onClick={() => {
+                    playTacticalUiClick()
+                    void collectClassicAsset().catch(() => {})
+                  }}
+                  className="tactical-interactive-glitch tactical-btn w-full border-emerald-500/55 py-2 text-[9px] uppercase tracking-widest text-emerald-200 disabled:opacity-50"
+                >
+                  {!classicEnabled
+                    ? lang === "es"
+                      ? "[ RECOLECTA_CLASICA_NO_DISPONIBLE ]"
+                      : "[ CLASSIC_COLLECT_DISABLED ]"
+                    : classicBusy
+                    ? lang === "es"
+                      ? "RECOLECTANDO_ASSET..."
+                      : "COLLECTING_ASSET..."
+                    : classicStatus?.hasTrustline && !!classicFundedAt
+                      ? lang === "es"
+                        ? "[ ASSET_CLASICO_YA_RECOLECTADO ]"
+                        : "[ CLASSIC_ASSET_ALREADY_COLLECTED ]"
+                    : !classicStatus?.hasTrustline
+                      ? lang === "es"
+                        ? `[ RECOLECTAR_AUTO (TRUSTLINE +${classicBootstrapAmount || "0"}) ]`
+                        : `[ AUTO_COLLECT (TRUSTLINE +${classicBootstrapAmount || "0"}) ]`
+                      : lang === "es"
+                        ? `[ RECOLECTAR_ASSET +${classicBootstrapAmount || "0"} ]`
+                        : `[ COLLECT_ASSET +${classicBootstrapAmount || "0"} ]`}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playTacticalUiClick()
+                    void copyClassicAssetForManualAdd().catch(() => {})
+                  }}
+                  className="tactical-interactive-glitch tactical-btn w-full border-cyan-400/55 py-2 text-[9px] uppercase tracking-widest text-cyan-200"
+                >
+                  {lang === "es" ? "[ AÑADIR MANUAL EN FREIGHTER ]" : "[ ADD MANUALLY IN FREIGHTER ]"}
+                </button>
+              </div>
+              <p className="mt-2 text-[9px] text-cyan-100/80">
+                {lang === "es"
+                  ? "Manual: pegá este asset en Freighter (code:issuer). Luego podés recolectar."
+                  : "Manual: paste this asset in Freighter (code:issuer). Then you can collect."}
+              </p>
+              <p className="mt-1 break-all font-mono text-[10px] text-cyan-200/90">
+                {classicAsset.code}:{classicAsset.issuer}
+              </p>
+            </div>
           ) : null}
 
           {address ? (
@@ -1143,7 +1331,7 @@ export function FusionChamber() {
             <p className="mb-1 shrink-0 text-center text-[9px] uppercase tracking-[0.24em] text-cyan-400/85 tactical-phosphor sm:text-[10px]">
               {collectionPedestalLine}
             </p>
-            <div className="tactical-frame flex min-h-[min(10vh,88px)] max-h-[min(30dvh,240px)] flex-1 flex-col items-stretch gap-1.5 overflow-y-auto rounded-xl border border-cyan-500/18 bg-[oklch(0.055_0.02_220)]/90 px-3 py-2 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.08),inset_0_0_48px_rgba(0,0,0,0.5)] sm:min-h-[min(12vh,104px)] sm:max-h-[min(32dvh,280px)] sm:gap-2 sm:px-4 sm:py-3">
+            <div className="tactical-frame flex min-h-[min(26svh,220px)] max-h-[min(44svh,390px)] flex-1 flex-col items-stretch gap-1.5 overflow-hidden rounded-xl border border-cyan-500/18 bg-[oklch(0.055_0.02_220)]/90 px-3 py-2 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.08),inset_0_0_48px_rgba(0,0,0,0.5)] sm:min-h-[min(28svh,240px)] sm:max-h-[min(46svh,420px)] sm:gap-2 sm:px-4 sm:py-3">
               {mintingArtifact ? (
                 <div className="text-center">
                   <div className="mx-auto mb-2 h-12 w-12 border-2 border-cyan-500/60 border-t-transparent animate-spin rounded-full" />
@@ -1155,39 +1343,163 @@ export function FusionChamber() {
                   </p>
                 </div>
               ) : phased && phaseId != null && address ? (
-                <div className="flex w-full max-h-full min-h-0 flex-col items-center gap-2 overflow-y-auto sm:gap-3">
-                  <p className="mb-0.5 shrink-0 text-center text-[8px] uppercase tracking-[0.35em] text-muted-foreground">
-                    {ch.artifactAsciiView}
-                  </p>
-                  <PhaseArtifactVisualizer
-                    mode="verified"
-                    contractId={TOKEN_ADDRESS}
-                    ownerTruncated={
-                      onChainTokenOwner ? truncateAddress(onChainTokenOwner) : truncateAddress(address)
-                    }
-                    serial={phaseId}
-                    energyLevelBp={energyLevelBp ?? 10_000}
-                    collectionTitle={artifactCollectionTitle}
-                    collectionDisplayName={artifactPublicCollectionName}
-                    imageUrl={
-                      effectiveArtifactImage ? ipfsOrHttpsDisplayUrl(effectiveArtifactImage) : undefined
-                    }
-                    labels={ch.artifact}
-                    viewerAddress={address}
-                    isOwner={isOwnerOnChain}
-                    authenticityPending={authenticityPending}
-                    supplyMinted={collectionSupply?.minted ?? null}
-                    supplyCap={collectionSupply?.cap ?? null}
-                    onAccessPrivateMetadata={
-                      isOwnerOnChain ? () => void handleAccessPrivateMetadata().catch(() => {}) : undefined
-                    }
-                  />
-                  <p className="text-center text-[9px] uppercase tracking-[0.25em] text-accent/80">{ch.onChainMeta}</p>
-                  <div className="w-full max-w-[min(100%,28rem)] rounded border border-cyan-500/35 bg-cyan-950/20 px-3 py-2">
-                    <p className="text-center text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200">
-                      {ch.freighterManualAddTitle}
+                <div className="grid w-full max-h-full min-h-0 grid-cols-1 items-stretch gap-2 overflow-hidden md:grid-cols-[minmax(0,1.25fr)_minmax(22rem,1fr)]">
+                  <div className="flex min-h-0 flex-col items-center gap-1.5 overflow-hidden sm:gap-2">
+                    <p className="mb-0.5 shrink-0 text-center text-[8px] uppercase tracking-[0.35em] text-muted-foreground">
+                      {ch.artifactAsciiView}
                     </p>
-                    <p className="mt-1 text-center text-[11px] text-cyan-100/80">{ch.freighterManualAddBody}</p>
+                    <PhaseArtifactVisualizer
+                      mode="verified"
+                      contractId={TOKEN_ADDRESS}
+                      ownerTruncated={
+                        onChainTokenOwner ? truncateAddress(onChainTokenOwner) : truncateAddress(address)
+                      }
+                      serial={phaseId}
+                      energyLevelBp={energyLevelBp ?? 10_000}
+                      collectionTitle={artifactCollectionTitle}
+                      collectionDisplayName={artifactPublicCollectionName}
+                      imageUrl={
+                        effectiveArtifactImage ? ipfsOrHttpsDisplayUrl(effectiveArtifactImage) : undefined
+                      }
+                      labels={ch.artifact}
+                      viewerAddress={address}
+                      isOwner={isOwnerOnChain}
+                      authenticityPending={authenticityPending}
+                      supplyMinted={collectionSupply?.minted ?? null}
+                      supplyCap={collectionSupply?.cap ?? null}
+                      compact
+                      showPublicMetaPanel={false}
+                      showPrivateMetaPanel={false}
+                      className="w-full"
+                      onAccessPrivateMetadata={
+                        isOwnerOnChain ? () => void handleAccessPrivateMetadata().catch(() => {}) : undefined
+                      }
+                    />
+                  </div>
+                  <div className="flex min-h-0 flex-col gap-4 overflow-y-auto custom-scrollbar pr-1.5">
+                    <div className="w-full rounded border border-cyan-500/28 bg-black/35 px-3.5 py-3.5">
+                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-300/85">
+                        ON_CHAIN_META
+                      </p>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-2 border-b border-cyan-900/45 pb-1.5">
+                          <span className="text-[9px] uppercase tracking-[0.14em] text-cyan-400/80">COLLECTION_NAME</span>
+                          <span className="min-w-0 max-w-[62%] truncate text-right text-[11px] text-cyan-100/90">
+                            {artifactPublicCollectionName}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 border-b border-cyan-900/45 pb-1.5">
+                          <span className="text-[9px] uppercase tracking-[0.14em] text-cyan-400/80">CONTRACT_ADDR</span>
+                          <span className="min-w-0 max-w-[62%] truncate text-right font-mono text-[11px] text-cyan-100/90">
+                            {TOKEN_ADDRESS.slice(0, 4)}…{TOKEN_ADDRESS.slice(-4)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[9px] uppercase tracking-[0.14em] text-cyan-400/80">SUPPLY_STABILIZED</span>
+                          <span className="text-right font-mono text-[11px] text-cyan-100/90">
+                            [ {collectionSupply?.minted ?? "—"} / {collectionSupply?.cap ?? "—"} ]
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="w-full rounded border border-cyan-500/35 bg-cyan-950/25 px-3.5 py-3.5">
+                      <div className="space-y-2.5">
+                        <p className="text-left text-[10px] font-bold uppercase tracking-[0.14em] text-cyan-200 tactical-phosphor">
+                          {ch.artifact.privateChannelUnlocked}
+                        </p>
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-b border-cyan-500/20 pb-1.5">
+                          <span className="text-[10px] uppercase tracking-[0.08em] text-cyan-400/85">
+                            {ch.artifact.metadataStandard}
+                          </span>
+                          <span className="text-right font-mono text-[11px] text-cyan-100/95">SEP-20</span>
+                        </div>
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-b border-cyan-500/20 pb-1.5">
+                          <span className="text-[10px] uppercase tracking-[0.08em] text-cyan-400/85">{ch.artifact.secretId}</span>
+                          <span className="text-right font-mono text-[11px] text-cyan-100/95">#{Math.max(0, Math.floor(phaseId))}</span>
+                        </div>
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-b border-cyan-500/20 pb-1.5">
+                          <span className="text-[10px] uppercase tracking-[0.08em] text-cyan-400/85">{ch.artifact.powerLevel}</span>
+                          <span className="text-right font-mono text-[11px] text-cyan-100/95">
+                            {ch.artifact.stateSolid} · {formatPowerBp(energyLevelBp ?? 10_000)}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1">
+                          <span className="text-[10px] uppercase tracking-[0.08em] text-cyan-400/85">
+                            {ch.artifact.holderSignature}
+                          </span>
+                          <span className="max-w-[62%] truncate text-right font-mono text-[11px] text-cyan-100/95">
+                            {viewerSignatureShort(address)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="w-full rounded border border-cyan-500/35 bg-cyan-950/20 px-3.5 py-3.5">
+                      <p className="text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-cyan-200">
+                        {ch.freighterManualAddTitle}
+                      </p>
+                      <p className="mt-1.5 text-left text-[12px] leading-relaxed text-cyan-100/85">{ch.freighterManualAddBody}</p>
+                      {!manualAddEnabled ? (
+                        <p className="mt-2.5 rounded border border-amber-500/35 bg-amber-950/20 px-2.5 py-2.5 text-[11px] leading-relaxed text-amber-200/90">
+                          {lang === "es"
+                            ? "Aún no hay token de collectible para esta colección. Completa la fusión/mint y luego pulsa SYNC."
+                            : "No collectible token exists yet for this collection. Complete fusion/mint and then press SYNC."}
+                        </p>
+                      ) : !freighterCollectibleReady ? (
+                        <p className="mt-2.5 rounded border border-amber-500/35 bg-amber-950/20 px-2.5 py-2.5 text-[11px] leading-relaxed text-amber-200/90">
+                          {!isOwnerOnChain
+                            ? lang === "es"
+                              ? "Aun si Freighter da error, ya puedes intentar Add manually con estos datos. Si falla, pulsa SYNC y reintenta en 30-90s."
+                              : "Even if Freighter errors, you can already try Add manually using these values. If it fails, press SYNC and retry in 30-90s."
+                            : lang === "es"
+                              ? "El collectible puede seguir indexándose. Puedes intentar Add manually ahora o reintentar en 30-90s."
+                              : "Collectible may still be indexing. You can try Add manually now or retry in 30-90s."}
+                        </p>
+                      ) : (
+                        <p className="mt-2.5 rounded border border-cyan-500/20 bg-black/25 px-2.5 py-2.5 text-[11px] leading-relaxed text-cyan-100/80">
+                          {ch.freighterManualAddTroubleshoot}
+                        </p>
+                      )}
+                      <div className={cn("mt-3 space-y-2.5 border-t border-cyan-500/20 pt-2.5", !manualAddEnabled && "opacity-55")}>
+                        <div className="rounded border border-cyan-500/20 bg-black/35 px-2 py-1.5">
+                          <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-300/85">
+                            {lang === "es" ? "Collection Address" : "Collection Address"}
+                          </p>
+                          <div className="mt-1 flex items-center gap-2">
+                            <p className="min-w-0 flex-1 break-all font-mono text-[11px] leading-relaxed text-cyan-100/95">
+                              {CONTRACT_ID}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                playTacticalUiClick()
+                                void copyFreighterCollectibleField("Collection Address", CONTRACT_ID).catch(() => {})
+                              }}
+                              className="shrink-0 rounded border border-cyan-500/45 px-2 py-0.5 text-[10px] uppercase tracking-widest text-cyan-200 hover:border-cyan-300 hover:text-white"
+                            >
+                              {lang === "es" ? "COPIAR" : "COPY"}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="rounded border border-cyan-500/20 bg-black/35 px-2 py-1.5">
+                          <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-300/85">Token ID</p>
+                          <div className="mt-1 flex items-center gap-2">
+                            <p className="min-w-0 flex-1 break-all font-mono text-[11px] leading-relaxed text-cyan-100/95">
+                              {String(phaseId)}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                playTacticalUiClick()
+                                void copyFreighterCollectibleField("Token ID", String(phaseId)).catch(() => {})
+                              }}
+                              className="shrink-0 rounded border border-cyan-500/45 px-2 py-0.5 text-[10px] uppercase tracking-widest text-cyan-200 hover:border-cyan-300 hover:text-white"
+                            >
+                              {lang === "es" ? "COPIAR" : "COPY"}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : collectionLoadState === "loading" && collectionId > 0 ? (
@@ -1195,7 +1507,7 @@ export function FusionChamber() {
                   {ch.syncingMeta}
                 </p>
               ) : (
-                <div className="flex w-full max-h-full min-h-0 flex-col items-center gap-2 overflow-y-auto sm:gap-3">
+                <div className="flex w-full max-h-full min-h-0 flex-col items-center gap-1.5 overflow-hidden sm:gap-2">
                   <div className="tactical-frame w-full shrink-0 px-3 py-2 text-center shadow-[0_0_16px_rgba(0,255,255,0.08)]">
                     <p className="text-[8px] uppercase tracking-[0.35em] text-cyan-500/55">{ch.x402MintPrice}</p>
                     <p className="tactical-phosphor mt-0.5 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xl tracking-wider text-cyan-200 sm:text-2xl">
@@ -1236,6 +1548,7 @@ export function FusionChamber() {
                     viewerAddress={address}
                     supplyMinted={collectionSupply?.minted ?? null}
                     supplyCap={collectionSupply?.cap ?? null}
+                    compact
                   />
                 </div>
               )}
@@ -1377,16 +1690,9 @@ export function FusionChamber() {
                         )}
                         title={c.name || `Collection #${c.collectionId}`}
                       >
-                        <div className="flex aspect-square items-center justify-center border-b border-foreground/15 bg-[oklch(0.05_0_0)]">
+                        <div className="flex aspect-square items-center justify-center overflow-hidden border-b border-foreground/15 bg-[oklch(0.08_0.02_220)]">
                           {thumb ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={thumb}
-                              alt=""
-                              className="h-full w-full object-cover"
-                              loading="lazy"
-                              referrerPolicy="no-referrer"
-                            />
+                            <ChamberCatalogThumb collectionId={c.collectionId} src={thumb} />
                           ) : (
                             <span className="px-1 text-center text-[7px] uppercase leading-tight text-muted-foreground/45">
                               #{c.collectionId}

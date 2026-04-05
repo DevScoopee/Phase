@@ -40,7 +40,7 @@ function validG(addr: string) {
   return t.length === 56 && t.startsWith("G") && StrKey.isValidEd25519PublicKey(t)
 }
 
-/** Listados públicos de venta (testnet / demo). El pago PHASERLIQ es P2P; la transferencia NFT es on-chain vía `transfer_phase_nft`. */
+/** Listados públicos de venta (testnet / demo). El pago PHASELQ es P2P; la transferencia NFT es on-chain vía `transfer_phase_nft`. */
 export async function GET() {
   const listings = (await readListings()).filter((l) => l.active)
   return NextResponse.json({ listings })

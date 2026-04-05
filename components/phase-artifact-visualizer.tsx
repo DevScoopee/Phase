@@ -28,6 +28,61 @@ function formatPowerBp(bp: number) {
   return `${(c / 100).toFixed(0)}%`
 }
 
+async function bakeWatermarkIntoImageDataUrl(sourceUrl: string, watermarkText: string): Promise<string> {
+  const response = await fetch(sourceUrl)
+  if (!response.ok) {
+    throw new Error(`watermark-fetch-failed:${response.status}`)
+  }
+  const imageBlob = await response.blob()
+  const blobUrl = URL.createObjectURL(imageBlob)
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image()
+      img.decoding = "async"
+      img.onload = () => resolve(img)
+      img.onerror = () => reject(new Error("watermark-image-load-failed"))
+      img.src = blobUrl
+    })
+
+    const width = image.naturalWidth || image.width
+    const height = image.naturalHeight || image.height
+    const canvas = document.createElement("canvas")
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext("2d")
+    if (!ctx) {
+      throw new Error("watermark-canvas-context-failed")
+    }
+
+    ctx.drawImage(image, 0, 0, width, height)
+
+    const minSide = Math.max(1, Math.min(width, height))
+    const tile = Math.max(120, Math.floor(minSide * 0.22))
+    const fontSize = Math.max(11, Math.floor(minSide * 0.038))
+    ctx.save()
+    ctx.translate(width / 2, height / 2)
+    ctx.rotate((-32 * Math.PI) / 180)
+    ctx.textAlign = "center"
+    ctx.textBaseline = "middle"
+    ctx.font = `700 ${fontSize}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace`
+    ctx.fillStyle = "rgba(255,255,255,0.2)"
+    ctx.strokeStyle = "rgba(0,0,0,0.35)"
+    ctx.lineWidth = Math.max(1, Math.floor(fontSize * 0.08))
+
+    for (let y = -height; y <= height; y += tile) {
+      for (let x = -width; x <= width; x += tile) {
+        ctx.strokeText(watermarkText, x, y)
+        ctx.fillText(watermarkText, x, y)
+      }
+    }
+    ctx.restore()
+
+    return canvas.toDataURL("image/png")
+  } finally {
+    URL.revokeObjectURL(blobUrl)
+  }
+}
+
 function GlitchDecryptField({
   finalText,
   active,
@@ -84,6 +139,12 @@ type Props = {
   /** `get_total_minted` / cap — null si RPC falla o aún no hay dato. */
   supplyMinted?: number | null
   supplyCap?: number | null
+  /** Variante compacta para layouts con poco alto visible (p. ej. Chamber). */
+  compact?: boolean
+  /** Mostrar panel público (collection/contract/supply) debajo del arte. */
+  showPublicMetaPanel?: boolean
+  /** Mostrar panel privado (private channel/secret/power/signature) debajo del arte. */
+  showPrivateMetaPanel?: boolean
 }
 
 function truncateContractMid(id: string) {
@@ -116,6 +177,9 @@ export function PhaseArtifactVisualizer({
   onAccessPrivateMetadata,
   supplyMinted = null,
   supplyCap = null,
+  compact = false,
+  showPublicMetaPanel = true,
+  showPrivateMetaPanel = true,
 }: Props) {
   void ownerTruncated
 
@@ -168,7 +232,41 @@ export function PhaseArtifactVisualizer({
   const [mounted, setMounted] = useState(false)
   const [decrypting, setDecrypting] = useState(false)
   const [copiedContract, setCopiedContract] = useState(false)
+  const [mainImgFailed, setMainImgFailed] = useState(false)
+  const [watermarkedImgSrc, setWatermarkedImgSrc] = useState<string | null>(null)
+  const [watermarkBusy, setWatermarkBusy] = useState(false)
   const lightboxTitleId = useId()
+
+  useEffect(() => {
+    setMainImgFailed(false)
+  }, [trimmedImg])
+
+  const shouldUseBakedWatermark = Boolean(trimmedImg) && protectArt && !ownerUnlocked
+
+  useEffect(() => {
+    let cancelled = false
+    if (!shouldUseBakedWatermark || !trimmedImg) {
+      setWatermarkedImgSrc(null)
+      setWatermarkBusy(false)
+      return
+    }
+    setWatermarkBusy(true)
+    setWatermarkedImgSrc(null)
+    const watermarkText = authenticityPending ? "PHASE // OWNERSHIP_PENDING" : "PHASE // PREVIEW_ONLY"
+    void bakeWatermarkIntoImageDataUrl(trimmedImg, watermarkText)
+      .then((dataUrl) => {
+        if (!cancelled) setWatermarkedImgSrc(dataUrl)
+      })
+      .catch(() => {
+        if (!cancelled) setWatermarkedImgSrc(trimmedImg)
+      })
+      .finally(() => {
+        if (!cancelled) setWatermarkBusy(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [authenticityPending, shouldUseBakedWatermark, trimmedImg])
 
   useEffect(() => {
     if (!eligibleForDecrypt) {
@@ -221,6 +319,7 @@ export function PhaseArtifactVisualizer({
     : "border-orange-500/35 bg-orange-950/40 text-orange-200/90"
 
   const showArtFirst = isRestricted && Boolean(trimmedImg)
+  const renderedImgSrc = shouldUseBakedWatermark ? watermarkedImgSrc : trimmedImg
 
   const usePixelTreatment = Boolean(trimmedImg) && !isVerified
   const useBlurOnArt =
@@ -230,15 +329,17 @@ export function PhaseArtifactVisualizer({
     <div className="relative z-[2] w-full">
       <div
         className={cn(
-          "art-retro-monitor relative mx-auto flex w-full max-w-[min(100%,28rem)] items-center justify-center px-2 py-4 sm:px-3 sm:py-5",
-          "min-h-[min(42vw,220px)] max-h-[min(58vh,420px)] sm:min-h-[240px] sm:max-h-[440px]",
+          "art-retro-monitor relative mx-auto flex w-full max-w-[min(100%,32rem)] items-center justify-center px-2 py-4 sm:px-4 sm:py-5",
+          compact
+            ? "max-w-[min(100%,28rem)] min-h-[190px] max-h-[300px] px-2 py-2 sm:min-h-[210px] sm:max-h-[320px] sm:px-3.5 sm:py-3"
+            : "min-h-[min(48vw,260px)] max-h-[min(62svh,520px)] sm:min-h-[280px] sm:max-h-[min(58svh,540px)]",
           !trimmedImg && "min-h-[72px] max-h-[120px]",
           (isRestricted || protectArt || (eligibleForDecrypt && decrypting)) && "phase-artifact-monitor--locked",
           ownerUnlocked && "border-cyan-500/45",
           protectArt && !ownerUnlocked && "border-orange-500/35",
         )}
       >
-        {trimmedImg ? (
+        {renderedImgSrc && !mainImgFailed ? (
           <button
             type="button"
             onClick={() => setLightboxOpen(true)}
@@ -250,16 +351,18 @@ export function PhaseArtifactVisualizer({
           >
             <div
               className={cn(
-                "tactical-holo-wrap relative w-full max-w-full justify-center overflow-hidden rounded-sm",
+                "phase-artifact-preview-clean tactical-holo-wrap relative w-full max-w-full justify-center overflow-hidden rounded-sm",
                 protectArt && "phase-artifact-holo-locked",
               )}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={trimmedImg}
+                src={renderedImgSrc}
                 alt=""
                 className={cn(
-                  "art-retro-monitor__img tactical-holo-img max-h-[min(52vh,400px)] w-auto max-w-full object-contain transition-[filter] duration-500 sm:max-h-[min(56vh,420px)]",
+                  compact
+                    ? "art-retro-monitor__img tactical-holo-img phase-artifact-img-lowres h-[166px] w-[166px] object-contain transition-[filter] duration-500 sm:h-[184px] sm:w-[184px]"
+                    : "art-retro-monitor__img tactical-holo-img max-h-[min(54svh,480px)] w-auto max-w-full object-contain transition-[filter] duration-500 sm:max-h-[min(52svh,500px)]",
                   usePixelTreatment && "phase-artifact-img-pixel",
                   useBlurOnArt && "blur-[6px] sm:blur-[5px]",
                   eligibleForDecrypt && !decrypting && "blur-0",
@@ -267,9 +370,7 @@ export function PhaseArtifactVisualizer({
                 )}
                 loading="lazy"
                 referrerPolicy="no-referrer"
-                onError={(e) => {
-                  e.currentTarget.style.display = "none"
-                }}
+                onError={() => setMainImgFailed(true)}
               />
               {eligibleForDecrypt && decrypting && (
                 <div
@@ -303,6 +404,25 @@ export function PhaseArtifactVisualizer({
               {labels.expandPreview}
             </span>
           </button>
+        ) : watermarkBusy ? (
+          <div className="relative z-[3] flex min-h-[160px] w-full max-w-md flex-col items-center justify-center gap-2 px-4 py-6 text-center">
+            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-300/90">
+              {authenticityPending ? labels.pendingOwnershipVerification : labels.previewOnly}
+            </p>
+          </div>
+        ) : renderedImgSrc && mainImgFailed ? (
+          <div className="relative z-[3] flex min-h-[160px] w-full max-w-md flex-col items-center justify-center gap-2 px-4 py-6 text-center">
+            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-orange-300/90">{labels.noVisual}</p>
+            <p className="max-w-[20rem] text-[9px] leading-relaxed text-zinc-500">{labels.imageLoadHint}</p>
+            <a
+              href={renderedImgSrc}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-[9px] uppercase tracking-widest text-cyan-400/90 underline-offset-2 hover:text-cyan-200 hover:underline"
+            >
+              {labels.openImageUrl}
+            </a>
+          </div>
         ) : (
           <span
             className={cn(
@@ -349,7 +469,7 @@ export function PhaseArtifactVisualizer({
             onClick={() => void copyContractId().catch(() => {})}
             className="ml-3 shrink-0 rounded border border-cyan-500/40 bg-cyan-950/25 px-1.5 py-0.5 text-[8px] font-bold text-cyan-300/90 transition-colors hover:border-cyan-300 hover:text-white"
             title={copiedContract ? "Copied" : "Copy"}
-            aria-label="Copy PHASERLIQ contract address"
+            aria-label="Copy PHASELQ contract address"
           >
             {copiedContract ? "OK" : "COPY"}
           </button>
@@ -442,8 +562,8 @@ export function PhaseArtifactVisualizer({
           <pre className={cn(preClass)}>{topBlock}</pre>
         </div>
       </div>
-      {publicMetaPanel}
-      {privateMonitorPanel}
+      {showPublicMetaPanel ? publicMetaPanel : null}
+      {showPrivateMetaPanel ? privateMonitorPanel : null}
     </div>
   )
 
@@ -474,7 +594,7 @@ export function PhaseArtifactVisualizer({
   const lightbox =
     mounted &&
     lightboxOpen &&
-    trimmedImg &&
+    renderedImgSrc &&
     createPortal(
       <div
         className="fixed inset-0 z-[500] flex items-center justify-center bg-black/92 p-3 sm:p-6"
@@ -500,7 +620,7 @@ export function PhaseArtifactVisualizer({
           <div className="relative inline-block max-w-full">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={trimmedImg}
+              src={renderedImgSrc}
               alt=""
               className={cn(
                 "max-h-[min(88vh,900px)] max-w-full object-contain shadow-[0_0_40px_rgba(251,146,60,0.15)] transition-[filter] duration-500",
@@ -546,6 +666,7 @@ export function PhaseArtifactVisualizer({
         className,
       )}
       aria-label={labels.ariaLabel}
+      suppressHydrationWarning
     >
       {lightbox}
 

@@ -26,7 +26,7 @@ PHASE es un sistema de **Pagos Agénticos** basado en el estándar x402. Permite
 |---------|-----|
 | `public/og-phase.png` | Open Graph / Twitter Card |
 | `public/icon-sphere.png` | Favicon / Apple icon |
-| `public/phaser-liq-token.png` | Icono PHASER_LIQ + `stellar.toml` |
+| `public/phaser-liq-token.png` | Icono PHASELQ + `stellar.toml` |
 | `public/.well-known/stellar.toml` | SEP-0001 |
 
 Metadata en `app/layout.tsx`. Documentación detallada: **README.md** y **`/docs`** en la app.

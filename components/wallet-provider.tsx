@@ -28,6 +28,14 @@ type WalletContextValue = {
 
 const WalletContext = createContext<WalletContextValue | null>(null)
 
+/**
+ * React 18 Strict Mode (dev) monta/desmonta dos veces: sin esto, el auto-claim del faucet
+ * dispara POST duplicados (409 already claimed / 412 trustline) y ensucia la consola de red.
+ */
+/** Solo amortigua el doble `useEffect` de Strict Mode (~ms); no sustituye al ref por wallet. */
+const FAUCET_AUTO_CLAIM_DEDUPE_MS = 4000
+const lastFaucetAutoClaimAt = new Map<string, number>()
+
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [address, setAddress] = useState<string | null>(null)
   const [connecting, setConnecting] = useState(false)
@@ -111,6 +119,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!address || userDisconnectedRef.current) return
     if (autoFundedWalletsRef.current.has(address)) return
+    const now = Date.now()
+    const prev = lastFaucetAutoClaimAt.get(address) ?? 0
+    if (now - prev < FAUCET_AUTO_CLAIM_DEDUPE_MS) return
+    lastFaucetAutoClaimAt.set(address, now)
     autoFundedWalletsRef.current.add(address)
 
     const autoClaimGenesis = async () => {

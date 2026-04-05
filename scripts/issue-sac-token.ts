@@ -14,7 +14,7 @@
  * Opcional:
  *   ISSUE_SAC_LOCK_ISSUER=1   — bloquea la cuenta emisora (master weight 0) tras el mint
  *   ISSUE_SAC_MINT_AMOUNT=100000000 — cantidad a acuñar (string, unidades del activo)
- *   ISSUE_SAC_ASSET_CODE=PHASERLIQ — código en red clásica (solo [A-Za-z0-9], máx. 12; el guion bajo NO está permitido)
+ *   ISSUE_SAC_ASSET_CODE=PHASELQ — código en red clásica (solo [A-Za-z0-9], máx. 12; el guion bajo NO está permitido)
  */
 
 import * as dotenv from "dotenv"
@@ -34,8 +34,8 @@ const HORIZON_URL = process.env.HORIZON_TESTNET_URL?.trim() || "https://horizon-
 const FRIENDBOT_URL = "https://friendbot.stellar.org"
 const NETWORK_PASSPHRASE = Networks.TESTNET
 
-/** En classic Testnet el código debe ser alfanumérico (p. ej. PHASERLIQ). "PHASER_LIQ" falla por el _. */
-const ASSET_CODE = process.env.ISSUE_SAC_ASSET_CODE?.trim() || "PHASERLIQ"
+/** En classic Testnet el código debe ser alfanumérico (p. ej. PHASELQ). "PHASER_LIQ" falla por el _. */
+const ASSET_CODE = process.env.ISSUE_SAC_ASSET_CODE?.trim() || "PHASELQ"
 const MINT_AMOUNT = process.env.ISSUE_SAC_MINT_AMOUNT?.trim() || "100000000"
 const LOCK_ISSUER = process.env.ISSUE_SAC_LOCK_ISSUER === "1" || process.env.ISSUE_SAC_LOCK_ISSUER === "true"
 
@@ -91,7 +91,7 @@ async function main() {
 
   if (ASSET_CODE.length < 1 || ASSET_CODE.length > 12 || !/^[a-zA-Z0-9]+$/.test(ASSET_CODE)) {
     throw new Error(
-      `Código de activo clásico inválido: "${ASSET_CODE}". Use 1–12 caracteres alfanuméricos (sin _). Ej: PHASERLIQ`,
+      `Código de activo clásico inválido: "${ASSET_CODE}". Use 1–12 caracteres alfanuméricos (sin _). Ej: PHASELQ`,
     )
   }
 

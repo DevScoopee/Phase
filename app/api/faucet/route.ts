@@ -7,6 +7,7 @@ import {
   expectedClassicPhaserLiqSorobanContractId,
   readClassicWalletStatus,
 } from "@/lib/classic-liq"
+import { validateFaucetIssuerConfig } from "@/lib/env-validation"
 import { warnPhaserLiqSacMismatchOnce } from "@/lib/phaser-liq-sac-warn"
 import { resolvePhaserLiqClassicAsset, summarizeSorobanFailedMint } from "@/lib/stellar"
 import {
@@ -371,7 +372,7 @@ function faucetMintLedgerFailedResponse(
     {
       error: "La transacción falló en el ledger (Soroban).",
       code: "FAUCET_MINT_LEDGER_FAILED",
-      detail: `En esta petición ya comprobamos en Horizon que tenías trustline PHASERLIQ (mismo code+issuer que la app). El rechazo viene del contrato token o de otra regla on-chain, no de “falta trustline”. Detalle: ${sorobanSummary}. Abre el hash en Stellar Expert (Soroban testnet) para ver el motivo exacto.`,
+      detail: `En esta petición ya comprobamos en Horizon que tenías trustline PHASELQ (mismo code+issuer que la app). El rechazo viene del contrato token o de otra regla on-chain, no de “falta trustline”. Detalle: ${sorobanSummary}. Abre el hash en Stellar Expert (Soroban testnet) para ver el motivo exacto.`,
       hash,
       sorobanSummary,
     },
@@ -380,7 +381,7 @@ function faucetMintLedgerFailedResponse(
 }
 
 /**
- * El mint Soroban acredita el mismo PHASERLIQ que el asset clásico: sin trustline el ledger rechaza la tx.
+ * El mint Soroban acredita el mismo PHASELQ que el asset clásico: sin trustline el ledger rechaza la tx.
  * Usa solo vars públicas (NEXT_PUBLIC_CLASSIC_LIQ_*) — no requiere CLASSIC_LIQ_ISSUER_SECRET.
  */
 async function preflightClassicTrustlineForMint(userAddress: string): Promise<NextResponse | null> {
@@ -390,10 +391,12 @@ async function preflightClassicTrustlineForMint(userAddress: string): Promise<Ne
     if (!ws.accountExists) {
       return NextResponse.json(
         {
-          error: "Cuenta no encontrada en testnet.",
-          code: "ACCOUNT_NOT_FOUND",
-          detail:
-            "Fóndate con Friendbot (XLM). Luego en Forja completa INITIALIZE PHASER PROTOCOL (trustline) y vuelve a reclamar.",
+          error: "Cuenta de usuario no encontrada en testnet.",
+          code: "USER_ACCOUNT_NOT_FOUND",
+          detail: `La wallet ${userAddress.slice(0, 8)}... no existe en Stellar testnet. ` +
+                  `Debes fondearla primero con XLM usando Friendbot antes de poder recibir PHASELQ.`,
+          hint: `Visita: https://friendbot.stellar.org/?addr=${userAddress}`,
+          action: "Fondea tu cuenta con XLM usando Friendbot, luego vuelve a intentar.",
         },
         { status: 412 },
       )
@@ -401,23 +404,48 @@ async function preflightClassicTrustlineForMint(userAddress: string): Promise<Ne
     if (!ws.hasTrustline) {
       return NextResponse.json(
         {
-          error: "Falta la trustline PHASERLIQ.",
+          error: "Trustline PHASELQ no encontrada.",
           code: "TRUSTLINE_REQUIRED",
-          detail:
-            "En Forja pulsa INITIALIZE PHASER PROTOCOL, firma changeTrust en Freighter y reclama de nuevo. Sin esto el mint falla en ledger.",
+          detail: `Tu wallet ${userAddress.slice(0, 8)}... existe pero no tiene trustline para ${asset.code}:${asset.issuer.slice(0, 8)}... ` +
+                  `Sin trustline, el ledger de Stellar rechazará cualquier recepción de este asset.`,
+          hint: "En la página de Forge, haz clic en 'INITIALIZE PHASER PROTOCOL' para establecer la trustline automáticamente.",
+          actionSteps: [
+            "1. Ve a la página /forge",
+            "2. Conecta tu wallet Freighter",
+            "3. Haz clic en 'INITIALIZE PHASER PROTOCOL'",
+            "4. Firma la transacción changeTrust en Freighter",
+            "5. Vuelve a intentar reclamar del faucet",
+          ],
+          asset,
         },
         { status: 412 },
       )
     }
-  } catch {
-    // Horizon intermitente: no bloqueamos el mint (comportamiento previo).
+
+    // Validación adicional: verificar que el usuario tenga algo de XLM para fees
+    // (aunque el faucet paga el mint, el usuario necesita XLM para operaciones futuras)
+    const userXlmRes = await fetch(`${HORIZON_URL}/accounts/${encodeURIComponent(userAddress)}`, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    })
+    if (userXlmRes.ok) {
+      const userData = await userXlmRes.json() as { balances?: Array<{ asset_type?: string; balance?: string }> }
+      const nativeBalance = userData.balances?.find(b => b.asset_type === "native")?.balance
+      const xlmAmount = nativeBalance ? parseFloat(nativeBalance) : 0
+      if (xlmAmount < 1) {
+        console.warn(`[faucet] Warning: user ${userAddress.slice(0, 8)}... has only ${xlmAmount} XLM. Consider funding more.`)
+      }
+    }
+  } catch (e) {
+    // Horizon intermitente: loggear pero no bloqueamos el mint
+    console.warn("[faucet] Horizon check failed, proceeding anyway:", e instanceof Error ? e.message : String(e))
     return null
   }
   return null
 }
 
 /**
- * PHASERLIQ al usuario:
+ * PHASELQ al usuario:
  * - **mint** (por defecto): firma `ADMIN_SECRET_KEY` — en el Stellar Asset Contract debe ser el **Issuer** (G… del asset), no un distribuidor.
  * - **transfer** (opcional): si existe `FAUCET_DISTRIBUTOR_SECRET_KEY`, se llama `transfer(distribuidor → usuario)`; el distribuidor debe tener saldo y XLM para fees.
  *
@@ -525,34 +553,66 @@ export async function POST(req: NextRequest) {
   const server = new rpc.Server(RPC_URL)
   const source = signerKp.publicKey()
 
+  // Validación estricta: en modo mint, el signer DEBE ser el issuer del asset clásico
   if (!useTransfer) {
     const sacExpected = expectedClassicPhaserLiqSorobanContractId()
-    if (tokenId === sacExpected) {
-      const issuerG = classicLiqIssuerForStellarToml()
-      if (source !== issuerG) {
-        return NextResponse.json(
-          {
-            error:
-              "Modo mint + SAC PHASERLIQ: ADMIN_SECRET_KEY debe ser el secret del Issuer (misma G… que NEXT_PUBLIC_CLASSIC_LIQ_ISSUER). Solo el issuer puede mint en el Stellar Asset Contract; un distribuidor provoca fallos tipo ihf_trapped. Alternativa: define FAUCET_DISTRIBUTOR_SECRET_KEY y liquidez en esa cuenta para pagar con transfer.",
-            code: "FAUCET_ADMIN_NOT_ISSUER",
-            expectedIssuer: issuerG,
-            signerPublic: source,
-          },
-          { status: 503 },
-        )
-      }
+    const issuerG = classicLiqIssuerForStellarToml()
+
+    // Verificar mismatch usando la nueva función de validación
+    const issuerValidationError = validateFaucetIssuerConfig(
+      process.env.ADMIN_SECRET_KEY,
+      issuerG,
+    )
+
+    if (issuerValidationError) {
+      return NextResponse.json(
+        {
+          error: issuerValidationError,
+          code: "FAUCET_ADMIN_NOT_ISSUER",
+          expectedIssuer: issuerG,
+          signerPublic: source,
+          hint: "Para modo mint, ADMIN_SECRET_KEY debe ser el secret del issuer del asset PHASELQ. " +
+                "O configura FAUCET_DISTRIBUTOR_SECRET_KEY para usar modo transfer.",
+        },
+        { status: 503 },
+      )
+    }
+
+    // Validación adicional: verificar que el tokenId coincida con el SAC esperado
+    if (tokenId !== sacExpected) {
+      console.warn("[faucet] Warning: TOKEN_ADDRESS no coincide con el SAC derivado del asset clásico", {
+        configured: tokenId,
+        expectedFromClassic: sacExpected,
+      })
     }
   }
 
+  // Validación estricta de balance XLM antes de intentar cualquier transacción
   const nativeXlm = await fetchNativeXlmBalance(source)
-  if (nativeXlm != null && nativeXlm < MIN_SIGNER_NATIVE_XLM) {
+  if (nativeXlm === null) {
     return NextResponse.json(
       {
-        error: `La cuenta que firma el faucet tiene ~${nativeXlm.toFixed(2)} XLM; se recomiendan al menos ${MIN_SIGNER_NATIVE_XLM} XLM en testnet para fees Soroban (si no, suele fallar con trap / ihf_trapped).`,
+        error: `No se pudo verificar el balance XLM de la cuenta firmante (${source.slice(0, 8)}...). ` +
+               `Asegúrate de que la cuenta exista en testnet y tenga fondos.`,
+        code: "FAUCET_SIGNER_ACCOUNT_NOT_FOUND",
+        signer: source,
+        hint: "Fondea la cuenta con Friendbot: https://friendbot.stellar.org/?addr=" + source,
+      },
+      { status: 503 },
+    )
+  }
+
+  if (nativeXlm < MIN_SIGNER_NATIVE_XLM) {
+    return NextResponse.json(
+      {
+        error: `La cuenta firmante tiene solo ${nativeXlm.toFixed(2)} XLM, pero se requieren al menos ${MIN_SIGNER_NATIVE_XLM} XLM ` +
+               `para pagar fees de Soroban y renta de almacenamiento. Sin suficiente XLM, las transacciones fallan con ` +
+               `"trap" o "ihf_trapped" (insufficient balance para fees).`,
         code: "FAUCET_SIGNER_LOW_XLM",
         signer: source,
         nativeXlmApprox: nativeXlm,
-        minRecommendedXlm: MIN_SIGNER_NATIVE_XLM,
+        minRequiredXlm: MIN_SIGNER_NATIVE_XLM,
+        hint: `Fondea la cuenta ${source.slice(0, 8)}... con al menos ${MIN_SIGNER_NATIVE_XLM - nativeXlm + 1} XLM más usando Friendbot.`,
       },
       { status: 503 },
     )

@@ -6,15 +6,23 @@ import { Toaster } from "sonner"
 import { LangProvider } from "@/components/lang-context"
 import { WalletProvider } from "@/components/wallet-provider"
 
-/** Evita que Next/Turbopack muestre overlay por `Promise.reject(undefined)` (p. ej. Freighter en edge cases). */
+/**
+ * Respaldo si el `Script` beforeInteractive del layout no aplicó (p. ej. orden de listeners).
+ * Next 16+ ya habrá mostrado el overlay en muchos casos; el arreglo principal es layout + `stopImmediatePropagation`.
+ */
 function SwallowEmptyUnhandledRejections() {
   useEffect(() => {
     const onRejection = (event: PromiseRejectionEvent) => {
-      if (event.reason === undefined || event.reason === null) {
-        event.preventDefault()
-        if (process.env.NODE_ENV === "development") {
-          console.warn("[PHASE] Ignored promise rejection with empty reason (often wallet extension).")
-        }
+      const r = event.reason
+      if (r !== undefined && r !== null && r !== "") return
+      event.preventDefault()
+      try {
+        event.stopImmediatePropagation()
+      } catch {
+        /* ignore */
+      }
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[PHASE] Ignored promise rejection with empty reason (often wallet extension).")
       }
     }
     window.addEventListener("unhandledrejection", onRejection)

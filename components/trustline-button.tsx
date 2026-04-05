@@ -146,8 +146,21 @@ export function TrustlineButton({ address, onRequestConnect, onReady, className 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ signedXdr }),
       })
-      const payload = (await submitRes.json().catch(() => ({}))) as { error?: string }
-      if (!submitRes.ok) throw new Error(payload.error || `HTTP ${submitRes.status}`)
+      const payload = (await submitRes.json().catch(() => ({}))) as { error?: string; detail?: string; code?: string }
+      if (!submitRes.ok) {
+        // Mensajes de error más específicos basados en el código
+        if (payload.code === "ACCOUNT_NOT_FOUND" || payload.error?.includes("not found")) {
+          throw new Error(
+            `Cuenta no encontrada\n\n` +
+            `${payload.detail || ""}\n\n` +
+            `Hint: Fondea tu cuenta con XLM primero usando Friendbot.`
+          )
+        }
+        if (payload.code === "TRUSTLINE_EXISTS") {
+          throw new Error("La trustline ya existe. Intenta sincronizar.")
+        }
+        throw new Error(payload.error || `Error del servidor: HTTP ${submitRes.status}`)
+      }
 
       let ready = false
       for (let i = 0; i < 8; i++) {
@@ -231,7 +244,19 @@ export function TrustlineButton({ address, onRequestConnect, onReady, className 
           </a>
         ) : null}
       </div>
-      {message ? <p className="mt-1 text-[9px] text-cyan-100/80">{message}</p> : null}
+      {message ? (
+        <div className="mt-1.5 rounded border border-cyan-500/20 bg-cyan-950/40 p-1.5">
+          <p className="whitespace-pre-line text-[9px] leading-relaxed text-cyan-100/90">{message}</p>
+        </div>
+      ) : null}
+      {/* Info box con asset details */}
+      {asset && uiState !== "READY" && (
+        <div className="mt-2 text-[8px] text-cyan-400/60">
+          <p className="uppercase tracking-wider">Asset:</p>
+          <p className="font-mono">{asset.code}:{asset.issuer.slice(0, 12)}...</p>
+          <p className="mt-0.5 italic opacity-80">Necesario para recibir PHASELQ del faucet</p>
+        </div>
+      )}
     </section>
   )
 }

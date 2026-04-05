@@ -1,5 +1,5 @@
 /**
- * Stellar clásico (Horizon) — asset PHASERLIQ alineado con TrustlineButton / stellar.toml.
+ * Stellar clásico (Horizon) — asset PHASELQ alineado con TrustlineButton / stellar.toml.
  * TrustlineButton usa el `asset` devuelto por GET /api/classic-liq; ese endpoint debe usar
  * la misma resolución que aquí cuando no hay CLASSIC_LIQ_ISSUER_SECRET.
  */
@@ -15,7 +15,7 @@ import {
 
 /**
  * Activo clásico para trustline / comprobaciones Horizon: si NEXT_PUBLIC_* está completo,
- * coincide con Freighter; si no, cae al mismo emisor por defecto que `stellar.toml` (GAX… + PHASERLIQ).
+ * coincide con Freighter; si no, cae al mismo emisor por defecto que `stellar.toml` (GAX… + PHASELQ).
  */
 export function resolvePhaserLiqClassicAsset(): ClassicLiqAsset {
   const fromEnv = classicLiqAssetConfigFromPublicEnv()
@@ -34,7 +34,7 @@ export function createPhaserLiqClassicSdkAsset(): Asset {
 
 /**
  * El servidor no puede firmar changeTrust por el usuario; solo comprobar Horizon antes de un payment.
- * Usar en rutas que envían PHASERLIQ clásico (p. ej. bootstrap issuer → wallet).
+ * Usar en rutas que envían PHASELQ clásico (p. ej. bootstrap issuer → wallet).
  */
 export async function ensureTrustlineBeforeClassicPayment(
   walletAddress: string,

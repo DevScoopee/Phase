@@ -7,9 +7,11 @@
     "dev": "next dev",
     "interact": "next dev",
     "lint": "eslint .",
+    "diagnose": "tsx diagnose-env.ts",
     "set:issuer-home-domain": "cd scripts && npm run set:issuer-home-domain",
     "classic:issuer-to-distributor": "cd scripts && npm run issuer-to-distributor",
     "setup:phase-v2": "cd scripts && npm run setup:phase-v2",
+    "reset:phase": "cd scripts && npm run reset:phase",
     "start": "next start"
   },
   "dependencies": {
@@ -76,6 +78,7 @@
     "next": "16.2.2"
   },
   "devDependencies": {
+    "tsx": "^4.21.0",
     "@tailwindcss/postcss": "^4.1.9",
     "@types/node": "^22",
     "@types/react": "^19",

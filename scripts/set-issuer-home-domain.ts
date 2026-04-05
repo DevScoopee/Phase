@@ -1,5 +1,5 @@
 /**
- * Publica `home_domain` en la cuenta emisora del asset clásico PHASERLIQ (Horizon testnet).
+ * Publica `home_domain` en la cuenta emisora del asset clásico PHASELQ (Horizon testnet).
  * Así Freighter / wallets resuelven https://TU_DOMINIO/.well-known/stellar.toml y el icono.
  *
  * Requiere CLASSIC_LIQ_ISSUER_SECRET (misma que POST /api/classic-liq bootstrap).
@@ -23,6 +23,10 @@ dotenv.config({ path: path.join(repoRoot, ".env") })
 dotenv.config({ path: path.join(__dirname, ".env") })
 
 const HORIZON_URL = process.env.HORIZON_TESTNET_URL?.trim() || "https://horizon-testnet.stellar.org"
+
+/** Debe coincidir con `LEGACY_PHASERLIQ_ISSUER` en `lib/classic-liq.ts` (PHASERLIQ-GAXR…). */
+const LEGACY_PHASERLIQ_ISSUER =
+  "GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS"
 
 function parseHomeDomainFromEnv(): string {
   const explicit = process.env.CLASSIC_LIQ_ISSUER_HOME_DOMAIN?.trim()
@@ -66,10 +70,16 @@ async function main() {
 
   const server = new Horizon.Server(HORIZON_URL)
   const pub = kp.publicKey()
+  console.log(`Emisor derivado del secret en uso: ${pub}`)
   const account = await server.loadAccount(pub)
   const current = (account.home_domain ?? "").trim()
   if (current === homeDomain) {
     console.log(`home_domain ya es "${homeDomain}" en ${pub}. Nada que hacer.`)
+    if (pub !== LEGACY_PHASERLIQ_ISSUER) {
+      console.log(
+        `Si en Stellar Expert miras PHASERLIQ-${LEGACY_PHASERLIQ_ISSUER.slice(0, 4)}… (emisor legado), es otra cuenta: hay que ejecutar este script con CLASSIC_LIQ_ISSUER_SECRET de esa cuenta (${LEGACY_PHASERLIQ_ISSUER}).`,
+      )
+    }
     return
   }
   if (current) {

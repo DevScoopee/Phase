@@ -84,7 +84,50 @@ export type ArtifactLabelsCopy = {
   holderSignature: string
   rawMetadata: string
   pendingOwnershipVerification: string
+  /** Imagen remota no carga (CORS, gateway IPFS, URL caída). */
+  imageLoadHint: string
+  openImageUrl: string
 }
+
+/** PhaseError 1..13; índice 0 sin usar. Misma lista para forja y cámara. */
+const PHASE_HOST_CONTRACT_ERRORS_EN: readonly string[] = [
+  "",
+  "You already hold a PHASE for this collection (AlreadyPhased).",
+  "Not enough PHASELQ on the Soroban token contract this app uses. Freighter may show classic PHASELQ while settle reads the SAC—use the faucet, wait for confirmation, or fund the same C… contract.",
+  "Token transfer failed inside the protocol (TransferFailed). Retry or check SAC balance.",
+  "Wrong token contract: PHASE expects its authorized PHASELQ SAC (UnauthorizedToken). Check NEXT_PUBLIC_PHASER_TOKEN_ID matches this deployment.",
+  "This invoice was already settled or cannot be paid again (SettlementFailed). Start a new x402 flow.",
+  "Invalid x402 invoice (InvalidInvoice).",
+  "Unknown or invalid collection id (InvalidCollection).",
+  "This wallet already created a collection (CreatorAlreadyHasCollection). Open Forge / Chamber for that collection id.",
+  "Amount is below this collection’s fusion price (AmountBelowCollectionPrice).",
+  "Collection metadata breaks protocol rules—name, price, or image URI (InvalidCollectionMetadata).",
+  "That PHASE NFT id does not exist (NftNotFound).",
+  "You are not the on-chain owner of that NFT (NotNftOwner).",
+  "Cannot transfer a PHASE NFT to yourself (SelfTransfer).",
+]
+
+const PHASE_HOST_CONTRACT_ERRORS_ES: readonly string[] = [
+  "",
+  "Ya tenés un PHASE para esta colección (AlreadyPhased).",
+  "PHASELQ insuficiente en el contrato Soroban (SAC) que usa esta app. Freighter puede mostrar saldo clásico pero el settle lee el SAC—usá el faucet, esperá confirmación o fondeá el mismo contrato C….",
+  "Falló una transferencia de token en el protocolo (TransferFailed). Reintentá o revisá saldo en el SAC.",
+  "Contrato de token incorrecto: PHASE solo acepta el SAC PHASELQ autorizado (UnauthorizedToken). Verificá NEXT_PUBLIC_PHASER_TOKEN_ID con este despliegue.",
+  "Esa factura ya se liquidó o no se puede pagar de nuevo (SettlementFailed). Iniciá un flujo x402 nuevo.",
+  "Factura x402 inválida (InvalidInvoice).",
+  "Id de colección inexistente o inválido (InvalidCollection).",
+  "Esta wallet ya creó una colección (CreatorAlreadyHasCollection). Abrí Forja/Cámara con ese id.",
+  "El monto es menor que el precio de fusión de la colección (AmountBelowCollectionPrice).",
+  "Los metadatos de la colección no cumplen las reglas del protocolo (InvalidCollectionMetadata).",
+  "Ese id de NFT PHASE no existe (NftNotFound).",
+  "No sos el dueño on-chain de ese NFT (NotNftOwner).",
+  "No podés transferir un NFT PHASE a vos mismo (SelfTransfer).",
+]
+
+const PHASE_HOST_CONTRACT_UNKNOWN_EN =
+  "PHASE contract host error #{code}. See contracts/phase-protocol (PhaseError) or the full host diagnostic."
+const PHASE_HOST_CONTRACT_UNKNOWN_ES =
+  "Error de host en contrato PHASE #{code}. Ver contracts/phase-protocol (PhaseError) o el diagnóstico completo del host."
 
 export const phaseCopy: Record<
   AppLang,
@@ -246,6 +289,15 @@ export const phaseCopy: Record<
         finalUri: string
         lowEnergyAgent: string
         manualNoImage: string
+        /** Usuario cerró Freighter / rechazó la firma del settle x402 */
+        userAbortedFreighter: string
+        /** Settle on-chain OK pero el servidor Oracle respondió ≥500 */
+        oracleOfflineAfterPayment: string
+        /** Fallback cuando el mensaje no es legible (códigos internos) */
+        fusionChamberHalted: string
+        /** Índice 0 vacío; 1..13 = PhaseError on-chain (ver contracts/phase-protocol). */
+        phaseHostContractErrors: readonly string[]
+        phaseHostContractUnknown: string
       }
       placeholders: {
         collectionName: string
@@ -274,6 +326,8 @@ export const phaseCopy: Record<
       wallet: string
       offline: string
       liqBalance: string
+      /** Si `getTokenBalance` > saldo del SAC del protocolo; `{total}` = formato 0.00 */
+      liqBalanceIssuerMismatch: string
       collectionId: string
       collectionIdProtocol: string
       x402Price: string
@@ -339,8 +393,9 @@ export const phaseCopy: Record<
       creatorAlreadyMinted: string
       freighterManualAddTitle: string
       freighterManualAddBody: string
+      freighterManualAddTroubleshoot: string
       protocolStackLabel: string
-      /** Subtítulo bajo saldo PHASERLIQ — liquidez SEP-41. */
+      /** Subtítulo bajo saldo PHASELQ — liquidez SEP-41. */
       tokenStandardSep41Note: string
       rewardsLiquidityLaneTitle: string
       rewardsMissionChainTitle: string
@@ -353,8 +408,11 @@ export const phaseCopy: Record<
       rewardsTrustlineRejectedToast: string
       /** Cuenta sin XLM / no existe en testnet. */
       rewardsTrustlineAccountMissing: string
-      /** Error narrativo para unauthorized on-chain (`Contract, #13`). */
+      /** Error narrativo si el mensaje contiene "unauthorized" sin código PHASE claro. */
       biometricTrustGateClosed: string
+      /** Índice 0 vacío; 1..13 = PhaseError on-chain. */
+      phaseHostContractErrors: readonly string[]
+      phaseHostContractUnknown: string
       logs: ChamberLogsCopy
       artifact: ArtifactLabelsCopy
     }
@@ -371,7 +429,7 @@ export const phaseCopy: Record<
     dashboard: {
       title: "On-chain collections",
       subtitle:
-        "Each card is a PHASE collection. Mint opens the fusion chamber for that collection: pay the listed PHASERLIQ via initiate_phase and receive the utility NFT.",
+        "Each card is a PHASE collection. Mint opens the fusion chamber for that collection: pay the listed PHASELQ via initiate_phase and receive the utility NFT.",
       shieldBlurb:
         "A screenshot is just a poster — it is not the contract. Your PHASE utility NFT is the on-chain key; previews here stay low-trust until you verify in the Reactor.",
       refresh: "Refresh ledger",
@@ -383,10 +441,10 @@ export const phaseCopy: Record<
       empty: "No collections yet — forge one first.",
       noPreview: "No image URL",
       creator: "Creator",
-      mint: "Mint NFT — pay PHASERLIQ",
+      mint: "Mint NFT — pay PHASELQ",
       openChamber: "Open chamber",
       id: "ID",
-      priceSuffix: "PHASERLIQ",
+      priceSuffix: "PHASELQ",
       previewPendingFusion: "[ PENDING_FUSION ]",
       previewUnverifiedCopy: "[ UNVERIFIED_COPY ]",
       previewChainVerified: "[ CHAIN_VERIFIED ]",
@@ -397,8 +455,8 @@ export const phaseCopy: Record<
       sellModalTitle: "Sell / transfer NFT",
       buyerAddressLabel: "Buyer Stellar address (G…)",
       buyerHint:
-        "Agree PHASERLIQ payment with the buyer off-wallet, then transfer the on-chain NFT here. Requires deployed contract with transfer_phase_nft.",
-      listingPriceLabel: "List price (PHASERLIQ)",
+        "Agree PHASELQ payment with the buyer off-wallet, then transfer the on-chain NFT here. Requires deployed contract with transfer_phase_nft.",
+      listingPriceLabel: "List price (PHASELQ)",
       listingPublish: "[ PUBLISH_LISTING ]",
       listingHint: "Listing is visible on this market; payment is peer-to-peer.",
       transferNft: "[ TRANSFER_ON_CHAIN ]",
@@ -461,10 +519,10 @@ export const phaseCopy: Record<
       market: "Market",
       chamber: "Chamber",
       intro:
-        "The Oracle compiles your anomaly into solid-state art + SEP-20 lore. x402 settlement in PHASERLIQ unlocks the model; then the protocol mints your collection on-chain.",
+        "The Oracle compiles your anomaly into solid-state art + SEP-20 lore. x402 settlement in PHASELQ unlocks the model; then the protocol mints your collection on-chain.",
       anomalyLabel: "[ ENTER_ANOMALY_DESCRIPTION ]",
       collectionName: "Collection name",
-      fusionPrice: "Fusion price (PHASERLIQ)",
+      fusionPrice: "Fusion price (PHASELQ)",
       readout: "READOUT",
       linkWallet: "Link wallet",
       linking: "Linking…",
@@ -488,7 +546,7 @@ export const phaseCopy: Record<
       tabManual: "[ MANUAL_OVERRIDE ]",
       manualBadge: "◈ DIRECT_UPLOAD // NO_X402",
       manualIntro:
-        "Bypass the Oracle: supply your own image (file or https/ipfs URL), write lore locally, and mint the collection on Soroban in one step. No PHASERLIQ x402 settlement — only ledger fees.",
+        "Bypass the Oracle: supply your own image (file or https/ipfs URL), write lore locally, and mint the collection on Soroban in one step. No PHASELQ x402 settlement — only ledger fees.",
       manualDropLabel: "[ DROP_FILE // IMAGE ]",
       manualDropHint: "PNG · JPEG · WebP — or use URI field below",
       manualUrlLabel: "[ IMAGE_URI ]",
@@ -511,7 +569,7 @@ export const phaseCopy: Record<
         "[ SYSTEM: COMPILING_LORE... ]",
         "[ SYSTEM: FORGING_MATTER... ]",
       ],
-      signingPayment: "[ X402 ] OPENING_FREIGHTER — PHASERLIQ_SETTLE…",
+      signingPayment: "[ X402 ] OPENING_FREIGHTER — PHASELQ_SETTLE…",
       paywallNegotiating: "[ X402 ] NEGOTIATING_PAYWALL…",
       trustline_section_title: "PHASER protocol init",
       trustline_standby: "[ INITIALIZE_PHASER_PROTOCOL ]",
@@ -534,7 +592,7 @@ export const phaseCopy: Record<
       errors: {
         connectWallet: "Connect your wallet first.",
         nameShort: "Collection name is too short (min. 2 characters).",
-        priceInvalid: "Invalid PHASERLIQ price.",
+        priceInvalid: "Invalid PHASELQ price.",
         collectionIdRead: "Could not read collection_id on-chain.",
         creatorAlreadyHasCollection: "This wallet already has a collection (#{id}). Open the chamber for that collection instead of creating a new one.",
         clipboard: "Could not copy to clipboard.",
@@ -544,8 +602,15 @@ export const phaseCopy: Record<
         agentNot402: "Unexpected response from forge-agent (expected 402 then paid run).",
         fetchAgentImage: "Could not download generated image for mint.",
         finalUri: "Could not produce a valid on-chain image URI (try enabling IPFS upload).",
-        lowEnergyAgent: "Insufficient PHASERLIQ for Oracle x402 settlement (see balance).",
+        lowEnergyAgent: "Insufficient PHASELQ for Oracle x402 settlement (see balance).",
         manualNoImage: "Provide an image file or a valid https:// or ipfs:// URL.",
+        userAbortedFreighter: "Payment cancelled in Freighter (x402 PHASELQ settle was not signed).",
+        oracleOfflineAfterPayment:
+          "On-chain settlement likely succeeded, but the Oracle step failed (often Gemini: missing key, quota, or model). PHASELQ was debited. Fix GEMINI_API_KEY / GEMINI_MODEL on the server, check logs, then retry — or use Manual forge without another settle.",
+        fusionChamberHalted:
+          "[ PROTOCOL_HALTED: ERROR_IN_FUSION_CHAMBER ] — Check PHASELQ balance, contract IDs, IPFS config, and the browser console for the underlying error.",
+        phaseHostContractErrors: PHASE_HOST_CONTRACT_ERRORS_EN,
+        phaseHostContractUnknown: PHASE_HOST_CONTRACT_UNKNOWN_EN,
       },
       placeholders: {
         collectionName: "Crypto-Art 2026",
@@ -574,7 +639,9 @@ export const phaseCopy: Record<
       reqLiqPrefix: "REQ ≥",
       wallet: "Wallet",
       offline: "— OFFLINE —",
-      liqBalance: "PHASERLIQ_BALANCE",
+      liqBalance: "PHASELQ_BALANCE",
+      liqBalanceIssuerMismatch:
+        "Also held as PHASELQ elsewhere: {total} — only the balance above is spendable for settlement on this protocol deployment.",
       collectionId: "Collection_ID",
       collectionIdProtocol: "0 (protocol)",
       x402Price: "X402_Price",
@@ -625,14 +692,14 @@ export const phaseCopy: Record<
       pedestalDefault: "PROTOCOL_DEFAULT · CORE_LIQUIDITY_POOL",
       collectionLine: "Collection #{id} · {name}",
       collectionLinkTitle: "Collection #{id}",
-      faucetButton: "[ ⚡ RECHARGE_PHASERLIQ ]",
+      faucetButton: "[ ⚡ RECHARGE_PHASELQ ]",
       rewardsSectionTitle: "[ LIQ_REWARDS ]",
-      rewardsHelpAria: "Help: PHASERLIQ and reward programs",
+      rewardsHelpAria: "Help: PHASELQ and reward programs",
       rewardsHelpClose: "Close",
-      rewardsHelpModalTitle: "PHASERLIQ & rewards",
+      rewardsHelpModalTitle: "PHASELQ & rewards",
       rewardsHelpLiqTitle: "What is LIQ?",
       rewardsHelpLiqBody:
-        "LIQ is the short name we show in the UI for PHASERLIQ, the Soroban testnet utility token for PHASE. You use it to pay mint prices (initiate_phase / x402 settlement) and to experiment with the reactor. Balances use seven decimals like other Stellar assets. This is testnet liquidity—not real money.",
+        "LIQ is the short name we show in the UI for PHASELQ, the Soroban testnet utility token for PHASE. You use it to pay mint prices (initiate_phase / x402 settlement) and to experiment with the reactor. Balances use seven decimals like other Stellar assets. This is testnet liquidity—not real money.",
       rewardsHelpQuestsTitle: "Genesis, daily, and quests",
       rewardsHelpQuestsBody:
         "Genesis is a one-time starting grant for new wallets. Daily recharge refills on a 24-hour timer. Quests are one-time missions (connect wallet, forge a collection, complete a settlement). Progress bars show eligibility; Claim requests a server-signed mint when requirements are met.",
@@ -642,10 +709,12 @@ export const phaseCopy: Record<
       creatorAlreadyMinted: "Creator already minted this collection with this wallet.",
       freighterManualAddTitle: "FREIGHTER_COLLECTIBLE",
       freighterManualAddBody:
-        "If it does not appear automatically: Freighter -> Collectibles -> Add manually -> paste contract + token ID.",
+        "If it does not appear automatically: Freighter -> Collectibles -> Add manually.",
+      freighterManualAddTroubleshoot:
+        "If Freighter shows “Collectible not found”, verify Collection Address + Token ID exactly as shown below and retry after 30-90s (indexing delay).",
       protocolStackLabel:
-        "x402 · PHASERLIQ = Soroban fungible (SEP-41) · forged artifact = immutable utility NFT (metadata SEP-20)",
-      tokenStandardSep41Note: "PHASERLIQ adheres to SEP-41 (Soroban token interface).",
+        "x402 · PHASELQ = Soroban fungible (SEP-41) · forged artifact = immutable utility NFT (metadata SEP-20)",
+      tokenStandardSep41Note: "PHASELQ adheres to SEP-41 (Soroban token interface).",
       rewardsLiquidityLaneTitle: "LIQUIDITY_BOOTSTRAP",
       rewardsMissionChainTitle: "OPERATOR_QUEST_CHAIN",
       rewardsButtonEstablishingTrustline: "[ ESTABLISHING_TRUSTLINE... ]",
@@ -653,8 +722,10 @@ export const phaseCopy: Record<
       rewardsTokenTicker: "LIQ",
       rewardsTrustlineRejectedToast: "[ TRUSTLINE_REQUIRED_TO_RECEIVE_FUNDS ] Approve changeTrust in Freighter.",
       rewardsTrustlineAccountMissing:
-        "Stellar account not on testnet or unfunded. Add test XLM (Friendbot) before claiming PHASERLIQ.",
+        "Stellar account not on testnet or unfunded. Add test XLM (Friendbot) before claiming PHASELQ.",
       biometricTrustGateClosed: "[ ERROR: BIOMETRIC_TRUST_GATE_CLOSED ]",
+      phaseHostContractErrors: PHASE_HOST_CONTRACT_ERRORS_EN,
+      phaseHostContractUnknown: PHASE_HOST_CONTRACT_UNKNOWN_EN,
       logs: {
         chamberOnline: "[ CHAMBER_ONLINE ] AWAITING_OPERATOR_HANDSHAKE…",
         walletRequest: "[ WALLET ] REQUESTING_SIGNER_CHANNEL…",
@@ -680,14 +751,14 @@ export const phaseCopy: Record<
         decrypting: "[ DECRYPTING_PROTECTED_DATA... ]",
         x402Ok: "[ X402_PIPELINE_OK ] ENERGY_ROUTED",
         forgedOnSettle: "[ PHASE_NFT_FORGED_ON_SETTLE ] CHECK_PEDESTAL",
-        faucetEmitting: "[ EMITTING_PHASERLIQ_FOR_OPERATOR... ]",
+        faucetEmitting: "[ EMITTING_PHASELQ_FOR_OPERATOR... ]",
         faucetLoadingSupply: "[ LOADING_SUPPLY... ]",
-        faucetOk: "[ PHASERLIQ_MINT_CONFIRMED ] BALANCE_REFRESHED",
-        faucetReceived: "[ +{amount} PHASERLIQ RECEIVED ]",
+        faucetOk: "[ PHASELQ_MINT_CONFIRMED ] BALANCE_REFRESHED",
+        faucetReceived: "[ +{amount} PHASELQ RECEIVED ]",
         faucetFailPrefix: "[ FAUCET_FAULT ]",
         genesisSupplyRequested: "[ SOLICITANDO_ENERGÍA_AL_NÚCLEO... ]",
         genesisTransferComplete: "[ GENESIS_SUPPLY_TRANSFER_OK ] REACTOR_CHARGED",
-        classicTrustlineEstablishing: "[ CLASSIC_PHASERLIQ ] CHECKING_TRUSTLINE_FOR_REWARD...",
+        classicTrustlineEstablishing: "[ CLASSIC_PHASELQ ] CHECKING_TRUSTLINE_FOR_REWARD...",
         classicTrustlineFreighter: "[ FREIGHTER ] AWAITING_changeTrust_SIGNATURE...",
         classicTrustlineConfirmed: "[ TRUSTLINE_OK ] CLASSIC_ASSET_LINE_READY",
         classicTrustlineRejected: "[ TRUSTLINE_DENIED ] OPERATOR_ABORT",
@@ -707,7 +778,7 @@ export const phaseCopy: Record<
         terminalRestricted: "TERMINAL_LOCKED // CLASSIFIED",
         systemActive: "SYSTEM_ACTIVE // OWNERSHIP_VERIFIED",
         verifying: "[ VERIFYING_CHAIN… ]",
-        downloadCertificate: "[ DESCARGAR_CERTIFICADO ]",
+        downloadCertificate: "[ DOWNLOAD_CERTIFICATE ]",
         expandPreview: "EXPAND_VIEW // FULL_RES",
         closePreview: "[ CLOSE ]",
         unverifiedCopy: "[ UNVERIFIED_COPY ]",
@@ -727,6 +798,9 @@ export const phaseCopy: Record<
         holderSignature: "HOLDER_SIGNATURE",
         rawMetadata: "RAW_METADATA",
         pendingOwnershipVerification: "[ PENDING_OWNERSHIP_VERIFICATION ]",
+        imageLoadHint:
+          "The preview URL did not load (blocked, slow IPFS gateway, or bad link). Open the URL in a new tab or try another gateway.",
+        openImageUrl: "Open image URL",
       },
     },
   },
@@ -741,7 +815,7 @@ export const phaseCopy: Record<
     dashboard: {
       title: "Colecciones on-chain",
       subtitle:
-        "Cada tarjeta es una colección PHASE. Mint abre la cámara de fusión: pagas el PHASERLIQ indicado con initiate_phase y recibes el NFT de utilidad.",
+        "Cada tarjeta es una colección PHASE. Mint abre la cámara de fusión: pagas el PHASELQ indicado con initiate_phase y recibes el NFT de utilidad.",
       shieldBlurb:
         "Un pantallazo es solo un póster — no es el contrato. Tu NFT de utilidad PHASE es la llave on-chain; aquí las vistas son de baja confianza hasta que verifiques en el Reactor.",
       refresh: "Actualizar ledger",
@@ -753,10 +827,10 @@ export const phaseCopy: Record<
       empty: "Aún no hay colecciones — crea una en la forja.",
       noPreview: "Sin URL de imagen",
       creator: "Creador",
-      mint: "Acuñar NFT — pagar PHASERLIQ",
+      mint: "Acuñar NFT — pagar PHASELQ",
       openChamber: "Abrir cámara",
       id: "ID",
-      priceSuffix: "PHASERLIQ",
+      priceSuffix: "PHASELQ",
       previewPendingFusion: "[ PENDING_FUSION ]",
       previewUnverifiedCopy: "[ COPIA_NO_VERIFICADA ]",
       previewChainVerified: "[ VERIFICADO_EN_CADENA ]",
@@ -767,8 +841,8 @@ export const phaseCopy: Record<
       sellModalTitle: "Vender / transferir NFT",
       buyerAddressLabel: "Dirección Stellar del comprador (G…)",
       buyerHint:
-        "Acordá el pago en PHASERLIQ con el comprador (transferencia directa), luego transferí el NFT on-chain aquí. Requiere contrato PHASE con transfer_phase_nft desplegado.",
-      listingPriceLabel: "Precio de venta (PHASERLIQ)",
+        "Acordá el pago en PHASELQ con el comprador (transferencia directa), luego transferí el NFT on-chain aquí. Requiere contrato PHASE con transfer_phase_nft desplegado.",
+      listingPriceLabel: "Precio de venta (PHASELQ)",
       listingPublish: "[ PUBLICAR_ANUNCIO ]",
       listingHint: "El anuncio se ve en este mercado; el cobro es P2P entre wallets.",
       transferNft: "[ TRANSFERIR_ON_CHAIN ]",
@@ -831,10 +905,10 @@ export const phaseCopy: Record<
       market: "Mercado",
       chamber: "Cámara",
       intro:
-        "El Oráculo compila tu anomalía en arte de estado sólido + lore SEP-20. La liquidación x402 en PHASERLIQ desbloquea el modelo; luego el protocolo acuña tu colección on-chain.",
+        "El Oráculo compila tu anomalía en arte de estado sólido + lore SEP-20. La liquidación x402 en PHASELQ desbloquea el modelo; luego el protocolo acuña tu colección on-chain.",
       anomalyLabel: "[ ENTER_ANOMALY_DESCRIPTION ]",
       collectionName: "Nombre de colección",
-      fusionPrice: "Precio de fusión (PHASERLIQ)",
+      fusionPrice: "Precio de fusión (PHASELQ)",
       readout: "LECTURA",
       linkWallet: "Vincular wallet",
       linking: "Vinculando…",
@@ -858,7 +932,7 @@ export const phaseCopy: Record<
       tabManual: "[ MANUAL_OVERRIDE ]",
       manualBadge: "◈ CARGA_DIRECTA // SIN_X402",
       manualIntro:
-        "Sin Oráculo: aportás imagen (archivo o URL https/ipfs), escribís el lore en local y acuñás la colección en Soroban en un paso. Sin liquidación x402 en PHASERLIQ — solo fees de red.",
+        "Sin Oráculo: aportás imagen (archivo o URL https/ipfs), escribís el lore en local y acuñás la colección en Soroban en un paso. Sin liquidación x402 en PHASELQ — solo fees de red.",
       manualDropLabel: "[ SOLTAR_ARCHIVO // IMAGEN ]",
       manualDropHint: "PNG · JPEG · WebP — o usá el campo URI abajo",
       manualUrlLabel: "[ URI_IMAGEN ]",
@@ -881,7 +955,7 @@ export const phaseCopy: Record<
         "[ SYSTEM: COMPILING_LORE... ]",
         "[ SYSTEM: FORGING_MATTER... ]",
       ],
-      signingPayment: "[ X402 ] ABRIENDO_FREIGHTER — SETTLE_PHASERLIQ…",
+      signingPayment: "[ X402 ] ABRIENDO_FREIGHTER — SETTLE_PHASELQ…",
       paywallNegotiating: "[ X402 ] NEGOCIANDO_PAYWALL…",
       trustline_section_title: "Inicialización protocolo PHASER",
       trustline_standby: "[ INITIALIZE_PHASER_PROTOCOL ]",
@@ -904,7 +978,7 @@ export const phaseCopy: Record<
       errors: {
         connectWallet: "Conecta la wallet primero.",
         nameShort: "Nombre de colección demasiado corto (mín. 2 caracteres).",
-        priceInvalid: "Precio PHASERLIQ inválido.",
+        priceInvalid: "Precio PHASELQ inválido.",
         collectionIdRead: "No se pudo leer collection_id on-chain.",
         creatorAlreadyHasCollection: "Esta wallet ya tiene una colección (#{id}). Abre la cámara de esa colección en lugar de crear otra.",
         clipboard: "No se pudo copiar al portapapeles.",
@@ -914,8 +988,15 @@ export const phaseCopy: Record<
         agentNot402: "Respuesta inesperada de forge-agent (se esperaba 402 y luego ejecución pagada).",
         fetchAgentImage: "No se pudo descargar la imagen generada para el mint.",
         finalUri: "No se pudo obtener una URI de imagen válida on-chain (probá habilitar subida IPFS).",
-        lowEnergyAgent: "PHASERLIQ insuficiente para la liquidación x402 del Oráculo (revisá el saldo).",
+        lowEnergyAgent: "PHASELQ insuficiente para la liquidación x402 del Oráculo (revisá el saldo).",
         manualNoImage: "Necesitás un archivo de imagen o una URL https:// o ipfs:// válida.",
+        userAbortedFreighter: "Pago cancelado en Freighter (no se firmó el settle x402 en PHASELQ).",
+        oracleOfflineAfterPayment:
+          "La liquidación on-chain probablemente se confirmó, pero falló el paso del Oráculo (suele ser Gemini: clave, cuota o modelo). El PHASELQ ya se debitó. Revisá GEMINI_API_KEY / GEMINI_MODEL y los logs del servidor, reintentá, o usá Forja manual sin otro settle.",
+        fusionChamberHalted:
+          "[ PROTOCOL_HALTED: ERROR_IN_FUSION_CHAMBER ] — Revisá saldo PHASELQ, IDs de contrato, configuración IPFS y la consola del navegador para el error concreto.",
+        phaseHostContractErrors: PHASE_HOST_CONTRACT_ERRORS_ES,
+        phaseHostContractUnknown: PHASE_HOST_CONTRACT_UNKNOWN_ES,
       },
       placeholders: {
         collectionName: "Cripto-Arte 2026",
@@ -944,7 +1025,9 @@ export const phaseCopy: Record<
       reqLiqPrefix: "REQ ≥",
       wallet: "Wallet",
       offline: "— DESCONECTADO —",
-      liqBalance: "SALDO_PHASERLIQ",
+      liqBalance: "SALDO_PHASELQ",
+      liqBalanceIssuerMismatch:
+        "PHASELQ en otras líneas / emisores: {total} — para liquidar aquí solo cuenta el saldo de arriba (SAC del protocolo).",
       collectionId: "ID_Colección",
       collectionIdProtocol: "0 (protocolo)",
       x402Price: "Precio_X402",
@@ -995,14 +1078,14 @@ export const phaseCopy: Record<
       pedestalDefault: "PROTOCOLO_POR_DEFECTO · POOL_LIQUIDEZ_CENTRAL",
       collectionLine: "Colección #{id} · {name}",
       collectionLinkTitle: "Colección #{id}",
-      faucetButton: "[ ⚡ SOLICITAR_PHASERLIQ ]",
+      faucetButton: "[ ⚡ SOLICITAR_PHASELQ ]",
       rewardsSectionTitle: "[ RECOMPENSAS_LIQ ]",
-      rewardsHelpAria: "Ayuda: PHASERLIQ y recompensas",
+      rewardsHelpAria: "Ayuda: PHASELQ y recompensas",
       rewardsHelpClose: "Cerrar",
-      rewardsHelpModalTitle: "PHASERLIQ y recompensas",
+      rewardsHelpModalTitle: "PHASELQ y recompensas",
       rewardsHelpLiqTitle: "¿Qué es LIQ?",
       rewardsHelpLiqBody:
-        "LIQ es la etiqueta corta que ves en la interfaz para PHASERLIQ, el token de utilidad Soroban en testnet de PHASE. Sirve para pagar precios de mint (initiate_phase / liquidación x402) y para probar el reactor. Los saldos usan siete decimales como otros assets Stellar. Es liquidez de testnet, no dinero real.",
+        "LIQ es la etiqueta corta que ves en la interfaz para PHASELQ, el token de utilidad Soroban en testnet de PHASE. Sirve para pagar precios de mint (initiate_phase / liquidación x402) y para probar el reactor. Los saldos usan siete decimales como otros assets Stellar. Es liquidez de testnet, no dinero real.",
       rewardsHelpQuestsTitle: "Genesis, diaria y misiones",
       rewardsHelpQuestsBody:
         "Genesis es un fondo inicial único para wallets nuevas. La recarga diaria se reinicia cada 24 horas. Las quests son misiones de una sola vez (vincular wallet, crear colección, completar una liquidación). Las barras muestran el avance; Reclamar pide un mint firmado por el servidor cuando cumples los requisitos.",
@@ -1012,10 +1095,12 @@ export const phaseCopy: Record<
       creatorAlreadyMinted: "El creador ya minteó esta colección con esta wallet.",
       freighterManualAddTitle: "COLECCIONABLE_EN_FREIGHTER",
       freighterManualAddBody:
-        "Si no aparece automático: Freighter -> Collectibles -> Add manually -> pega contrato + token ID.",
+        "Si no aparece automático: Freighter -> Collectibles -> Add manually.",
+      freighterManualAddTroubleshoot:
+        "Si Freighter muestra “Collectible not found”, verifica Collection Address + Token ID exactamente como aparecen abajo y reintenta en 30-90s (delay de indexación).",
       protocolStackLabel:
-        "x402 · PHASERLIQ = fungible Soroban (SEP-41) · artefacto forjado = NFT de utilidad inmutable (metadata SEP-20)",
-      tokenStandardSep41Note: "PHASERLIQ cumple SEP-41 (interfaz de token Soroban).",
+        "x402 · PHASELQ = fungible Soroban (SEP-41) · artefacto forjado = NFT de utilidad inmutable (metadata SEP-20)",
+      tokenStandardSep41Note: "PHASELQ cumple SEP-41 (interfaz de token Soroban).",
       rewardsLiquidityLaneTitle: "ARRANQUE_LIQUIDEZ",
       rewardsMissionChainTitle: "CADENA_MISIONES_OPERADOR",
       rewardsButtonEstablishingTrustline: "[ ESTABLECIENDO_TRUSTLINE... ]",
@@ -1024,8 +1109,10 @@ export const phaseCopy: Record<
       rewardsTrustlineRejectedToast:
         "[ TRUSTLINE_REQUERIDA_PARA_RECIBIR ] Aprobá changeTrust en Freighter.",
       rewardsTrustlineAccountMissing:
-        "La cuenta no está en testnet o sin XLM. Añadí XLM de prueba (Friendbot) antes de reclamar PHASERLIQ.",
+        "La cuenta no está en testnet o sin XLM. Añadí XLM de prueba (Friendbot) antes de reclamar PHASELQ.",
       biometricTrustGateClosed: "[ ERROR: BIOMETRIC_TRUST_GATE_CLOSED ]",
+      phaseHostContractErrors: PHASE_HOST_CONTRACT_ERRORS_ES,
+      phaseHostContractUnknown: PHASE_HOST_CONTRACT_UNKNOWN_ES,
       logs: {
         chamberOnline: "[ CÁMARA_EN_LÍNEA ] ESPERANDO_ENLACE_OPERADOR…",
         walletRequest: "[ WALLET ] SOLICITANDO_CANAL_FIRMANTE…",
@@ -1051,14 +1138,14 @@ export const phaseCopy: Record<
         decrypting: "[ DESCIFRANDO_DATOS_PROTEGIDOS... ]",
         x402Ok: "[ X402_PIPELINE_OK ] ENERGÍA_ENRUTADA",
         forgedOnSettle: "[ NFT_FASE_FORJADO_AL_LIQUIDAR ] REVISAR_PEDESTAL",
-        faucetEmitting: "[ EMITIENDO_PHASERLIQ_PARA_OPERADOR... ]",
+        faucetEmitting: "[ EMITIENDO_PHASELQ_PARA_OPERADOR... ]",
         faucetLoadingSupply: "[ SUMINISTRO_EN_CURSO... ]",
-        faucetOk: "[ PHASERLIQ_MINT_CONFIRMADO ] SALDO_ACTUALIZADO",
-        faucetReceived: "[ +{amount} PHASERLIQ RECIBIDOS ]",
+        faucetOk: "[ PHASELQ_MINT_CONFIRMADO ] SALDO_ACTUALIZADO",
+        faucetReceived: "[ +{amount} PHASELQ RECIBIDOS ]",
         faucetFailPrefix: "[ FALLO_FAUCET ]",
         genesisSupplyRequested: "[ SOLICITANDO_ENERGÍA_AL_NÚCLEO... ]",
         genesisTransferComplete: "[ GENESIS_SUPPLY_TRANSFER_OK ] REACTOR_CARGADO",
-        classicTrustlineEstablishing: "[ PHASERLIQ_CLÁSICO ] VERIFICANDO_TRUSTLINE_PARA_RECOMPENSA...",
+        classicTrustlineEstablishing: "[ PHASELQ_CLÁSICO ] VERIFICANDO_TRUSTLINE_PARA_RECOMPENSA...",
         classicTrustlineFreighter: "[ FREIGHTER ] ESPERANDO_FIRMA_changeTrust...",
         classicTrustlineConfirmed: "[ TRUSTLINE_OK ] LÍNEA_ACTIVO_CLÁSICA_LISTA",
         classicTrustlineRejected: "[ TRUSTLINE_DENEGADA ] ABORTO_OPERADOR",
@@ -1098,6 +1185,9 @@ export const phaseCopy: Record<
         holderSignature: "FIRMA_TITULAR",
         rawMetadata: "METADATA_CRUDA",
         pendingOwnershipVerification: "[ PENDIENTE_VERIFICACIÓN_PROPIEDAD ]",
+        imageLoadHint:
+          "La imagen no cargó (CORS, gateway IPFS lento o enlace inválido). Abrí la URL en otra pestaña o probá otro gateway.",
+        openImageUrl: "Abrir URL de imagen",
       },
     },
   },

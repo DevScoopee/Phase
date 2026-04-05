@@ -10,6 +10,7 @@ import {
   buildClassicTrustlineTransactionXdr,
   parseSignedTxXdr,
 } from "@/lib/classic-liq"
+import { humanizePhaseHostErrorMessage } from "@/lib/phase-host-error"
 import { pickCopy } from "@/lib/phase-copy"
 import { formatLiq, isPhaseUnauthorizedError, NETWORK_PASSPHRASE } from "@/lib/phase-protocol"
 import { playTacticalUiClick } from "@/lib/tactical-ui-click"
@@ -69,8 +70,12 @@ export function LiquidityFaucetControl({
   const ch = pickCopy(lang).chamber
   const logs = ch.logs
   const normalizeToastError = useCallback(
-    (msg: string) => (isPhaseUnauthorizedError(msg) ? ch.biometricTrustGateClosed : msg),
-    [ch.biometricTrustGateClosed],
+    (msg: string) => {
+      const h = humanizePhaseHostErrorMessage(msg, ch.phaseHostContractErrors, ch.phaseHostContractUnknown)
+      if (h) return h
+      return isPhaseUnauthorizedError(msg) ? ch.biometricTrustGateClosed : msg
+    },
+    [ch.biometricTrustGateClosed, ch.phaseHostContractErrors, ch.phaseHostContractUnknown],
   )
 
   const [status, setStatus] = useState<FaucetStatusResponse | null>(null)
@@ -78,6 +83,7 @@ export function LiquidityFaucetControl({
   const [loadingReward, setLoadingReward] = useState<RewardType | null>(null)
   const [rewardFlowPhase, setRewardFlowPhase] = useState<RewardFlowPhase>("idle")
   const [helpOpen, setHelpOpen] = useState(false)
+  const [missionsOpen, setMissionsOpen] = useState(!compact)
 
   useEffect(() => {
     if (!helpOpen) return
@@ -232,8 +238,8 @@ export function LiquidityFaucetControl({
         const amount = formatLiq(data.amountStroops ?? "0")
         const line =
           lang === "es"
-            ? `[ RECOMPENSA_ACREDITADA ] +${amount} PHASERLIQ`
-            : `[ REWARD_CREDITED ] +${amount} PHASERLIQ`
+            ? `[ RECOMPENSA_ACREDITADA ] +${amount} PHASELQ`
+            : `[ REWARD_CREDITED ] +${amount} PHASELQ`
         onNarrativeLog?.(logs.faucetOk)
         onNarrativeLog?.(line)
         if (data.hash) onNarrativeLog?.(`${logs.tracePrefix} ${data.hash}`)
@@ -381,6 +387,14 @@ export function LiquidityFaucetControl({
 
   if (!address || status?.enabled === false) return null
 
+  const missionRewards = [
+    status?.rewards?.quest_connect_wallet,
+    status?.rewards?.quest_first_collection,
+    status?.rewards?.quest_first_settle,
+  ]
+  const missionReadyCount = missionRewards.filter((r) => r?.claimable).length
+  const missionClaimedCount = missionRewards.filter((r) => Boolean(r?.claimedAt)).length
+
   const helpModal =
     helpOpen && typeof document !== "undefined"
       ? createPortal(
@@ -491,33 +505,55 @@ export function LiquidityFaucetControl({
       </div>
       <div className="tactical-quest-flow__missions">
         <div className="tactical-quest-flow__rail" aria-hidden />
-        <p className="tactical-quest-flow__chain-title pl-5">{ch.rewardsMissionChainTitle}</p>
-        <div className="pl-1">
-          <div className="tactical-quest-step">
-            {rewardButton(
-              "quest_connect_wallet",
-              "QUEST_01 · CONNECT",
-              lang === "es" ? "Primera conexión de wallet." : "First wallet connection reward.",
-              status?.rewards?.quest_connect_wallet,
-            )}
-          </div>
-          <div className="tactical-quest-step">
-            {rewardButton(
-              "quest_first_collection",
-              "QUEST_02 · COLLECTION",
-              lang === "es" ? "Crear tu primera colección." : "Create your first collection.",
-              status?.rewards?.quest_first_collection,
-            )}
-          </div>
-          <div className="tactical-quest-step">
-            {rewardButton(
-              "quest_first_settle",
-              "QUEST_03 · SETTLEMENT",
-              lang === "es" ? "Completar tu primer settlement." : "Complete your first settlement.",
-              status?.rewards?.quest_first_settle,
-            )}
-          </div>
+        <div className="flex items-center justify-between gap-2 pl-5">
+          <p className="tactical-quest-flow__chain-title">{ch.rewardsMissionChainTitle}</p>
+          {compact ? (
+            <button
+              type="button"
+              onClick={() => {
+                playTacticalUiClick()
+                setMissionsOpen((o) => !o)
+              }}
+              className="tactical-interactive-glitch rounded border border-cyan-500/45 bg-cyan-950/25 px-2 py-0.5 text-[9px] uppercase tracking-[0.2em] text-cyan-200 hover:border-cyan-300 hover:text-white"
+              aria-expanded={missionsOpen}
+            >
+              {missionsOpen ? (lang === "es" ? "OCULTAR" : "HIDE") : lang === "es" ? "VER" : "VIEW"}
+            </button>
+          ) : null}
         </div>
+        {compact && !missionsOpen ? (
+          <div className="mt-1 ml-5 rounded border border-cyan-900/45 bg-black/35 px-2 py-1 text-[9px] uppercase tracking-[0.18em] text-cyan-300/85">
+            {lang === "es" ? "RESUMEN" : "SUMMARY"} · {missionClaimedCount}/3 ·{" "}
+            {lang === "es" ? "LISTAS" : "READY"} {missionReadyCount}
+          </div>
+        ) : (
+          <div className="pl-1">
+            <div className="tactical-quest-step">
+              {rewardButton(
+                "quest_connect_wallet",
+                "QUEST_01 · CONNECT",
+                lang === "es" ? "Primera conexión de wallet." : "First wallet connection reward.",
+                status?.rewards?.quest_connect_wallet,
+              )}
+            </div>
+            <div className="tactical-quest-step">
+              {rewardButton(
+                "quest_first_collection",
+                "QUEST_02 · COLLECTION",
+                lang === "es" ? "Crear tu primera colección." : "Create your first collection.",
+                status?.rewards?.quest_first_collection,
+              )}
+            </div>
+            <div className="tactical-quest-step">
+              {rewardButton(
+                "quest_first_settle",
+                "QUEST_03 · SETTLEMENT",
+                lang === "es" ? "Completar tu primer settlement." : "Complete your first settlement.",
+                status?.rewards?.quest_first_settle,
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </section>
   )

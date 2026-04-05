@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { classicLiqCodeForStellarToml, classicLiqIssuerForStellarToml } from "@/lib/classic-liq"
+import { stellarTomlPhaserLiqCurrencyRows } from "@/lib/classic-liq"
 import { TOKEN_ADDRESS, stellarExpertPhaserLiqUrl } from "@/lib/phase-protocol"
 
 const NETWORK_PASSPHRASE = "Test SDF Network ; September 2015"
@@ -18,28 +18,41 @@ function siteBaseForStellarToml(): string {
 export async function GET() {
   const base = siteBaseForStellarToml()
   const icon = `${base}/phaser-liq-token.png`
-  const expert = stellarExpertPhaserLiqUrl()
-  const liqCode = classicLiqCodeForStellarToml()
-  const liqIssuer = classicLiqIssuerForStellarToml()
+  const expertPrimary = stellarExpertPhaserLiqUrl()
+  const rows = stellarTomlPhaserLiqCurrencyRows()
+
+  const accountsToml = `[\n${rows.map((r) => `  "${r.issuer}",`).join("\n")}\n]`
+
+  const currencyBlocks = rows
+    .map((r) => {
+      const desc =
+        r.code === "PHASERLIQ"
+          ? "Legacy PHASERLIQ (classic) liquidity for PHASE settlement flows on testnet."
+          : "PHASELQ utility liquidity token for PHASE settlement flows."
+      return `[[CURRENCIES]]
+code="${r.code}"
+issuer="${r.issuer}"
+script="${r.script}"
+status="test"
+name="Phase Liquidity"
+desc="${desc}"
+image="${icon}"
+display_decimals=7`
+    })
+    .join("\n\n")
 
   const body = `VERSION="2.0.0"
 NETWORK_PASSPHRASE="${NETWORK_PASSPHRASE}"
-ACCOUNTS=[]
-[[CURRENCIES]]
-code="${liqCode}"
-issuer="${liqIssuer}"
-script="${TOKEN_ADDRESS}"
-name="Phase Liquidity"
-desc="PHASERLIQ utility liquidity token for PHASE settlement flows."
-image="${icon}"
-display_decimals=7
-# Soroban contract metadata (custom extensions for wallets/indexers)
-PHASER_LIQ_CONTRACT_ID="${TOKEN_ADDRESS}"
+ACCOUNTS=${accountsToml}
+# Site-wide Soroban / docs (root-level; keep [[CURRENCIES]] SEP-clean for indexers)
+PHASER_LIQ_PRIMARY_CONTRACT_ID="${TOKEN_ADDRESS}"
 PHASER_LIQ_ICON="${icon}"
-PHASER_LIQ_STELLAR_EXPERT="${expert}"
+PHASER_LIQ_STELLAR_EXPERT="${expertPrimary}"
 PHASER_LIQ_X402_DOCS="https://developers.stellar.org/docs/build/agentic-payments/x402"
 PHASER_LIQ_X402_NPM="https://www.npmjs.com/package/x402-stellar"
 PHASER_LIQ_NODE_DECLARATION_DOCS="https://developers.stellar.org/docs/validators/tier-1-orgs#declare-your-node"
+
+${currencyBlocks}
 `
 
   return new NextResponse(body, {

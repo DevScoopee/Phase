@@ -1,5 +1,5 @@
 /**
- * Pago clásico testnet: Issuer → Distribuidor (PHASERLIQ u otro código configurado).
+ * Pago clásico testnet: Issuer → Distribuidor (PHASELQ u otro código configurado).
  * El distribuidor debe tener trustline al asset antes de ejecutar.
  *
  * Uso (desde la raíz del repo):
@@ -12,7 +12,7 @@
  *   CLASSIC_LIQ_ISSUER_SECRET     — obligatorio; secret del emisor (firma el payment).
  *   CLASSIC_LIQ_DISTRIBUTOR_PUBLIC — G… del distribuidor (opcional si abajo hay secret).
  *   FAUCET_DISTRIBUTOR_SECRET_KEY — si no hay PUBLIC, se usa la G derivada de este secret.
- *   NEXT_PUBLIC_CLASSIC_LIQ_ASSET_CODE / NEXT_PUBLIC_CLASSIC_LIQ_ISSUER — asset (defaults PHASERLIQ + GAX… del proyecto).
+ *   NEXT_PUBLIC_CLASSIC_LIQ_ASSET_CODE / NEXT_PUBLIC_CLASSIC_LIQ_ISSUER — asset (defaults PHASELQ + GAX… del proyecto).
  *   CLASSIC_LIQ_ISSUER_PAYMENT_AMOUNT — opcional; default 100000.0000000 (7 decimales).
  */
 import * as dotenv from "dotenv"
@@ -46,7 +46,7 @@ function assetIssuerFromEnv(): string {
 }
 
 function assetCodeFromEnv(): string {
-  return process.env.NEXT_PUBLIC_CLASSIC_LIQ_ASSET_CODE?.trim() || "PHASERLIQ"
+  return process.env.NEXT_PUBLIC_CLASSIC_LIQ_ASSET_CODE?.trim() || "PHASELQ"
 }
 
 function resolveDistributorPublic(): string | null {

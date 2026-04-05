@@ -15,6 +15,25 @@ import {
   TransactionBuilder,
   xdr,
 } from "@stellar/stellar-sdk"
+import { validatePhaseEnv, formatEnvValidationErrors } from "@/lib/env-validation"
+import {
+  DEFAULT_LIQUIDITY_ASSET_CODE,
+  DEFAULT_LIQUIDITY_ISSUER,
+  DEFAULT_PHASE_CONTRACT,
+  DEFAULT_TOKEN_CONTRACT,
+} from "@/lib/phase-contract-defaults"
+
+// Validación temprana de entorno en build/startup
+if (typeof process !== "undefined" && process.env.NODE_ENV !== "test") {
+  const validation = validatePhaseEnv()
+  if (!validation.valid) {
+    // En desarrollo, mostrar advertencias claras
+    if (process.env.NODE_ENV === "development") {
+      // eslint-disable-next-line no-console
+      console.warn(formatEnvValidationErrors(validation))
+    }
+  }
+}
 
 /**
  * Soroban contract IDs use strkey prefix **C** (56 chars). A **G** address is a classic *account*, not a contract —
@@ -39,7 +58,6 @@ function sorobanContractIdFromEnv(
   )
 }
 
-const DEFAULT_PHASE_CONTRACT = "CDXZ2HWPSAU3DKACNGTTY3WM6FKN5LPNGMAYFW4KBF74P42RK6SFDRGP"
 export const CONTRACT_ID = (() => {
   const e = (typeof process !== "undefined" ? process.env : {}) as NodeJS.ProcessEnv
   return sorobanContractIdFromEnv(
@@ -55,20 +73,26 @@ export function stellarExpertTestnetContractUrl(contractId: string = CONTRACT_ID
 }
 
 /**
- * PHASERLIQ en Stellar Expert (vista de **asset** clásico testnet).
- * @see https://stellar.expert/explorer/testnet/asset/PHASERLIQ-GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS
+ * PHASELQ en Stellar Expert (asset clásico testnet, emisor por defecto).
  */
 export const PHASER_LIQ_STELLAR_EXPERT_DEFAULT =
-  "https://stellar.expert/explorer/testnet/asset/PHASERLIQ-GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS"
+  `https://stellar.expert/explorer/testnet/asset/${DEFAULT_LIQUIDITY_ASSET_CODE}-${DEFAULT_LIQUIDITY_ISSUER}`
 
-/** Enlace UI/docs para la marca PHASERLIQ. Override: `NEXT_PUBLIC_PHASER_LIQ_EXPERT_URL` o `PHASER_LIQ_EXPERT_URL`. */
+/**
+ * Enlace Stellar Expert (asset clásico PHASELQ).
+ * Solo usa `NEXT_PUBLIC_*` (y fallback) para que SSR y el bundle del cliente coincidan;
+ * `PHASER_LIQ_EXPERT_URL` sin prefijo es server-only en Next.js y provocaba hydration mismatch.
+ */
 export function stellarExpertPhaserLiqUrl(): string {
   const e = (typeof process !== "undefined" ? process.env : {}) as NodeJS.ProcessEnv
-  return (
-    e.NEXT_PUBLIC_PHASER_LIQ_EXPERT_URL?.trim() ||
-    e.PHASER_LIQ_EXPERT_URL?.trim() ||
-    PHASER_LIQ_STELLAR_EXPERT_DEFAULT
-  )
+  const custom = e.NEXT_PUBLIC_PHASER_LIQ_EXPERT_URL?.trim()
+  if (custom) return custom
+  const code = e.NEXT_PUBLIC_CLASSIC_LIQ_ASSET_CODE?.trim() || DEFAULT_LIQUIDITY_ASSET_CODE
+  const iss = e.NEXT_PUBLIC_CLASSIC_LIQ_ISSUER?.trim()
+  if (iss && StrKey.isValidEd25519PublicKey(iss)) {
+    return `https://stellar.expert/explorer/testnet/asset/${code}-${iss}`
+  }
+  return PHASER_LIQ_STELLAR_EXPERT_DEFAULT
 }
 
 /** Certificado JSON tras verificar propiedad (`get_user_phase`) en el cliente. */
@@ -121,19 +145,11 @@ export function isValidClassicStellarAddress(addr: string): boolean {
 }
 
 /**
- * SAC (Stellar Asset Contract) de PHASERLIQ emitido por el issuer clásico de testnet.
- * Debe ser idéntico a `new Asset(code, issuer).contractId(NETWORK_PASSPHRASE)`; si env
- * apunta a otro C…, fallos en mint/transfer/settle pueden parecer trustline u host errors.
- * @see lib/classic-liq.ts `DEFAULT_CLASSIC_PHASER_LIQ_ISSUER` (mismo G… que aquí).
+ * SAC (Stellar Asset Contract) de PHASELQ para issuer por defecto (testnet).
+ * Coincide con `DEFAULT_TOKEN_CONTRACT` en `lib/phase-contract-defaults.ts`.
  */
-const DEFAULT_PHASER_LIQ_SAC_ISSUER =
-  "GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS"
-
-const DEFAULT_TOKEN_CONTRACT = "CDOAXHWC6YJB7U3ELV67HKJY6HEMJFBNRGJK6WZGUAELBWP3WP77RLFD"
-
-/** Contrato SAC esperado para PHASERLIQ + issuer por defecto (validar contra `TOKEN_ADDRESS`). */
 export function expectedDefaultPhaserLiqSACContractId(): string {
-  return new Asset("PHASERLIQ", DEFAULT_PHASER_LIQ_SAC_ISSUER).contractId(NETWORK_PASSPHRASE)
+  return DEFAULT_TOKEN_CONTRACT
 }
 
 /** Contrato del token de liquidez del protocolo (Soroban). */
@@ -148,31 +164,31 @@ export const TOKEN_ADDRESS = (() => {
       e.MOCK_TOKEN_ID,
     ],
     DEFAULT_TOKEN_CONTRACT,
-    "PHASERLIQ token (NEXT_PUBLIC_PHASER_TOKEN_ID / NEXT_PUBLIC_TOKEN_CONTRACT_ID / …)",
+    "PHASELQ token (NEXT_PUBLIC_PHASER_TOKEN_ID / NEXT_PUBLIC_TOKEN_CONTRACT_ID / …)",
   )
 })()
 
-/** Marca oficial del combustible x402 en UI (7 decimales; alineado al código clásico PHASERLIQ). */
-export const PHASER_LIQ_SYMBOL = "PHASERLIQ"
+/** Marca oficial del combustible x402 en UI (7 decimales; código clásico PHASELQ). */
+export const PHASER_LIQ_SYMBOL = DEFAULT_LIQUIDITY_ASSET_CODE
 
-/** Normaliza el símbolo leído on-chain (p. ej. contratos legacy `PHASER_LIQ`) a la marca UI `PHASERLIQ`. */
+/** Normaliza símbolo on-chain legacy (`PHASERLIQ`, `PHASER_LIQ`) a la marca UI actual `PHASELQ`. */
 export function displayPhaserLiqSymbol(onChainSymbol: string | null | undefined): string {
   const s = (onChainSymbol ?? "").trim()
   if (!s) return PHASER_LIQ_SYMBOL
-  if (s === "PHASER_LIQ") return PHASER_LIQ_SYMBOL
+  if (s === "PHASER_LIQ" || s === "PHASERLIQ") return PHASER_LIQ_SYMBOL
   return s
 }
 export const PHASER_LIQ_NAME = "Phase Liquidity Token"
 export const PHASER_LIQ_DECIMALS = 7
 export const PHASER_LIQ_ICON_PUBLIC_PATH = "/phaser-liq-token.png"
 
-/** Por debajo de 1.00 PHASERLIQ el monitor puede ofrecer el faucet. */
+/** Por debajo de 1.00 PHASELQ el monitor puede ofrecer el faucet. */
 export const PHASER_FAUCET_THRESHOLD_STROOPS = "10000000"
 
-/** Cantidad que emite el faucet por solicitud (10.00 PHASERLIQ). */
+/** Cantidad que emite el faucet por solicitud (10.00 PHASELQ). */
 export const PHASER_FAUCET_MINT_STROOPS = "100000000"
 
-/** Precio x402 colección 0 (pool protocolo PHASE) — unidades mínimas PHASERLIQ */
+/** Precio x402 colección 0 (pool protocolo PHASE) — unidades mínimas PHASELQ */
 export const REQUIRED_AMOUNT = "10000000"
 
 export function balanceBelowFaucetThreshold(balanceStroops: string): boolean {
@@ -239,6 +255,115 @@ async function simulateContractCall(
   return scValToNative(sim.result.retval)
 }
 
+/** Respuesta de `get_config` en el contrato PHASE (token autorizado + monto mínimo legado). */
+export type PhaseProtocolChainConfig = {
+  tokenAddress: string
+  requiredAmount: string
+}
+
+let phaseProtocolConfigCache: { value: PhaseProtocolChainConfig; at: number } | null = null
+const PHASE_PROTOCOL_CONFIG_TTL_MS = 60_000
+
+function parsePhaseGetConfigNative(native: unknown): PhaseProtocolChainConfig | null {
+  if (native == null) return null
+  let tokenPart: unknown
+  let amountPart: unknown
+  if (Array.isArray(native) && native.length >= 2) {
+    tokenPart = native[0]
+    amountPart = native[1]
+  } else if (native && typeof native === "object") {
+    const o = native as Record<string, unknown>
+    if ("0" in o && "1" in o) {
+      tokenPart = o["0"]
+      amountPart = o["1"]
+    } else {
+      return null
+    }
+  } else {
+    return null
+  }
+
+  const tokenStr = addressLikeToString(tokenPart)
+  if (!StrKey.isValidContract(tokenStr)) return null
+
+  let requiredAmount = "0"
+  if (typeof amountPart === "bigint") requiredAmount = amountPart.toString()
+  else if (typeof amountPart === "number") requiredAmount = String(Math.trunc(amountPart))
+  else if (amountPart != null) {
+    try {
+      requiredAmount = BigInt(String(amountPart)).toString()
+    } catch {
+      requiredAmount = "0"
+    }
+  }
+  return { tokenAddress: tokenStr, requiredAmount }
+}
+
+/**
+ * Lee del despliegue PHASE qué contrato SAC está autorizado (`initialize`).
+ * Evita `UnauthorizedToken` (contract error #4) cuando `.env` apunta a otro C… que el registrado on-chain.
+ */
+export async function getPhaseProtocolConfigFromChain(): Promise<PhaseProtocolChainConfig | null> {
+  const now = Date.now()
+  if (phaseProtocolConfigCache && now - phaseProtocolConfigCache.at < PHASE_PROTOCOL_CONFIG_TTL_MS) {
+    return phaseProtocolConfigCache.value
+  }
+  try {
+    const native = await simulateContractCall(CONTRACT_ID, "get_config", [], READONLY_SIM_SOURCE_G)
+    const parsed = parsePhaseGetConfigNative(native)
+    if (parsed) {
+      phaseProtocolConfigCache = { value: parsed, at: now }
+    }
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+/** SAC que `initiate_phase` / `settle` aceptan para este `CONTRACT_ID` (fallback: env). */
+export async function getPhaseProtocolAuthorizedTokenContractId(): Promise<string> {
+  const cfg = await getPhaseProtocolConfigFromChain()
+  return cfg?.tokenAddress ?? TOKEN_ADDRESS
+}
+
+/**
+ * Saldo en el **mismo** contrato SAC que usa el protocolo en `settle` / `initiate_phase`
+ * (lectura `balance` vía simulación). Puede ser 0 aunque Freighter muestre PHASELQ/PHASERLIQ de **otro** emisor o línea clásica distinta del SAC.
+ */
+export async function getProtocolSettleTokenBalance(address: string): Promise<string> {
+  const g = address.trim()
+  if (!StrKey.isValidEd25519PublicKey(g)) return "0"
+  try {
+    const cid = await getPhaseProtocolAuthorizedTokenContractId()
+    const native = await simulateContractCall(
+      cid,
+      "balance",
+      [Address.fromString(g).toScVal()],
+      READONLY_SIM_SOURCE_G,
+    )
+    if (native == null) return "0"
+    if (typeof native === "bigint") return native.toString()
+    if (typeof native === "number") return String(Math.trunc(native))
+    try {
+      return BigInt(String(native)).toString()
+    } catch {
+      return "0"
+    }
+  } catch {
+    return "0"
+  }
+}
+
+function warnDevIfEnvTokenDiffersFromChain(liquidToken: string): void {
+  if (typeof process === "undefined" || process.env.NODE_ENV !== "development") return
+  if (liquidToken === TOKEN_ADDRESS) return
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[PHASE] NEXT_PUBLIC_TOKEN_CONTRACT_ID (${TOKEN_ADDRESS.slice(0, 8)}…) ≠ token autorizado on-chain (${liquidToken.slice(0, 8)}…). ` +
+      `Usando el de la cadena para initiate_phase/settle.`,
+  )
+}
+
 export type CollectionInfo = {
   collectionId: number
   creator: string
@@ -282,26 +407,138 @@ export async function getAccountSequence(address: string): Promise<string> {
   return data.sequence
 }
 
-export async function getTokenBalance(address: string): Promise<string> {
+function classicLiqCodeFromPublicEnv(): string {
+  const e = (typeof process !== "undefined" ? process.env : {}) as NodeJS.ProcessEnv
+  return e.NEXT_PUBLIC_CLASSIC_LIQ_ASSET_CODE?.trim() || DEFAULT_LIQUIDITY_ASSET_CODE
+}
+
+function classicLiqIssuerFromPublicEnv(): string {
+  const e = (typeof process !== "undefined" ? process.env : {}) as NodeJS.ProcessEnv
+  const g = e.NEXT_PUBLIC_CLASSIC_LIQ_ISSUER?.trim() ?? ""
+  if (g && StrKey.isValidEd25519PublicKey(g)) return g
+  return DEFAULT_LIQUIDITY_ISSUER
+}
+
+/** Saldo trustline en Horizon → stroops (7 decimales), alineado a Freighter. */
+const STROOPS_PER_LIQ_UNIT = BigInt(10_000_000)
+
+function horizonBalanceStringToStroops(balance: string): bigint {
+  const s = balance.trim()
+  if (!s) return BigInt(0)
+  const parts = s.split(".")
+  const whole = BigInt(parts[0] || "0")
+  const fracRaw = parts[1] ?? ""
+  const frac7 = (fracRaw + "0000000").slice(0, 7)
+  return whole * STROOPS_PER_LIQ_UNIT + BigInt(frac7 || "0")
+}
+
+/**
+ * Suma trustlines Horizon con el mismo `asset_code` (p. ej. PHASELQ), cualquier emisor.
+ * Así coincide con Freighter aunque `.env` apunte a un emisor y la wallet tenga el legado (u otro).
+ */
+async function horizonSumPhaserLiqByCodeStroops(walletG: string): Promise<bigint> {
+  const code = classicLiqCodeFromPublicEnv()
   try {
-    const native = await simulateContractCall(
-      TOKEN_ADDRESS,
-      "balance",
-      [Address.fromString(address).toScVal()],
-      address,
-    )
-    if (native == null) return "0"
-    if (typeof native === "bigint") return native.toString()
-    if (typeof native === "number") return String(Math.trunc(native))
-    return String(native)
+    const res = await fetch(`${HORIZON_URL}/accounts/${encodeURIComponent(walletG)}`, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    })
+    if (!res.ok) return BigInt(0)
+    const data = (await res.json()) as {
+      balances?: Array<{ asset_type?: string; asset_code?: string; balance?: string }>
+    }
+    let total = BigInt(0)
+    for (const b of data.balances ?? []) {
+      if (!b.balance || b.asset_type === "native") continue
+      if (b.asset_code !== code) continue
+      total += horizonBalanceStringToStroops(b.balance)
+    }
+    return total
+  } catch {
+    return BigInt(0)
+  }
+}
+
+function phaserLiqSorobanContractIdsForBalanceRead(): string[] {
+  const code = classicLiqCodeFromPublicEnv()
+  const pass = NETWORK_PASSPHRASE
+  const ids = new Set<string>()
+  ids.add(TOKEN_ADDRESS)
+  for (const iss of [classicLiqIssuerFromPublicEnv(), DEFAULT_LIQUIDITY_ISSUER]) {
+    if (StrKey.isValidEd25519PublicKey(iss)) {
+      try {
+        ids.add(new Asset(code, iss).contractId(pass))
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  return [...ids]
+}
+
+async function sorobanPhaserLiqBalanceMaxStroops(walletG: string): Promise<bigint> {
+  const ids = new Set(phaserLiqSorobanContractIdsForBalanceRead())
+  const chainCfg = await getPhaseProtocolConfigFromChain()
+  if (chainCfg?.tokenAddress) ids.add(chainCfg.tokenAddress)
+
+  let maxB = BigInt(0)
+  for (const cid of ids) {
+    try {
+      const native = await simulateContractCall(
+        cid,
+        "balance",
+        [Address.fromString(walletG).toScVal()],
+        READONLY_SIM_SOURCE_G,
+      )
+      let s = BigInt(0)
+      if (native == null) s = BigInt(0)
+      else if (typeof native === "bigint") s = native
+      else if (typeof native === "number") s = BigInt(Math.trunc(native))
+      else {
+        try {
+          s = BigInt(String(native))
+        } catch {
+          s = BigInt(0)
+        }
+      }
+      if (s > maxB) maxB = s
+    } catch {
+      /* siguiente contrato */
+    }
+  }
+  return maxB
+}
+
+function maxStroopsString(a: string, b: string): string {
+  try {
+    const ba = BigInt(a || "0")
+    const bb = BigInt(b || "0")
+    return (ba > bb ? ba : bb).toString()
   } catch {
     return "0"
   }
 }
 
+/**
+ * Saldo PHASELQ (liquidez) que ve la UI: máximo entre lecturas SAC (env + emisores conocidos) y suma Horizon
+ * de todas las trustlines con el mismo código (cualquier emisor).
+ */
+export async function getTokenBalance(address: string): Promise<string> {
+  const g = address.trim()
+  if (!StrKey.isValidEd25519PublicKey(g)) return "0"
+
+  const [sorobanBi, classicSumBi] = await Promise.all([
+    sorobanPhaserLiqBalanceMaxStroops(g),
+    horizonSumPhaserLiqByCodeStroops(g),
+  ])
+  return maxStroopsString(sorobanBi.toString(), classicSumBi.toString())
+}
+
 export async function buildInitiatePhaseTransaction(userAddress: string, collectionId: number = 0) {
   const server = getRpc()
   const account = await server.getAccount(userAddress)
+  const liquidToken = await getPhaseProtocolAuthorizedTokenContractId()
+  warnDevIfEnvTokenDiffersFromChain(liquidToken)
   const c = new Contract(CONTRACT_ID)
   const tx = new TransactionBuilder(account, {
     fee: BASE_FEE,
@@ -311,7 +548,7 @@ export async function buildInitiatePhaseTransaction(userAddress: string, collect
       c.call(
         "initiate_phase",
         Address.fromString(userAddress).toScVal(),
-        Address.fromString(TOKEN_ADDRESS).toScVal(),
+        Address.fromString(liquidToken).toScVal(),
         nativeToScVal(collectionId, { type: "u64" }),
       ),
     )
@@ -330,6 +567,8 @@ export async function buildSettleTransaction(
 ) {
   const server = getRpc()
   const account = await server.getAccount(userAddress)
+  const liquidToken = await getPhaseProtocolAuthorizedTokenContractId()
+  warnDevIfEnvTokenDiffersFromChain(liquidToken)
   const c = new Contract(CONTRACT_ID)
   const tx = new TransactionBuilder(account, {
     fee: BASE_FEE,
@@ -339,7 +578,7 @@ export async function buildSettleTransaction(
       c.call(
         "settle",
         Address.fromString(userAddress).toScVal(),
-        Address.fromString(TOKEN_ADDRESS).toScVal(),
+        Address.fromString(liquidToken).toScVal(),
         nativeToScVal(BigInt(amount), { type: "i128" }),
         nativeToScVal(invoiceId, { type: "u32" }),
         nativeToScVal(collectionId, { type: "u64" }),
@@ -993,10 +1232,14 @@ export function isCreatorAlreadyHasCollectionError(message: string) {
   return /Error\s*\(\s*Contract\s*,\s*#8\s*\)/.test(message) || /\bContract\s*,\s*#8\b/.test(message)
 }
 
-/** On-chain unauthorized gate (commonly surfaced as `Contract, #13` / "Unauthorized"). */
+/** On-chain `PhaseError::UnauthorizedToken` (discriminant 4) o texto "unauthorized". */
 export function isPhaseUnauthorizedError(message: string) {
   const m = message.toLowerCase()
-  return /Error\s*\(\s*Contract\s*,\s*#13\s*\)/.test(message) || /\bContract\s*,\s*#13\b/.test(message) || m.includes("unauthorized")
+  return (
+    /Error\s*\(\s*Contract\s*,\s*#4\s*\)/.test(message) ||
+    /\bContract\s*,\s*#4\b/.test(message) ||
+    m.includes("unauthorized")
+  )
 }
 
 /** Detect RPC / sequence class errors for narrative recovery UI */

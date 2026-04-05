@@ -13,7 +13,7 @@ export const NETWORK_PASSPHRASE = process.env.STELLAR_NETWORK_PASSPHRASE || 'Tes
 export const TOKEN_DECIMALS = parseInt(process.env.TOKEN_DECIMALS || '7');
 export const REQUIRED_AMOUNT = process.env.REQUIRED_AMOUNT || '10000000';
 export const TOKEN_NAME = process.env.TOKEN_NAME || 'Phase Liquidity';
-export const TOKEN_SYMBOL = process.env.TOKEN_SYMBOL || "PHASERLIQ"
+export const TOKEN_SYMBOL = process.env.TOKEN_SYMBOL || "PHASELQ"
 export const TOKEN_ICON_PATH = process.env.TOKEN_ICON_PATH || '/phaser-liq-token.png';
 export const TESTING_SECRET_KEY = process.env.TESTING_SECRET_KEY;
 

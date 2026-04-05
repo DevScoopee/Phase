@@ -21,7 +21,7 @@ const ADMIN_ADDRESS =
 
 const TOKEN_DECIMALS = 7
 const TOKEN_NAME = "Phase Liquidity"
-const TOKEN_SYMBOL = "PHASERLIQ"
+const TOKEN_SYMBOL = "PHASELQ"
 
 async function main() {
   log.section("PHASE Token - Setup Metadata (initialize)")

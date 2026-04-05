@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai"
+import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from "@google/generative-ai"
 import { NextRequest, NextResponse } from "next/server"
 import {
   Address,
@@ -17,6 +17,7 @@ import {
 } from "x402-stellar"
 import {
   CONTRACT_ID,
+  getPhaseProtocolConfigFromChain,
   NETWORK_PASSPHRASE,
   READONLY_SIM_SOURCE_G,
   REQUIRED_AMOUNT,
@@ -25,6 +26,10 @@ import {
 } from "@/lib/phase-protocol"
 import { logUnknownStellarError } from "@/lib/stellar"
 import { warnPhaserLiqSacMismatchOnce } from "@/lib/phaser-liq-sac-warn"
+import {
+  generateForgeImageUrlViaNanobananaApi,
+  nanobananaApiKeyConfigured,
+} from "@/lib/forge-nanobanana"
 
 export const runtime = "nodejs"
 export const maxDuration = 120
@@ -34,8 +39,16 @@ const X402_NETWORK = "stellar:testnet"
 /** Texto fijo del paywall (spec producto). */
 const FORGE_PRICE_DISPLAY = "1.00 PHASER_LIQ"
 
-const IMAGE_STYLE_SUFFIX =
-  ", dark cyber-brutalist aesthetic, glowing neon cyan, minimalist glitch art, isometric 3d"
+/** Estilo unificado para Nano Banana (imagen) — blueprint / isométrico / cyber-brutalist. */
+const FORGE_IMAGE_STYLE_BLOCK =
+  " Visual style: cyber-brutalist, isometric 3D, technical blueprint schematic, glowing neon cyan accents on deep black, high fidelity, sharp edges, minimal glitch accents."
+
+/** Mismo lenguaje visual en URL de Pollinations si Nano Banana va en sobrecarga/cuota. */
+const POLLINATIONS_STYLE_SUFFIX =
+  ", dark cyber-brutalist aesthetic, glowing neon cyan, minimalist glitch art, isometric 3d blueprint schematic, high detail"
+
+const ERR_SETTLEMENT_REJECTED_BY_FACILITATOR = "[ ERROR: SETTLEMENT_REJECTED_BY_FACILITATOR ]"
+const ERR_NANO_BANANA_CORE_OVERLOAD = "[ ERROR: NANO_BANANA_CORE_OVERLOAD ]"
 
 type ForgeAgentBody = {
   prompt?: string
@@ -97,7 +110,7 @@ function buildLegacyChallenge(request: NextRequest): LegacyChallenge {
     facilitator: facilitatorUrl(request),
     invoice: `forge_${Date.now()}`,
     resource: request.nextUrl.pathname,
-    note: "Payment in PHASERLIQ via PHASE protocol `settle` on-chain, or x402 exact payment per paymentRequirements.",
+    note: "Payment in PHASELQ via PHASE protocol `settle` on-chain, or x402 exact payment per paymentRequirements.",
   }
 }
 
@@ -111,7 +124,7 @@ function buildOfficialPaymentRequirements(request: NextRequest): PaymentRequirem
       maxAmountRequired: REQUIRED_AMOUNT,
       resource,
       description:
-        "PHASERLIQ (Soroban) — pago x402 exact para el agente de forja. Alternativa: incluye settlementTxHash + payerAddress tras un settle exitoso en el contrato PHASE.",
+        "PHASELQ (Soroban) — pago x402 exact para el agente de forja. Alternativa: incluye settlementTxHash + payerAddress tras un settle exitoso en el contrato PHASE.",
       mimeType: "application/json",
       payTo,
       maxTimeoutSeconds: 600,
@@ -140,7 +153,7 @@ function forgeAgentPaymentRequired(
     error: "Payment Required",
     priceDisplay: FORGE_PRICE_DISPLAY,
     message:
-      "Se requiere pago en PHASERLIQ (challenge x402 + opcional paymentRequirements Stellar). Tras confirmar on-chain, reintenta con el header Authorization o con settlementTxHash en el body.",
+      "Se requiere pago en PHASELQ (challenge x402 + opcional paymentRequirements Stellar). Tras confirmar on-chain, reintenta con el header Authorization o con settlementTxHash en el body.",
     challenge,
   }
   if (paymentRequirements) {
@@ -212,6 +225,10 @@ async function verifyPhaseSettleTxOnChain(
   const payer = payerAddress.trim()
   if (!payer.startsWith("G") || payer.length !== 56) return false
 
+  const chainCfg = await getPhaseProtocolConfigFromChain()
+  const allowedSettleTokens = new Set<string>([TOKEN_ADDRESS])
+  if (chainCfg?.tokenAddress) allowedSettleTokens.add(chainCfg.tokenAddress)
+
   const server = new rpc.Server(RPC_URL)
   let res: rpc.Api.GetTransactionResponse
   try {
@@ -262,7 +279,7 @@ async function verifyPhaseSettleTxOnChain(
     } catch {
       continue
     }
-    if (tokenC !== TOKEN_ADDRESS) continue
+    if (!allowedSettleTokens.has(tokenC)) continue
 
     let amountBi: bigint
     try {
@@ -304,55 +321,79 @@ function tryPhaseProofFromAuthHeader(authHeader: string | null): {
   }
 }
 
-async function paymentValid(
-  request: NextRequest,
+type ForgePaymentResolution = "paid" | "missing" | "facilitator_rejected"
+
+/**
+ * Orden: body settle → prueba PHASE en Authorization → pago x402 oficial vía facilitator.
+ * `facilitator_rejected`: payload x402 oficial parseable pero verify devuelve inválido.
+ */
+async function resolveForgeAgentPayment(
   authHeader: string | null,
   body: ForgeAgentBody,
   paymentRequirements: PaymentRequirements | null,
-): Promise<boolean> {
+): Promise<ForgePaymentResolution> {
   const settlementTx = body.settlementTxHash?.trim()
   const payer = body.payerAddress?.trim()
   if (settlementTx && payer) {
     try {
-      return await verifyPhaseSettleTxOnChain(settlementTx, payer)
+      const ok = await verifyPhaseSettleTxOnChain(settlementTx, payer)
+      return ok ? "paid" : "missing"
     } catch (e) {
-      logUnknownStellarError("forge-agent paymentValid (body settle)", e)
-      return false
+      logUnknownStellarError("forge-agent resolvePayment (body settle)", e)
+      return "missing"
     }
   }
 
   const phaseFromAuth = tryPhaseProofFromAuthHeader(authHeader)
   if (phaseFromAuth) {
     try {
-      return await verifyPhaseSettleTxOnChain(
+      const ok = await verifyPhaseSettleTxOnChain(
         phaseFromAuth.settlementTxHash,
         phaseFromAuth.payerAddress,
       )
+      return ok ? "paid" : "missing"
     } catch (e) {
-      logUnknownStellarError("forge-agent paymentValid (Authorization settle)", e)
-      return false
+      logUnknownStellarError("forge-agent resolvePayment (Authorization settle)", e)
+      return "missing"
     }
   }
 
-  if (!authHeader?.toLowerCase().startsWith("x402 ")) return false
+  if (!authHeader?.toLowerCase().startsWith("x402 ")) return "missing"
   const raw = authHeader.slice(5).trim()
-  if (!raw) return false
+  if (!raw) return "missing"
+  if (!paymentRequirements) return "missing"
 
-  if (!paymentRequirements) return false
+  let decoded: unknown
+  try {
+    decoded = decodePaymentHeader<unknown>(raw)
+  } catch {
+    return "missing"
+  }
+  const parsed = PaymentPayloadSchema.safeParse(decoded)
+  if (!parsed.success) return "missing"
 
   try {
-    return await verifyOfficialX402(raw, paymentRequirements)
+    const valid = await verifyOfficialX402(raw, paymentRequirements)
+    return valid ? "paid" : "facilitator_rejected"
   } catch (e) {
-    logUnknownStellarError("forge-agent paymentValid (x402 verify)", e)
-    return false
+    logUnknownStellarError("forge-agent resolvePayment (x402 verify)", e)
+    return "facilitator_rejected"
   }
 }
 
 type ForgeAgentSuccessResponse = {
   success: true
+  /** URL de imagen: data URL (Gemini) o https Pollinations si hubo respaldo. */
   imageUrl: string
+  image_url: string
   lore: string
   metadataStandard: "SEP-20"
+  /**
+   * `nanobanana_api` = imagen vía api.nanobananaapi.ai;
+   * `gemini` = imagen vía Google Gemini;
+   * `pollinations_fallback` = cuota/overload o fallo tras intentos anteriores.
+   */
+  image_source: "nanobanana_api" | "gemini" | "pollinations_fallback"
 }
 
 type ForgeAgentResponse =
@@ -361,31 +402,316 @@ type ForgeAgentResponse =
   | ForgeAgentErrorResponse
 
 function buildPollinationsImageUrl(userPrompt: string): string {
-  const imagePrompt = `${userPrompt.trim()}${IMAGE_STYLE_SUFFIX}`
+  const imagePrompt = `${userPrompt.trim()}${POLLINATIONS_STYLE_SUFFIX}`
   return `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=1024&height=1024&nologo=true`
 }
 
-async function runForgeAgentCore(userPrompt: string): Promise<ForgeAgentSuccessResponse> {
+/** Por defecto sí: si Nano Banana está en 429/cuota, se sirve imagen vía Pollinations sin fallar el POST. */
+function forgePollinationsFallbackEnabled(): boolean {
+  const v = process.env.FORGE_DISABLE_POLLINATIONS_FALLBACK?.trim().toLowerCase()
+  return v !== "1" && v !== "true" && v !== "yes"
+}
+
+/** Claves de Google Generative Language suelen empezar por `AIza` (AI Studio / Cloud). */
+function looksLikeGoogleGeminiApiKey(raw: string | undefined): boolean {
+  const k = raw?.trim().replace(/^["']|["']$/g, "") ?? ""
+  return k.startsWith("AIza") && k.length >= 35
+}
+
+/** Lore: solo claves válidas Gemini; si `GOOGLE_AI_STUDIO_API_KEY` no es Google (p. ej. otra API), usa `GEMINI_API_KEY`. */
+function forgeGoogleAiApiKey(): string | null {
+  const studio = process.env.GOOGLE_AI_STUDIO_API_KEY?.trim()
+  const legacy = process.env.GEMINI_API_KEY?.trim().replace(/^["']|["']$/g, "")
+  if (looksLikeGoogleGeminiApiKey(studio)) return studio!.trim().replace(/^["']|["']$/g, "")
+  if (looksLikeGoogleGeminiApiKey(legacy)) {
+    if (studio && !looksLikeGoogleGeminiApiKey(studio) && process.env.NODE_ENV === "development") {
+      console.warn(
+        "[forge-agent] GOOGLE_AI_STUDIO_API_KEY no es clave Gemini (debe ser AIza… desde Google AI Studio); usando GEMINI_API_KEY.",
+      )
+    }
+    return legacy!
+  }
+  return null
+}
+
+/** Quita `models/` si vino pegado desde consola / REST; el SDK ya arma `models/<id>` cuando hace falta. */
+function cleanGeminiModelId(raw: string): string {
+  return raw.trim().replace(/^models\//i, "").trim()
+}
+
+function geminiModelId(): string {
+  const fromEnv = process.env.GEMINI_MODEL?.trim()
+  return fromEnv && fromEnv.length > 0 ? cleanGeminiModelId(fromEnv) : "gemini-3-flash"
+}
+
+function forgeGeminiImageModelId(): string {
+  const fromEnv = process.env.GEMINI_IMAGE_MODEL?.trim()
+  return fromEnv && fromEnv.length > 0 ? cleanGeminiModelId(fromEnv) : "gemini-3.1-flash-image-preview"
+}
+
+/**
+ * Gemini 3 suele exponerse antes en `v1beta`; `v1` cuando Google lo estabiliza.
+ * Override: `GEMINI_API_VERSION=v1` | `GEMINI_API_VERSION=v1beta`
+ */
+function geminiGenerateRequestOptions(): { apiVersion: "v1" | "v1beta" } {
+  const raw = process.env.GEMINI_API_VERSION?.trim().toLowerCase()
+  if (raw === "v1" || raw === "v1beta") return { apiVersion: raw }
+  return { apiVersion: "v1beta" }
+}
+
+/** Lore cyber-brutalist: umbrales al mínimo para no vaciar respuestas por sensibilidad. */
+const FORGE_GEMINI_SAFETY_SETTINGS = (
+  [
+    HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+    HarmCategory.HARM_CATEGORY_HARASSMENT,
+    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+    HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
+  ] as const
+).map((category) => ({ category, threshold: HarmBlockThreshold.BLOCK_NONE }))
+
+/**
+ * Fallbacks de lore tras `GEMINI_MODEL` / default. Evitar gemini-1.5-*: muchas cuentas devuelven 404 en v1beta.
+ * Orden: 2.5 (actual), 2.5 liviano, 2.0.
+ */
+const GEMINI_KNOWN_FALLBACK_MODELS = [
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-2.0-flash",
+] as const
+
+function geminiModelCandidates(): string[] {
+  const primary = geminiModelId()
+  const out: string[] = []
+  const seen = new Set<string>()
+  const add = (id: string) => {
+    const t = cleanGeminiModelId(id)
+    if (!t || seen.has(t)) return
+    seen.add(t)
+    out.push(t)
+  }
+  add(primary)
+  for (const m of GEMINI_KNOWN_FALLBACK_MODELS) add(m)
+  return out
+}
+
+/** Errores que no mejoran probando otro modelo (misma cuenta / misma clave). */
+function isGeminiNonRetryableAcrossModels(error: unknown): boolean {
+  const e = error as { status?: number; message?: string }
+  const status = typeof e?.status === "number" ? e.status : null
+  const msg = (typeof e?.message === "string" ? e.message : String(error ?? "")).toLowerCase()
+  if (status === 401 || status === 403) return true
+  if (/api key not valid|invalid api key|permission denied|unauthenticated|forbidden\b/i.test(msg)) return true
+  return false
+}
+
+/** Créditos agotados, cuota, rate limit u overload del núcleo de imagen (Nano Banana). */
+function isNanoBananaCoreOverloadError(error: unknown): boolean {
+  const e = error as { status?: number; message?: string; code?: number | string }
+  const status = typeof e?.status === "number" ? e.status : null
+  const codeNum = typeof e?.code === "number" ? e.code : null
+  const msg = (typeof e?.message === "string" ? e.message : String(error ?? "")).toLowerCase()
+  if (status === 429 || codeNum === 429) return true
+  if (status === 503 || status === 529) return true
+  return (
+    /\b429\b|\b503\b|quota|resource_exhausted|rate.?limit|too many requests|billing|credit|exhausted|overload|capacity/i.test(
+      msg,
+    )
+  )
+}
+
+type GeminiPart = {
+  inlineData?: { mimeType?: string; data?: string }
+  inline_data?: { mime_type?: string; data?: string }
+  text?: string
+}
+
+function extractImageDataUrlFromGeminiResponse(response: { candidates?: { content?: { parts?: GeminiPart[] } }[] }): string | null {
+  const parts = response.candidates?.[0]?.content?.parts
+  if (!parts?.length) return null
+  for (const part of parts) {
+    const id = part.inlineData ?? part.inline_data
+    if (!id?.data) continue
+    const mime = part.inlineData?.mimeType ?? part.inline_data?.mime_type ?? "image/png"
+    if (mime.startsWith("image/")) {
+      return `data:${mime};base64,${id.data}`
+    }
+  }
+  return null
+}
+
+/**
+ * Imagen vía Google Gemini (`gemini-3.1-flash-image-preview` por defecto): v1beta + modalidad IMAGE.
+ */
+async function generateForgeImageDataUrl(genAI: GoogleGenerativeAI, userPrompt: string): Promise<string> {
+  const trimmed = userPrompt.trim()
+  const fullPrompt = `${trimmed}.${FORGE_IMAGE_STYLE_BLOCK}`
+  const imageModelId = forgeGeminiImageModelId()
+  const imageGenerationConfig = {
+    responseModalities: ["IMAGE"],
+    imageConfig: {
+      aspectRatio: "1:1",
+      imageSize: "2K",
+    },
+  }
+
+  const model = genAI.getGenerativeModel(
+    {
+      model: imageModelId,
+      safetySettings: FORGE_GEMINI_SAFETY_SETTINGS,
+      // GenerationConfig del SDK aún no tipa responseModalities / imageConfig; la API v1beta sí.
+      generationConfig: imageGenerationConfig as import("@google/generative-ai").GenerationConfig,
+    },
+    geminiGenerateRequestOptions(),
+  )
+
+  let res: Awaited<ReturnType<typeof model.generateContent>>
+  try {
+    res = await model.generateContent(fullPrompt)
+  } catch (e) {
+    if (isNanoBananaCoreOverloadError(e)) {
+      throw new Error("NANO_BANANA_CORE_OVERLOAD")
+    }
+    throw e
+  }
+
+  const raw = res.response as unknown as { candidates?: { content?: { parts?: GeminiPart[] } }[] }
+  const dataUrl = extractImageDataUrlFromGeminiResponse(raw)
+  if (!dataUrl) {
+    throw new Error("GEMINI_IMAGE_EMPTY: el modelo no devolvió datos de imagen")
+  }
+  return dataUrl
+}
+
+async function runForgeAgentCore(
+  userPrompt: string,
+  nanobananaCallBackUrl: string,
+): Promise<ForgeAgentSuccessResponse> {
   const trimmed = userPrompt.trim()
   if (!trimmed) {
     throw new Error("EMPTY_PROMPT")
   }
 
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!.trim())
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
+  const apiKey = forgeGoogleAiApiKey()
+  if (!apiKey) {
+    throw new Error("MISSING_GOOGLE_AI_KEY")
+  }
+  const genAI = new GoogleGenerativeAI(apiKey)
+  const candidates = geminiModelCandidates()
 
   const systemInstruction = `Eres el Arquitecto del Protocolo PHASE. Escribe una descripción de máximo 2 oraciones técnicas, oscuras, ciberpunk y enigmáticas sobre el siguiente artefacto forjado por el usuario: ${trimmed}`
 
-  const geminiResult = await model.generateContent(systemInstruction)
-  const lore = geminiResult.response.text().trim()
+  type GeminiGenerateResult = Awaited<
+    ReturnType<ReturnType<GoogleGenerativeAI["getGenerativeModel"]>["generateContent"]>
+  >
+  let geminiResult: GeminiGenerateResult | undefined
+  let resolvedModelId = candidates[0] ?? geminiModelId()
 
-  const imageUrl = buildPollinationsImageUrl(trimmed)
+  for (let i = 0; i < candidates.length; i++) {
+    const modelId = candidates[i]!
+    resolvedModelId = modelId
+    try {
+      const model = genAI.getGenerativeModel(
+        { model: modelId, safetySettings: FORGE_GEMINI_SAFETY_SETTINGS },
+        geminiGenerateRequestOptions(),
+      )
+      geminiResult = await model.generateContent(systemInstruction)
+      if (i > 0) {
+        console.warn("[forge-agent] Gemini: modelo alternativo OK", { modelId, triedAfterFailure: true })
+      }
+      break
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      console.warn("[forge-agent] Gemini generateContent failed", {
+        modelId,
+        attempt: i + 1,
+        total: candidates.length,
+        msg,
+      })
+      if (isGeminiNonRetryableAcrossModels(e)) {
+        throw new Error(`GEMINI_GENERATE_FAILED: ${msg}`)
+      }
+      if (i === candidates.length - 1) {
+        throw new Error(`GEMINI_GENERATE_FAILED: ${msg}`)
+      }
+    }
+  }
+
+  if (!geminiResult) {
+    throw new Error("GEMINI_GENERATE_FAILED: ningún modelo en la cadena pudo generar contenido")
+  }
+
+  let lore = ""
+  try {
+    lore = geminiResult.response.text().trim()
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    console.error("[forge-agent] Gemini response.text() failed", { model: resolvedModelId, msg })
+    throw new Error(`GEMINI_EMPTY_RESPONSE: ${msg}`)
+  }
+  if (!lore) {
+    throw new Error("GEMINI_EMPTY_LORE: el modelo no devolvió texto (revisa cuota o safety).")
+  }
+
+  const imagePromptForApis = `${trimmed}.${FORGE_IMAGE_STYLE_BLOCK}`
+
+  function tryPollinationsOnOverload(e: unknown): boolean {
+    const overload =
+      (e instanceof Error && e.message === "NANO_BANANA_CORE_OVERLOAD") ||
+      isNanoBananaCoreOverloadError(e)
+    if (!overload) return false
+    if (!forgePollinationsFallbackEnabled()) throw new Error("NANO_BANANA_CORE_OVERLOAD")
+    console.warn(
+      "[forge-agent] Imagen (NanoBanana API o Gemini) en sobrecarga/cuota; usando Pollinations como respaldo",
+    )
+    return true
+  }
+
+  const { imageUrl, image_source } = await (async (): Promise<{
+    imageUrl: string
+    image_source: ForgeAgentSuccessResponse["image_source"]
+  }> => {
+    if (nanobananaApiKeyConfigured()) {
+      try {
+        const url = await generateForgeImageUrlViaNanobananaApi({
+          prompt: imagePromptForApis,
+          callBackUrl: nanobananaCallBackUrl,
+        })
+        return { imageUrl: url, image_source: "nanobanana_api" }
+      } catch (e) {
+        if (tryPollinationsOnOverload(e)) {
+          return {
+            imageUrl: buildPollinationsImageUrl(trimmed),
+            image_source: "pollinations_fallback",
+          }
+        }
+        console.warn("[forge-agent] NanoBanana API (nanobananaapi.ai) falló; probando imagen Gemini", e)
+      }
+    }
+
+    try {
+      const url = await generateForgeImageDataUrl(genAI, trimmed)
+      return { imageUrl: url, image_source: "gemini" }
+    } catch (e) {
+      if (tryPollinationsOnOverload(e)) {
+        return {
+          imageUrl: buildPollinationsImageUrl(trimmed),
+          image_source: "pollinations_fallback",
+        }
+      }
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error("[forge-agent] Gemini image generation failed", { msg })
+      throw new Error(`GEMINI_IMAGE_FAILED: ${msg}`)
+    }
+  })()
 
   return {
     success: true,
     imageUrl,
+    image_url: imageUrl,
     lore,
     metadataStandard: "SEP-20",
+    image_source,
   }
 }
 
@@ -397,9 +723,13 @@ export async function POST(request: NextRequest): Promise<NextResponse<ForgeAgen
     return NextResponse.json({ success: false, error: "JSON inválido" }, { status: 400 })
   }
 
-  if (!process.env.GEMINI_API_KEY?.trim()) {
+  if (!forgeGoogleAiApiKey()) {
     return NextResponse.json(
-      { success: false, error: "GEMINI_API_KEY no configurada en el servidor" },
+      {
+        success: false,
+        error:
+          "GOOGLE_AI_STUDIO_API_KEY (o GEMINI_API_KEY) no configurada en el servidor. Crea clave en Google AI Studio.",
+      },
       { status: 503 },
     )
   }
@@ -408,9 +738,12 @@ export async function POST(request: NextRequest): Promise<NextResponse<ForgeAgen
 
   const paymentRequirements = buildOfficialPaymentRequirements(request)
   const auth = request.headers.get("authorization")
-  const paid = await paymentValid(request, auth, body, paymentRequirements)
+  const payment = await resolveForgeAgentPayment(auth, body, paymentRequirements)
 
-  if (!paid) {
+  if (payment === "facilitator_rejected") {
+    return NextResponse.json({ success: false, error: ERR_SETTLEMENT_REJECTED_BY_FACILITATOR }, { status: 403 })
+  }
+  if (payment === "missing") {
     return forgeAgentPaymentRequired(request, paymentRequirements)
   }
 
@@ -419,12 +752,41 @@ export async function POST(request: NextRequest): Promise<NextResponse<ForgeAgen
   }
 
   try {
-    const payload = await runForgeAgentCore(body.prompt)
+    const nanobananaCallBackUrl =
+      process.env.NANOBANANA_CALLBACK_URL?.trim() ||
+      `${request.nextUrl.origin}/api/webhooks/nanobanana`
+    const payload = await runForgeAgentCore(body.prompt, nanobananaCallBackUrl)
     return NextResponse.json(payload)
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     if (msg === "EMPTY_PROMPT") {
       return NextResponse.json({ success: false, error: "prompt vacío o inválido" }, { status: 400 })
+    }
+    if (msg === "MISSING_GOOGLE_AI_KEY") {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "GOOGLE_AI_STUDIO_API_KEY (o GEMINI_API_KEY) no configurada en el servidor. Crea clave en Google AI Studio.",
+        },
+        { status: 503 },
+      )
+    }
+    if (msg === "NANO_BANANA_CORE_OVERLOAD") {
+      console.error("[forge-agent]", ERR_NANO_BANANA_CORE_OVERLOAD)
+      return NextResponse.json({ success: false, error: ERR_NANO_BANANA_CORE_OVERLOAD }, { status: 503 })
+    }
+    if (msg.startsWith("GEMINI_")) {
+      console.error("[forge-agent] Gemini error (500)", msg)
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Fallo al generar lore con Gemini. Revisa GOOGLE_AI_STUDIO_API_KEY (o GEMINI_API_KEY) y GEMINI_MODEL en el servidor; los modelos 1.5 ya no están disponibles para todos los proyectos.",
+          detail: process.env.NODE_ENV === "development" ? msg : undefined,
+        },
+        { status: 500 },
+      )
     }
     console.error("[PROTOCOL_ERROR] Energía consumida, fallo de IA (500)", msg, e)
     return NextResponse.json(

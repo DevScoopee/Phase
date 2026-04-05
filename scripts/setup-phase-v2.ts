@@ -1,10 +1,10 @@
 /**
- * Emergency bootstrap: recrea Issuer + Distributor y deja PHASERLIQ operativo en testnet.
+ * Emergency bootstrap: recrea Issuer + Distributor y deja PHASELQ operativo en testnet.
  *
  * Flujo:
  * 1) Genera dos keypairs nuevos (Issuer, Distributor)
  * 2) Fondea ambos con Friendbot
- * 3) Crea trustline del Distributor al asset clásico PHASERLIQ
+ * 3) Crea trustline del Distributor al asset clásico PHASELQ
  * 4) Envía payment Issuer -> Distributor (supply inicial)
  * 5) Ejecuta `stellar contract asset deploy` para ese asset y captura Contract ID
  * 6) Imprime bloque listo para pegar en .env.local
@@ -13,7 +13,7 @@
  *   cd scripts && npm install && npm run setup:phase-v2
  *
  * Opcional:
- *   PHASE_V2_ASSET_CODE=PHASERLIQ
+ *   PHASE_V2_ASSET_CODE=PHASELQ
  *   PHASE_V2_INITIAL_DISTRIBUTION=100000.0000000
  *   PHASE_V2_RPC_URL=https://soroban-testnet.stellar.org
  *   PHASE_V2_HORIZON_URL=https://horizon-testnet.stellar.org
@@ -38,7 +38,7 @@ const RPC_URL = process.env.PHASE_V2_RPC_URL?.trim() || "https://soroban-testnet
 const HORIZON_URL = process.env.PHASE_V2_HORIZON_URL?.trim() || "https://horizon-testnet.stellar.org"
 const NETWORK_PASSPHRASE = Networks.TESTNET
 const FRIENDBOT_URL = "https://friendbot.stellar.org"
-const ASSET_CODE = process.env.PHASE_V2_ASSET_CODE?.trim() || "PHASERLIQ"
+const ASSET_CODE = process.env.PHASE_V2_ASSET_CODE?.trim() || "PHASELQ"
 const INITIAL_DISTRIBUTION = process.env.PHASE_V2_INITIAL_DISTRIBUTION?.trim() || "100000.0000000"
 const MAX_TRUST = "922337203685.4775807"
 

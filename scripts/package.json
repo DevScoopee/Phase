@@ -4,6 +4,7 @@
   "description": "Scripts de interacción con contratos PHASE Protocol",
   "type": "module",
   "scripts": {
+    "diagnose": "cd .. && npm run diagnose",
     "build:token": "cd ../contracts/mock-token && cargo build --target wasm32-unknown-unknown --release",
     "build:phase": "cd ../contracts/phase-protocol && cargo build --target wasm32v1-none --release",
     "build:all": "npm run build:token && npm run build:phase",
@@ -18,7 +19,8 @@
     "issue:sac": "tsx issue-sac-token.ts",
     "setup:phase-v2": "tsx setup-phase-v2.ts",
     "set:issuer-home-domain": "tsx set-issuer-home-domain.ts",
-    "issuer-to-distributor": "tsx issuer-pay-distributor.ts"
+    "issuer-to-distributor": "tsx issuer-pay-distributor.ts",
+    "reset:phase": "tsx reset-phase.ts"
   },
   "dependencies": {
     "@stellar/freighter-api": "^6.0.1",

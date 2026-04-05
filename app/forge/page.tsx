@@ -10,6 +10,7 @@ import { TokenIcon } from "@/components/token-icon"
 import { TrustlineButton } from "@/components/trustline-button"
 import { useWallet } from "@/components/wallet-provider"
 import { pickCopy } from "@/lib/phase-copy"
+import { humanizePhaseHostErrorMessage } from "@/lib/phase-host-error"
 import { composeImageWithPhaseForgeSeal } from "@/lib/forge-seal-image"
 import { isIpfsUploadConfigured, uploadToIPFS } from "@/lib/ipfs-upload"
 import { cn } from "@/lib/utils"
@@ -29,6 +30,7 @@ import {
   liqToStroops,
   sendTransaction,
   stroopsToLiqDisplay,
+  PHASER_LIQ_STELLAR_EXPERT_DEFAULT,
   PHASER_LIQ_SYMBOL,
   stellarExpertPhaserLiqUrl,
   validateFinalContractImageUri,
@@ -37,6 +39,35 @@ import {
 function truncateAddress(addr: string) {
   if (!addr || addr.length < 14) return addr
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`
+}
+
+/** Convierte errores técnicos del flujo Oracle/mint en copy localizada o mensaje legible. */
+function mapFusionChamberError(
+  err: unknown,
+  errors: ReturnType<typeof pickCopy>["forge"]["errors"],
+): string {
+  const msg = err instanceof Error ? err.message : String(err)
+  switch (msg) {
+    case "FUSION_ABORTED_BY_USER":
+      return errors.userAbortedFreighter
+    case "ORACLE_OFFLINE_ENERGY_CONSUMED":
+      return errors.oracleOfflineAfterPayment
+    case "SIGN_FAIL":
+    case "NO_SIGNED_XDR":
+      return errors.agentPay
+    default:
+      break
+  }
+  const hostMsg = humanizePhaseHostErrorMessage(
+    msg,
+    errors.phaseHostContractErrors,
+    errors.phaseHostContractUnknown,
+  )
+  if (hostMsg) return hostMsg
+  if (msg && (/\s/.test(msg) || /[a-z]/.test(msg))) {
+    return msg.length > 450 ? `${msg.slice(0, 450)}…` : msg
+  }
+  return errors.fusionChamberHalted
 }
 
 function captureWheelOnRewardsPanel(e: React.WheelEvent<HTMLDivElement>) {
@@ -51,8 +82,11 @@ function captureWheelOnRewardsPanel(e: React.WheelEvent<HTMLDivElement>) {
   }
 }
 
-const PHASER_LIQ_EXPERT_HREF = stellarExpertPhaserLiqUrl()
-
+/**
+ * Enlace Stellar Expert: primer render = URL default fija (SSR + hidratación iguales).
+ * Tras montar, aplica `stellarExpertPhaserLiqUrl()` (NEXT_PUBLIC_*) para evitar mismatch
+ * cuando el servidor ve .env completo y el chunk cliente no inlina igual el emisor.
+ */
 function PhaserLiqExpertLink({
   className,
   children,
@@ -60,9 +94,13 @@ function PhaserLiqExpertLink({
   className?: string
   children?: React.ReactNode
 }) {
+  const [href, setHref] = useState(PHASER_LIQ_STELLAR_EXPERT_DEFAULT)
+  useEffect(() => {
+    setHref(stellarExpertPhaserLiqUrl())
+  }, [])
   return (
     <a
-      href={PHASER_LIQ_EXPERT_HREF}
+      href={href}
       target="_blank"
       rel="noopener noreferrer"
       aria-label={`${PHASER_LIQ_SYMBOL} — Stellar Expert (testnet)`}
@@ -95,8 +133,6 @@ const forgeNavBtn =
 
 type AgentState = "IDLE" | "AWAITING_PAYMENT" | "PROCESSING_PAYMENT" | "FORGING_MATTER" | "COMPLETE"
 type ForgeMode = "ORACLE" | "MANUAL"
-
-const PROTOCOL_HALTED = "[ PROTOCOL_HALTED: ERROR_IN_FUSION_CHAMBER ]"
 
 export default function ForgePage() {
   const { lang } = useLang()
@@ -140,8 +176,8 @@ export default function ForgePage() {
   const actionLockedByProtocol = Boolean(address && !protocolReady)
 
   const anomalyFieldLocked = agentFlowBusy || agentState === "COMPLETE"
-  const namePriceLocked =
-    (forgeMode === "ORACLE" && (agentFlowBusy || agentState === "COMPLETE")) || isMintingCollection
+  /** Tras el Oráculo en COMPLETE el usuario aún debe poder editar nombre/precio antes del mint; no bloquear aquí. */
+  const namePriceLocked = (forgeMode === "ORACLE" && agentFlowBusy) || isMintingCollection
 
   const tabSwitchLocked = agentFlowBusy || isMintingCollection
 
@@ -332,6 +368,31 @@ export default function ForgePage() {
           const path = `/chamber?collection=${id}`
           setShareUrl(`${window.location.origin}${path}`)
         }
+
+        // Cada artefacto forjado debe materializarse como NFT: auto-mint en la colección recién creada.
+        try {
+          const invoiceId = Math.floor(Math.random() * 1_000_000)
+          const txEnvelopeMint = await buildSettleTransaction(addr, stroops, invoiceId, id)
+          const signMint = await signTransaction(txEnvelopeMint, {
+            networkPassphrase: NETWORK_PASSPHRASE,
+            address: addr,
+          })
+          if (signMint.error) throw new Error(signMint.error.message || "SIGN_FAIL")
+          const signedMint =
+            (signMint as { signedTxXdr?: string }).signedTxXdr ||
+            (signMint as { signedTransaction?: string }).signedTransaction
+          if (!signedMint) throw new Error("NO_SIGNED_XDR")
+          const sendMint = await sendTransaction(signedMint)
+          await getTransactionResult(sendMint.hash as string)
+        } catch (mintErr) {
+          const fallback =
+            lang === "es"
+              ? "La colección se creó, pero el auto-mint del NFT falló. Abrí Chamber para mintear manualmente."
+              : "Collection created, but NFT auto-mint failed. Open Chamber to mint manually."
+          const friendly = mapFusionChamberError(mintErr, ff.errors)
+          setError(`${fallback} ${friendly}`)
+        }
+
         setAgentState("IDLE")
         if (opts.clearManualOnSuccess) {
           setManualFile(null)
@@ -353,7 +414,7 @@ export default function ForgePage() {
             return
           }
         }
-        setError(PROTOCOL_HALTED)
+        setError(mapFusionChamberError(e, ff.errors))
       } finally {
         setIsMintingCollection(false)
       }
@@ -422,7 +483,17 @@ export default function ForgePage() {
       })
 
       if (paid.status >= 500) {
-        throw new Error("ORACLE_OFFLINE_ENERGY_CONSUMED")
+        let serverMessage = ""
+        try {
+          const j = (await paid.json()) as { error?: unknown; detail?: unknown }
+          const errStr = typeof j.error === "string" ? j.error.trim() : ""
+          const detailStr = typeof j.detail === "string" ? j.detail.trim() : ""
+          if (errStr) serverMessage = detailStr ? `${errStr} — ${detailStr}` : errStr
+          else if (detailStr) serverMessage = detailStr
+        } catch {
+          /* cuerpo no JSON */
+        }
+        throw new Error(serverMessage || "ORACLE_OFFLINE_ENERGY_CONSUMED")
       }
       if (!paid.ok) {
         const t = await paid.text().catch(() => "")
@@ -486,15 +557,16 @@ export default function ForgePage() {
 
     try {
       await initiateAgentForge(prompt, addr)
-    } catch {
+    } catch (e) {
       setAgentState("IDLE")
       setAgentImageUrl(null)
       setLore(null)
-      setError(PROTOCOL_HALTED)
+      setError(mapFusionChamberError(e, ff.errors))
     }
   }, [address, anomalyDescription, initiateAgentForge, lang, protocolReady, refresh])
 
   const handleMintArtifact = useCallback(async () => {
+    const ff = pickCopy(lang).forge
     if (agentState !== "COMPLETE" || !agentImageUrl) return
     setError(null)
     try {
@@ -503,10 +575,10 @@ export default function ForgePage() {
         restoreOracleOnFail: true,
         clearManualOnSuccess: false,
       })
-    } catch {
-      setError(PROTOCOL_HALTED)
+    } catch (e) {
+      setError(mapFusionChamberError(e, ff.errors))
     }
-  }, [agentImageUrl, agentState, resolveImageUriForMint, runCreateCollectionTransaction])
+  }, [agentImageUrl, agentState, lang, resolveImageUriForMint, runCreateCollectionTransaction])
 
   const handleManualUploadAndMint = useCallback(async () => {
     const ff = pickCopy(lang).forge
@@ -529,7 +601,7 @@ export default function ForgePage() {
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      setError(msg || PROTOCOL_HALTED)
+      setError(msg ? mapFusionChamberError(e, ff.errors) : ff.errors.fusionChamberHalted)
       return
     }
     await runCreateCollectionTransaction(finalUri, {
@@ -634,7 +706,7 @@ export default function ForgePage() {
         </div>
       </header>
 
-      <main className="relative z-10 mx-auto min-h-0 w-full max-w-[100rem] flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain px-3 pb-3 pt-1 md:px-5 [-webkit-overflow-scrolling:touch]">
+      <main className="custom-scrollbar relative z-10 mx-auto min-h-0 w-full max-w-[100rem] flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain px-3 pb-3 pt-1 md:px-5 [-webkit-overflow-scrolling:touch]">
         <div className={shellClass}>
           {statusStripActive && (
             <div className="shrink-0">
@@ -734,7 +806,7 @@ export default function ForgePage() {
           />
 
           {error && (
-            <div className="tactical-alert-critical relative z-[1] mt-2 shrink-0 px-2 py-2" role="alert">
+            <div className="forge-error-banner relative z-[1] mt-2 shrink-0 px-2 py-2" role="alert">
               <p className="relative z-[1] text-center text-[9px] font-bold uppercase tracking-wider text-red-200">{error}</p>
             </div>
           )}
@@ -895,7 +967,13 @@ export default function ForgePage() {
                     <input
                       id="forge-name"
                       value={name}
-                      onChange={(e) => setName(e.target.value)}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        setName(v)
+                        if (error === f.errors.nameShort && v.trim().length >= 2) {
+                          setError(null)
+                        }
+                      }}
                       maxLength={64}
                       disabled={namePriceLocked}
                       placeholder={f.placeholders.collectionName}
@@ -946,12 +1024,7 @@ export default function ForgePage() {
                     <p className="font-mono text-[11px] tabular-nums text-cyan-200/95 sm:text-xs">
                       <span className="text-cyan-300/90">{pickCopy(lang).chamber.liqBalance}</span>
                       {": "}
-                      <span className="text-cyan-50">
-                        {(() => {
-                          const n = parseInt(tokenBalance, 10) / 10000000
-                          return Number.isFinite(n) ? n.toFixed(2) : "0.00"
-                        })()}{" "}
-                      </span>
+                      <span className="text-cyan-50">{stroopsToLiqDisplay(tokenBalance)} </span>
                       <PhaserLiqExpertLink />
                     </p>
                   </div>
@@ -1058,7 +1131,7 @@ export default function ForgePage() {
               </p>
               <div className="art-retro-monitor flex min-h-[min(280px,42vh)] flex-col items-center justify-center overflow-hidden px-2 py-2 lg:min-h-[min(360px,50vh)]">
                 {previewSrc ? (
-                  <div className="tactical-holo-wrap relative z-[3] flex h-full max-h-full w-full max-w-full flex-col items-center justify-center gap-2">
+                  <div className="phase-artifact-preview-clean tactical-holo-wrap relative z-[3] flex h-full max-h-full w-full max-w-full flex-col items-center justify-center gap-2">
                     {/* eslint-disable-next-line @next/next/no-img-element -- Pollinations / IPFS URLs */}
                     <img
                       src={previewSrc}
