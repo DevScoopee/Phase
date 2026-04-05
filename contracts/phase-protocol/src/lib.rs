@@ -1,6 +1,7 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, token, Address, Bytes, Env, String, Symbol,
+    contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Bytes, Env,
+    String, Symbol,
 };
 
 /// Errores del protocolo PHASE
@@ -158,6 +159,21 @@ fn append_soroban_str_to_bytes(acc: &mut Bytes, s: &String) {
     }
     s.copy_into_slice(&mut buf[..n]);
     acc.extend_from_slice(&buf[..n]);
+}
+
+/// Eventos alineados con OpenZeppelin / borrador SEP-50 para indexadores y wallets que lean por eventos.
+fn emit_indexer_mint(env: &Env, to: Address, token_id: u64) {
+    let Ok(tid) = u32::try_from(token_id) else {
+        return;
+    };
+    env.events().publish((symbol_short!("mint"), to), tid);
+}
+
+fn emit_indexer_transfer(env: &Env, from: Address, to: Address, token_id: u64) {
+    let Ok(tid) = u32::try_from(token_id) else {
+        return;
+    };
+    env.events().publish((symbol_short!("transfer"), from, to), tid);
 }
 
 #[contract]
@@ -356,9 +372,10 @@ impl PhaseProtocol {
             (new_id, required_amount),
         );
         env.events().publish(
-            (Symbol::new(&env, "phase_nft_minted"), user),
+            (Symbol::new(&env, "phase_nft_minted"), user.clone()),
             (new_id, required_amount),
         );
+        emit_indexer_mint(&env, user, new_id);
 
         Ok(new_id)
     }
@@ -664,10 +681,16 @@ impl PhaseProtocol {
         count
     }
 
-    pub fn owner_of(env: Env, token_id: u64) -> Option<Address> {
-        env.storage()
+    /// SEP-0050 / Freighter: debe fallar (panic host) si el token no existe — no `Option` vacío.
+    pub fn owner_of(env: Env, token_id: u64) -> Address {
+        match env
+            .storage()
             .persistent()
-            .get(&DataKey::TokenOwner(token_id))
+            .get::<DataKey, Address>(&DataKey::TokenOwner(token_id))
+        {
+            Some(a) => a,
+            None => panic!("Phase NFT: invalid token id"),
+        }
     }
 
     /// `token_id` → `collection_id` (0 = pool protocolo). Lectura para indexadores y `/api/metadata`.
@@ -691,6 +714,7 @@ impl PhaseProtocol {
             if current != from {
                 return Err(PhaseError::NotNftOwner);
             }
+            emit_indexer_transfer(&env, from.clone(), to.clone(), token_id);
             return Ok(());
         }
         Self::transfer_phase_nft(env, from, to, token_id)
@@ -739,9 +763,10 @@ impl PhaseProtocol {
             .persistent()
             .set(&DataKey::UserPhase(to.clone(), collection_id), &state);
         env.events().publish(
-            (Symbol::new(&env, "phase_nft_transferred"), from),
-            (token_id, to),
+            (Symbol::new(&env, "phase_nft_transferred"), from.clone()),
+            (token_id, to.clone()),
         );
+        emit_indexer_transfer(&env, from, to, token_id);
         Ok(())
     }
 
@@ -754,6 +779,7 @@ impl PhaseProtocol {
 
     /// URI de metadatos **HTTP(S)** (estilo ERC-721): la wallet hace GET y espera JSON (`name`, `description`, `image`).
     /// Los argumentos on-chain siguen siendo `u64` (IDs de fase); encajan en `u32` cuando aplica el tooling.
+    /// SEP-0050: URI de metadatos; panic si `token_id` no existe (Freighter / clientes SEP-50).
     pub fn token_uri(env: Env, token_id: u64) -> String {
         if env
             .storage()
@@ -761,7 +787,7 @@ impl PhaseProtocol {
             .get::<DataKey, Address>(&DataKey::TokenOwner(token_id))
             .is_none()
         {
-            return String::from_str(&env, "");
+            panic!("Phase NFT: invalid token id");
         }
         build_metadata_token_uri(&env, token_id)
     }

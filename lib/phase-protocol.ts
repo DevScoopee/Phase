@@ -1085,11 +1085,14 @@ export async function fetchTokenMetadataDisplay(raw: string): Promise<{ image?: 
   return parseTokenUriMetadata(t)
 }
 
-export async function fetchTokenUriString(tokenId: number): Promise<string | null> {
+export async function fetchTokenUriString(
+  tokenId: number,
+  protocolContractId: string = CONTRACT_ID,
+): Promise<string | null> {
   if (tokenId <= 0) return null
   try {
     const native = await simulateContractCall(
-      CONTRACT_ID,
+      protocolContractId,
       "token_uri",
       [nativeToScVal(tokenId, { type: "u64" })],
       READONLY_SIM_SOURCE_G,
@@ -1100,11 +1103,36 @@ export async function fetchTokenUriString(tokenId: number): Promise<string | nul
   }
 }
 
-export async function fetchPhaseLevelForToken(tokenId: number): Promise<string | null> {
+/** `name()` en contrato NFT Soroban (SEP-0050 / Freighter). */
+export async function fetchNftCollectionName(protocolContractId: string): Promise<string | null> {
+  try {
+    const native = await simulateContractCall(protocolContractId, "name", [], READONLY_SIM_SOURCE_G)
+    if (typeof native === "string" && native.trim().length > 0) return native.trim()
+  } catch {
+    /* no name */
+  }
+  return null
+}
+
+/** `symbol()` en contrato NFT Soroban (SEP-0050 / Freighter). */
+export async function fetchNftCollectionSymbol(protocolContractId: string): Promise<string | null> {
+  try {
+    const native = await simulateContractCall(protocolContractId, "symbol", [], READONLY_SIM_SOURCE_G)
+    if (typeof native === "string" && native.trim().length > 0) return native.trim()
+  } catch {
+    /* no symbol */
+  }
+  return null
+}
+
+export async function fetchPhaseLevelForToken(
+  tokenId: number,
+  protocolContractId: string = CONTRACT_ID,
+): Promise<string | null> {
   if (tokenId <= 0) return null
   try {
     const native = await simulateContractCall(
-      CONTRACT_ID,
+      protocolContractId,
       "get_phase_level",
       [nativeToScVal(tokenId, { type: "u64" })],
       READONLY_SIM_SOURCE_G,
@@ -1126,11 +1154,12 @@ export async function fetchPhaseLevelForToken(tokenId: number): Promise<string |
 export async function fetchTokenCollectionIdForToken(
   tokenId: number,
   ownerAddress: string | null,
+  protocolContractId: string = CONTRACT_ID,
 ): Promise<number | null> {
   if (tokenId <= 0) return null
   try {
     const native = await simulateContractCall(
-      CONTRACT_ID,
+      protocolContractId,
       "get_token_collection_id",
       [nativeToScVal(tokenId, { type: "u64" })],
       READONLY_SIM_SOURCE_G,
@@ -1142,6 +1171,7 @@ export async function fetchTokenCollectionIdForToken(
   } catch {
     /* contrato sin getter */
   }
+  if (protocolContractId !== CONTRACT_ID) return null
   const o = ownerAddress?.trim()
   if (!o || !StrKey.isValidEd25519PublicKey(o)) return null
   const total = await fetchTotalCollections()
@@ -1168,11 +1198,14 @@ export async function fetchCreatorCollectionId(creatorAddress: string): Promise<
   }
 }
 
-export async function fetchCollectionInfo(collectionId: number): Promise<CollectionInfo | null> {
+export async function fetchCollectionInfo(
+  collectionId: number,
+  protocolContractId: string = CONTRACT_ID,
+): Promise<CollectionInfo | null> {
   if (collectionId <= 0) return null
   try {
     const native = await simulateContractCall(
-      CONTRACT_ID,
+      protocolContractId,
       "get_collection",
       [nativeToScVal(collectionId, { type: "u64" })],
       READONLY_SIM_SOURCE_G,
@@ -1241,18 +1274,75 @@ export async function checkHasPhased(
  * Escaneo defensivo para detectar propiedad real de cualquier NFT PHASE,
  * incluso fuera de `collection_id=0` o de la colección creada por el usuario.
  */
+/** `total_supply` on-chain (mayor id acuñado); 0 si falla la simulación. */
+export async function fetchPhaseProtocolTotalSupply(
+  protocolContractId: string = CONTRACT_ID,
+): Promise<number> {
+  try {
+    const native = await simulateContractCall(
+      protocolContractId,
+      "total_supply",
+      [],
+      READONLY_SIM_SOURCE_G,
+    )
+    return Math.max(0, Math.floor(numLikeToNumber(native)))
+  } catch {
+    return 0
+  }
+}
+
+/**
+ * Lista ids de NFT PHASE cuyo `owner_of(id)` coincide con la wallet (escaneo 1..min(supply, cap), vía RPC Soroban).
+ * No usa indexadores de terceros.
+ */
+export async function fetchOwnedPhaseTokenIdsForWallet(
+  ownerG: string,
+  opts?: { contractId?: string; maxTokenIdCap?: number; concurrency?: number },
+): Promise<number[]> {
+  const contractId = opts?.contractId ?? CONTRACT_ID
+  const g = extractBaseAddress(ownerG).trim().toUpperCase()
+  if (!StrKey.isValidEd25519PublicKey(g)) return []
+
+  const total = await fetchPhaseProtocolTotalSupply(contractId)
+  if (total <= 0) return []
+
+  const maxCap = opts?.maxTokenIdCap ?? 5000
+  const cap = Math.min(total, Math.max(1, maxCap))
+  const conc = Math.max(1, Math.min(16, opts?.concurrency ?? 8))
+
+  const owned: number[] = []
+  for (let start = 1; start <= cap; start += conc) {
+    const batch: Promise<number | null>[] = []
+    for (let j = 0; j < conc && start + j <= cap; j++) {
+      const id = start + j
+      batch.push(
+        (async () => {
+          const o = await fetchTokenOwnerAddress(contractId, id)
+          if (!o) return null
+          const og = extractBaseAddress(o).trim().toUpperCase()
+          return og === g ? id : null
+        })(),
+      )
+    }
+    const results = await Promise.all(batch)
+    for (const r of results) {
+      if (r != null) owned.push(r)
+    }
+  }
+  return owned.sort((a, b) => a - b)
+}
+
 export async function userOwnsAnyPhaseToken(userAddress: string, scanWindow: number = 400): Promise<boolean> {
-  const normalized = userAddress.trim().toUpperCase()
+  const normalized = extractBaseAddress(userAddress).trim().toUpperCase()
   if (!normalized) return false
   try {
-    const totalNative = await simulateContractCall(CONTRACT_ID, "total_supply", [], READONLY_SIM_SOURCE_G)
-    const total = Math.max(0, numLikeToNumber(totalNative))
+    const total = await fetchPhaseProtocolTotalSupply(CONTRACT_ID)
     if (total <= 0) return false
 
     const from = Math.max(1, total - Math.max(1, scanWindow) + 1)
     for (let tokenId = total; tokenId >= from; tokenId--) {
       const owner = await fetchTokenOwnerAddress(CONTRACT_ID, tokenId)
-      if (owner && owner.trim().toUpperCase() === normalized) return true
+      if (owner && extractBaseAddress(owner).trim().toUpperCase() === normalized) return true
     }
     return false
   } catch {

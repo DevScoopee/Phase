@@ -171,6 +171,12 @@ export const phaseCopy: Record<
       cancelListing: string
       listingLoadError: string
       transferWasmHint: string
+      /** Bóveda PHASE: lista por RPC (owner_of), sin indexador de terceros. */
+      vaultRpcTitle: string
+      vaultRpcBlurb: string
+      vaultRpcLoading: string
+      vaultRpcEmpty: string
+      vaultRpcError: string
     }
     studioModal: {
       windowTitle: string
@@ -398,6 +404,14 @@ export const phaseCopy: Record<
       freighterManualAddTitle: string
       freighterManualAddBody: string
       freighterManualAddTroubleshoot: string
+      /** Pedestal: self-transfer para re-emitir evento `transfer` (útil si una wallet externa cachea por eventos). */
+      freighterIndexPingButton: string
+      freighterIndexPingToastOk: string
+      freighterIndexPingToastFail: string
+      /** Pedestal: comprobar name/symbol/owner_of/token_uri + JSON metadata vs SEP-0050 (Freighter). */
+      freighterSep50CheckButton: string
+      freighterSep50CheckIntro: string
+      freighterSep50CheckFailToast: string
       /** Pedestal: ya sos owner on-chain; Freighter no lista solo — Add manually. */
       freighterOwnerOnChainAddBody: string
       /** Meta pedestal: contrato PHASE (NFT SEP-20), no el SAC PHASELQ. */
@@ -484,6 +498,12 @@ export const phaseCopy: Record<
       listingLoadError: "Could not load listings.",
       transferWasmHint:
         "If simulation fails, redeploy the PHASE WASM with transfer_phase_nft and update CONTRACT_ID.",
+      vaultRpcTitle: "[ PHASE_VAULT // SOROBAN_RPC ]",
+      vaultRpcBlurb:
+        "Your PHASE utility NFTs listed by this app via Soroban simulation (total_supply + owner_of). No third-party indexer required for this view.",
+      vaultRpcLoading: "Scanning chain…",
+      vaultRpcEmpty: "No PHASE NFTs found for this wallet in the scanned id range.",
+      vaultRpcError: "Could not load vault (RPC or timeout). Retry later.",
     },
     studioModal: {
       windowTitle: "PHASE Art Studio",
@@ -730,7 +750,14 @@ export const phaseCopy: Record<
       freighterManualAddBody:
         "If it does not appear automatically: Freighter -> Collectibles -> Add manually.",
       freighterManualAddTroubleshoot:
-        "If Freighter shows “Collectible not found”, verify Collection Address + Token ID exactly as shown below and retry after 30-90s (indexing delay).",
+        "Freighter’s Collectibles flow may rely on its own backend or a public indexer — independent from this app. If Add manually fails, use “Ping Freighter index” below (no-op self-transfer, emits a standard transfer event), wait, then retry. In PHASE, your authoritative list is the dashboard vault (Soroban RPC scan) — no Mercury subscription required for that.",
+      freighterIndexPingButton: "[ PING FREIGHTER INDEX · SELF-TRANSFER ]",
+      freighterIndexPingToastOk: "Index ping submitted. Wait 1–5 min, then Add Collectible in Freighter again.",
+      freighterIndexPingToastFail: "Index ping failed. Check network or try again.",
+      freighterSep50CheckButton: "[ CHECK SEP-50 / FREIGHTER READINESS ]",
+      freighterSep50CheckIntro:
+        "Runs on our server: Soroban name(), symbol(), owner_of, token_uri, then fetches metadata JSON. Freighter still uses its own indexer for auto-list — this only proves the contract + URL match the SEP-0050 draft.",
+      freighterSep50CheckFailToast: "SEP-50 check request failed.",
       freighterOwnerOnChainAddBody:
         "You already own this NFT on the PHASE contract. Freighter does not always show Soroban collectibles automatically: open Collectibles → Add manually and paste the Collection address + Token ID below (same network: testnet).",
       onChainMetaNftContractLabel: "NFT_PROTOCOL_CONTRACT",
@@ -881,6 +908,12 @@ export const phaseCopy: Record<
       listingLoadError: "No se pudieron cargar los anuncios.",
       transferWasmHint:
         "Si falla la simulación, redesplegá el WASM PHASE con transfer_phase_nft y actualizá CONTRACT_ID.",
+      vaultRpcTitle: "[ BÓVEDA_PHASE // RPC_SOROBAN ]",
+      vaultRpcBlurb:
+        "Tus NFT de utilidad PHASE listados por esta app vía simulación Soroban (total_supply + owner_of). Esta vista no depende de un indexador de terceros.",
+      vaultRpcLoading: "Escaneando cadena…",
+      vaultRpcEmpty: "No se encontraron NFT PHASE para esta wallet en el rango escaneado.",
+      vaultRpcError: "No se pudo cargar la bóveda (RPC o tiempo de espera). Reintentá más tarde.",
     },
     studioModal: {
       windowTitle: "PHASE Estudio de arte",
@@ -1127,7 +1160,14 @@ export const phaseCopy: Record<
       freighterManualAddBody:
         "Si no aparece automático: Freighter -> Collectibles -> Add manually.",
       freighterManualAddTroubleshoot:
-        "Si Freighter muestra “Collectible not found”, verifica Collection Address + Token ID exactamente como aparecen abajo y reintenta en 30-90s (delay de indexación).",
+        "El flujo Collectibles de Freighter puede depender de su propio backend o de un indexador público — ajeno a esta app. Si Add manually falla, usá “Ping índice Freighter” abajo (self-transfer sin efecto, emite evento transfer estándar), esperá y reintentá. En PHASE, la lista autoritativa es la bóveda del dashboard (escaneo RPC Soroban) — no hace falta suscripción a Mercury para eso.",
+      freighterIndexPingButton: "[ PING ÍNDICE FREIGHTER · AUTO-TRANSFER ]",
+      freighterIndexPingToastOk: "Ping al índice enviado. Esperá 1–5 min y volvé a Add Collectible en Freighter.",
+      freighterIndexPingToastFail: "Falló el ping al índice. Revisá la red o reintentá.",
+      freighterSep50CheckButton: "[ COMPROBAR SEP-50 / FREIGHTER ]",
+      freighterSep50CheckIntro:
+        "Se ejecuta en nuestro servidor: name(), symbol(), owner_of, token_uri en Soroban y luego el GET del JSON. Freighter sigue usando su propio backend para auto-listar — esto solo confirma que el contrato y la URL encajan con el borrador SEP-0050.",
+      freighterSep50CheckFailToast: "Falló la petición de comprobación SEP-50.",
       freighterOwnerOnChainAddBody:
         "Ya sos el propietario on-chain del NFT en el contrato PHASE. Freighter no siempre lista coleccionables Soroban solos: abrí Collectibles → Add manually y pegá la dirección de colección + Token ID de abajo (misma red: testnet).",
       onChainMetaNftContractLabel: "CONTRATO_NFT_PHASE",

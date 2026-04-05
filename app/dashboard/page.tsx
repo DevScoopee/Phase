@@ -89,6 +89,17 @@ export default function DashboardPage() {
   const [listPriceLiq, setListPriceLiq] = useState("")
   const [transferBusy, setTransferBusy] = useState(false)
   const [sellFeedback, setSellFeedback] = useState<string | null>(null)
+  const [vaultItems, setVaultItems] = useState<
+    Array<{
+      tokenId: number
+      name: string
+      description: string
+      image: string
+      collectionId: number | null
+    }>
+  >([])
+  const [vaultState, setVaultState] = useState<"idle" | "loading" | "error" | "done">("idle")
+  const [vaultErr, setVaultErr] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoadState("loading")
@@ -114,6 +125,36 @@ export default function DashboardPage() {
     }
   }, [d.listingLoadError])
 
+  const loadVault = useCallback(async () => {
+    if (!address) {
+      setVaultItems([])
+      setVaultState("idle")
+      setVaultErr(null)
+      return
+    }
+    setVaultState("loading")
+    setVaultErr(null)
+    try {
+      const res = await fetch(`/api/wallet/phase-nfts?address=${encodeURIComponent(address)}`)
+      if (!res.ok) throw new Error("VAULT_HTTP")
+      const data = (await res.json()) as {
+        items?: Array<{
+          tokenId: number
+          name: string
+          description: string
+          image: string
+          collectionId: number | null
+        }>
+      }
+      setVaultItems(Array.isArray(data.items) ? data.items : [])
+      setVaultState("done")
+    } catch {
+      setVaultErr(d.vaultRpcError)
+      setVaultState("error")
+      setVaultItems([])
+    }
+  }, [address, d.vaultRpcError])
+
   useEffect(() => {
     void load().catch(() => {})
   }, [load])
@@ -121,6 +162,10 @@ export default function DashboardPage() {
   useEffect(() => {
     void loadListings().catch(() => {})
   }, [loadListings])
+
+  useEffect(() => {
+    void loadVault().catch(() => {})
+  }, [loadVault])
 
   useEffect(() => {
     if (!address || items.length === 0) {
@@ -294,6 +339,7 @@ export default function DashboardPage() {
       await getTransactionResult(sendResult.hash as string)
       await load()
       await loadListings()
+      await loadVault()
       closeSellModal()
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -301,7 +347,7 @@ export default function DashboardPage() {
     } finally {
       setTransferBusy(false)
     }
-  }, [address, sellTarget, buyerAddress, load, loadListings, closeSellModal, lang, d.transferWasmHint])
+  }, [address, sellTarget, buyerAddress, load, loadListings, loadVault, closeSellModal, lang, d.transferWasmHint])
 
   return (
     <div className="min-h-screen bg-background font-mono text-foreground">
@@ -557,6 +603,91 @@ export default function DashboardPage() {
                   ))}
                 </ul>
               )}
+            </section>
+          )}
+
+          {address && (
+            <section className="mt-10 border-4 border-double border-emerald-500/35 bg-black/35 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-[10px] font-bold uppercase tracking-[0.28em] text-emerald-300">
+                  {d.vaultRpcTitle}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => void loadVault().catch(() => {})}
+                  disabled={vaultState === "loading"}
+                  className="rounded border border-emerald-500/50 px-2 py-1 text-[9px] font-bold uppercase text-emerald-200 hover:bg-emerald-950/40 disabled:opacity-45"
+                >
+                  {vaultState === "loading" ? d.refreshing : d.refresh}
+                </button>
+              </div>
+              <p className="mt-2 text-[9px] leading-relaxed text-emerald-100/80">{d.vaultRpcBlurb}</p>
+              {vaultErr ? (
+                <p className="mt-2 text-[10px] text-red-300/90">{vaultErr}</p>
+              ) : null}
+              {vaultState === "loading" && !vaultErr ? (
+                <p className="mt-3 text-[10px] uppercase tracking-wider text-emerald-200/75">{d.vaultRpcLoading}</p>
+              ) : null}
+              {vaultState !== "loading" && vaultItems.length === 0 && !vaultErr ? (
+                <p className="mt-3 text-[10px] uppercase tracking-wider text-emerald-200/75">{d.vaultRpcEmpty}</p>
+              ) : null}
+              {vaultItems.length > 0 ? (
+                <ul className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {vaultItems.map((v) => {
+                    const col = v.collectionId != null && v.collectionId > 0 ? v.collectionId : 0
+                    const chamberHref = col > 0 ? `/chamber?collection=${col}` : "/chamber"
+                    return (
+                      <li
+                        key={`vault-${v.tokenId}`}
+                        className="border-2 border-emerald-500/45 bg-black/55 p-2.5"
+                      >
+                        <div className="aspect-[4/3] overflow-hidden border border-emerald-500/35 bg-black/50">
+                          {v.image ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={ipfsOrHttpsDisplayUrl(v.image)}
+                              alt=""
+                              className="h-full w-full object-contain"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div className="flex h-full items-center justify-center text-[10px] uppercase tracking-wider text-emerald-500/70">
+                              {d.noPreview}
+                            </div>
+                          )}
+                        </div>
+                        <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-emerald-100">
+                          {v.name}
+                        </p>
+                        <p className="tactical-phosphor mt-1 text-[9px] font-bold uppercase tracking-wider text-emerald-200">
+                          SERIAL_ID #{v.tokenId}
+                        </p>
+                        <div className="mt-2 flex flex-col gap-2">
+                          <Link href={chamberHref} className={secondaryCardBtn}>
+                            {d.openChamber}
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSellTarget({
+                                collectionId: col,
+                                tokenId: v.tokenId,
+                                collectionName: v.name,
+                              })
+                              setBuyerAddress("")
+                              setListPriceLiq("")
+                              setSellFeedback(null)
+                            }}
+                            className="w-full border-2 border-emerald-400/60 bg-emerald-950/35 py-2 text-[9px] font-bold uppercase tracking-widest text-emerald-100 transition-colors hover:bg-emerald-900/40"
+                          >
+                            {d.sellNft}
+                          </button>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              ) : null}
             </section>
           )}
         </div>

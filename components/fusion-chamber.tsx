@@ -30,6 +30,7 @@ import {
   REQUIRED_AMOUNT,
   TOKEN_ADDRESS,
   buildSettleTransaction,
+  buildTransferPhaseNftTransaction,
   checkHasPhased,
   fetchCollectionInfo,
   fetchCollectionSupply,
@@ -208,6 +209,9 @@ export function FusionChamber() {
   const [phaseLedgerNftCountDone, setPhaseLedgerNftCountDone] = useState(false)
   const [tokenUriLookupDone, setTokenUriLookupDone] = useState(false)
   const [tokenUriExists, setTokenUriExists] = useState(false)
+  const [freighterIndexPingBusy, setFreighterIndexPingBusy] = useState(false)
+  const [freighterSep50Busy, setFreighterSep50Busy] = useState(false)
+  const [freighterSep50Report, setFreighterSep50Report] = useState<string | null>(null)
   const [collectionSupply, setCollectionSupply] = useState<{ minted: number; cap: number } | null>(null)
   const [chainTokenSymbol, setChainTokenSymbol] = useState(PHASER_LIQ_SYMBOL)
   const [balanceGlitch, setBalanceGlitch] = useState(false)
@@ -1061,6 +1065,65 @@ export function FusionChamber() {
     return String(Math.max(0, Math.floor(Number(phaseId))))
   }, [phaseId])
 
+  const handleFreighterIndexPing = useCallback(async () => {
+    const c = pickCopy(lang).chamber
+    const g = address?.trim()
+    if (!g || !nftNumericTokenIdStr || freighterIndexPingBusy) return
+    const tid = Math.floor(Number(nftNumericTokenIdStr))
+    if (!Number.isFinite(tid) || tid <= 0) return
+    setFreighterIndexPingBusy(true)
+    try {
+      const txEnvelope = await buildTransferPhaseNftTransaction(g, g, tid)
+      const signResult = await signTransaction(txEnvelope, {
+        networkPassphrase: NETWORK_PASSPHRASE,
+        address: g,
+      })
+      if (signResult.error) {
+        throw new Error(signResult.error.message || "SIGN_FAIL")
+      }
+      const signedXdr =
+        (signResult as { signedTxXdr?: string }).signedTxXdr ||
+        (signResult as { signedTransaction?: string }).signedTransaction
+      if (!signedXdr) throw new Error("NO_SIGNED_XDR")
+      const sendResult = await sendTransaction(signedXdr)
+      await getTransactionResult(sendResult.hash as string)
+      toast.success(c.freighterIndexPingToastOk)
+    } catch (e) {
+      console.error(e)
+      toast.error(c.freighterIndexPingToastFail)
+    } finally {
+      setFreighterIndexPingBusy(false)
+    }
+  }, [address, nftNumericTokenIdStr, freighterIndexPingBusy, lang])
+
+  const handleFreighterSep50Check = useCallback(async () => {
+    const chCopy = pickCopy(lang).chamber
+    if (!nftNumericTokenIdStr || freighterSep50Busy) return
+    setFreighterSep50Busy(true)
+    setFreighterSep50Report(null)
+    try {
+      const q = new URLSearchParams({
+        contract: CONTRACT_ID,
+        tokenId: nftNumericTokenIdStr,
+      })
+      const res = await fetch(`/api/freighter/sep50-check?${q.toString()}`)
+      const data = (await res.json()) as Record<string, unknown>
+      setFreighterSep50Report(JSON.stringify(data, null, 2))
+      if (data.ok === true && data.sep50Ready === true) {
+        toast.success(lang === "es" ? "SEP-50: todas las comprobaciones OK." : "SEP-50: all checks passed.")
+      } else if (data.ok === true) {
+        toast.message(lang === "es" ? "SEP-50: revisá el informe (algunos ítems fallan)." : "SEP-50: see report (some checks failed).")
+      } else {
+        toast.error(chCopy.freighterSep50CheckFailToast)
+      }
+    } catch (e) {
+      console.error(e)
+      toast.error(chCopy.freighterSep50CheckFailToast)
+    } finally {
+      setFreighterSep50Busy(false)
+    }
+  }, [nftNumericTokenIdStr, freighterSep50Busy, lang])
+
   const artifactVerificationMode: ArtifactVerificationMode = useMemo(() => {
     if (hasPhased && phaseId != null && phaseId > 0 && address) return "verified"
     if (address && hasPhased === null) return "verifying"
@@ -1593,14 +1656,31 @@ export function FusionChamber() {
                               ? "Aun si Freighter da error, ya puedes intentar Add manually con estos datos. Si falla, pulsa SYNC y reintenta en 30-90s."
                               : "Even if Freighter errors, you can already try Add manually using these values. If it fails, press SYNC and retry in 30-90s."
                             : lang === "es"
-                              ? "El collectible puede seguir indexándose. Puedes intentar Add manually ahora o reintentar en 30-90s."
-                              : "Collectible may still be indexing. You can try Add manually now or retry in 30-90s."}
+                              ? "Freighter puede usar su propio backend al añadir coleccionables. Si falla, usá el botón naranja “Ping índice”, esperá y reintentá Add manually. Tu lista oficial en PHASE está en el dashboard (bóveda RPC)."
+                              : "Freighter may use its own backend when adding collectibles. If it fails, use the amber “Ping Freighter index” button, wait, then retry Add manually. Your authoritative PHASE list is the dashboard vault (RPC scan)."}
                         </p>
                       ) : (
                         <p className="mt-2.5 rounded border border-cyan-500/20 bg-black/25 px-2.5 py-2.5 text-[11px] leading-relaxed text-cyan-100/80">
                           {ch.freighterManualAddTroubleshoot}
                         </p>
                       )}
+                      <p className="mt-2.5 text-[10px] leading-relaxed text-cyan-200/80">{ch.freighterSep50CheckIntro}</p>
+                      <button
+                        type="button"
+                        disabled={!nftNumericTokenIdStr || freighterSep50Busy}
+                        onClick={() => {
+                          playTacticalUiClick()
+                          void handleFreighterSep50Check()
+                        }}
+                        className="tactical-interactive-glitch mt-2 w-full border border-cyan-500/40 bg-black/40 py-2 text-[10px] font-bold uppercase tracking-widest text-cyan-100 hover:border-cyan-300 disabled:opacity-45"
+                      >
+                        {freighterSep50Busy ? "…" : ch.freighterSep50CheckButton}
+                      </button>
+                      {freighterSep50Report ? (
+                        <pre className="mt-2 max-h-48 overflow-auto rounded border border-cyan-500/25 bg-black/50 p-2 text-[9px] leading-snug text-cyan-100/90">
+                          {freighterSep50Report}
+                        </pre>
+                      ) : null}
                       <div className="mt-3 space-y-2.5 border-t border-cyan-500/20 pt-2.5">
                         <button
                           type="button"
@@ -1613,6 +1693,19 @@ export function FusionChamber() {
                         >
                           {ch.freighterCopyBundleButton}
                         </button>
+                        {isOwnerOnChain ? (
+                          <button
+                            type="button"
+                            disabled={!nftNumericTokenIdStr || freighterIndexPingBusy}
+                            onClick={() => {
+                              playTacticalUiClick()
+                              void handleFreighterIndexPing()
+                            }}
+                            className="tactical-interactive-glitch w-full border border-amber-500/50 bg-amber-950/25 py-2 text-[10px] font-bold uppercase tracking-widest text-amber-100 hover:border-amber-300 disabled:opacity-45"
+                          >
+                            {freighterIndexPingBusy ? "…" : ch.freighterIndexPingButton}
+                          </button>
+                        ) : null}
                         <div className="rounded border border-cyan-500/20 bg-black/35 px-2 py-1.5">
                           <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-300/85">
                             {lang === "es" ? "Collection Address" : "Collection Address"}

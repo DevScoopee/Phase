@@ -13,6 +13,7 @@
     "classic:distributor-trust-and-pay": "cd scripts && npm run distributor-trust-and-pay",
     "setup:phase-v2": "cd scripts && npm run setup:phase-v2",
     "reset:phase": "cd scripts && npm run reset:phase",
+    "deploy:phase-sep50": "cd scripts && npx tsx deploy-phase-sep50.ts",
     "start": "next start"
   },
   "dependencies": {

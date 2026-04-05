@@ -8,7 +8,7 @@ Estos IDs coinciden con `lib/phase-protocol.ts` en la app Next.js. Si redesplieg
 
 | Contrato | Contract ID | Stellar Expert |
 |----------|-------------|----------------|
-| **phase-protocol** (núcleo) | `CCXV7F257OYT4WOZIHCVTPUX5PTIZMENYBAPGBGYE44GA37GGNHXBUQY` | [Ver ↗](https://stellar.expert/explorer/testnet/contract/CCXV7F257OYT4WOZIHCVTPUX5PTIZMENYBAPGBGYE44GA37GGNHXBUQY) |
+| **phase-protocol** (núcleo) | `CAZKRXQWXKM4UNDB5FY4XVMWDKKZJ2EFKMNFCFH3WC7SHE7RCO7HOR6L` | [Ver ↗](https://stellar.expert/explorer/testnet/contract/CAZKRXQWXKM4UNDB5FY4XVMWDKKZJ2EFKMNFCFH3WC7SHE7RCO7HOR6L) |
 | **PHASELQ** (SAC; default app `TOKEN_ADDRESS`) | `CCKTFAHWI3MREYMDBFF4VB5ZPIIRVZH6LYYYYW34F6NZU54N2C3MHWBZ` | [Stellar Expert (asset) ↗](https://stellar.expert/explorer/testnet/asset/PHASELQ-GD7VAD4VDVHASKZIJPRORMXLML4RSVLRANYNRCCBWLO5ACOSYQZBSUFI) |
 | **PHASERLIQ** (SAC legacy, emisor GAXR…) | `CDOAXHWC6YJB7U3ELV67HKJY6HEMJFBNRGJK6WZGUAELBWP3WP77RLFD` | [Asset legado ↗](https://stellar.expert/explorer/testnet/asset/PHASERLIQ-GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS) |
 
@@ -294,12 +294,15 @@ npm run interact
 ## Notas Importantes
 
 - **Testnet**: Todos los fondos son de prueba. Puedes obtener XLM de prueba en el [Friendbot](https://laboratory.stellar.org/#account-creator?network=test)
+- **Lista de NFT PHASE en la app (sin indexador de terceros)**: `GET /api/wallet/phase-nfts?address=G…` recorre `total_supply` y `owner_of(1..N)` vía RPC Soroban (límite configurable con `PHASE_NFT_WALLET_SCAN_CAP`). El dashboard muestra esa “bóveda”.
+- **Freighter → Collectibles (SEP-50)**: [Freighter documenta](https://docs.freighter.app/docs/whatsnew/) “Add manually” con **dirección del contrato + token id**. La extensión **no** expone `addCollectible` en `@stellar/freighter-api`; por dentro usa un backend/indexación propios, no sustituibles por la app PHASE. Lo que sí controlamos: (1) contrato alineado con el borrador [SEP-0050](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0050.md) — `name`, `symbol`, `owner_of`, `token_uri` (HTTPS → JSON `name`/`description`/`image`), eventos `mint` / `transfer` con los topics del SEP; (2) **WASM reciente**: `owner_of` y `token_uri` hacen **panic** si el id no existe (como pide el SEP), no devuelven “vacío”; (3) comprobación automática en la app: `GET /api/freighter/sep50-check?contract=C…&tokenId=N` y botón en la cámara. Tras redesplegar el WASM, actualiza `NEXT_PUBLIC_PHASE_PROTOCOL_ID`. Si “Add manually” sigue fallando, usa el ping de self-transfer en la cámara y reintenta.
 - **Freighter**: Asegúrate de tener tu wallet configurada en Testnet
 - **Gas Fees**: Aunque sea testnet, necesitas XLM para pagar fees. Friendbot te da 10,000 XLM gratis.
 - **Contract IDs**: Guarda los contract IDs después del deploy, los necesitarás para las interacciones.
 
 ## Referencias
 
+- [SEP-0050 (NFT Soroban, borrador)](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0050.md)
 - [Soroban Documentation](https://soroban.stellar.org/)
 - [Stellar CLI Reference](https://github.com/stellar/stellar-cli)
 - [SEP-41 Token Interface](https://soroban.stellar.org/docs/fundamentals/built-in-contracts)
