@@ -1103,6 +1103,38 @@ export async function fetchTokenUriString(
   }
 }
 
+function tokenMetadataRecordFromNative(native: unknown): Record<string, string> | null {
+  if (native == null || typeof native !== "object" || Array.isArray(native)) return null
+  const o = native as Record<string, unknown>
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(o)) {
+    if (typeof v === "string") out[k] = v
+  }
+  return Object.keys(out).length > 0 ? out : null
+}
+
+/**
+ * `token_metadata(token_id)` → `Map<Symbol, String>` (SEP-0050 complement).
+ * Devuelve `null` si el contrato no expone el método o la simulación falla.
+ */
+export async function fetchTokenMetadataMap(
+  tokenId: number,
+  protocolContractId: string = CONTRACT_ID,
+): Promise<Record<string, string> | null> {
+  if (tokenId <= 0) return null
+  try {
+    const native = await simulateContractCall(
+      protocolContractId,
+      "token_metadata",
+      [nativeToScVal(tokenId, { type: "u64" })],
+      READONLY_SIM_SOURCE_G,
+    )
+    return tokenMetadataRecordFromNative(native)
+  } catch {
+    return null
+  }
+}
+
 /** `name()` en contrato NFT Soroban (SEP-0050 / Freighter). */
 export async function fetchNftCollectionName(protocolContractId: string): Promise<string | null> {
   try {
@@ -1406,7 +1438,7 @@ function parseOwnerOfReturn(native: unknown): string | null {
 }
 
 /**
- * Cuenta de NFTs de utilidad PHASE en el **contrato del protocolo** (`CONTRACT_ID`): `balance(owner)` (recuento i128).
+ * Cuenta de NFTs de utilidad PHASE en el **contrato del protocolo** (`CONTRACT_ID`): `balance(id)` (recuento i128).
  * No confundir con el saldo PHASELQ en el SAC (`TOKEN_ADDRESS`).
  */
 export async function fetchPhaseUtilityNftCount(walletG: string): Promise<string> {
@@ -1438,14 +1470,22 @@ export async function fetchTokenOwnerAddress(
   tokenId: number,
 ): Promise<string | null> {
   if (!Number.isFinite(tokenId) || tokenId <= 0) return null
-  try {
+  const tryOwner = async (method: "owner_of" | "owner_of_u32", type: "u64" | "u32") => {
     const native = await simulateContractCall(
       contractId,
-      "owner_of",
-      [nativeToScVal(tokenId, { type: "u64" })],
+      method,
+      [nativeToScVal(tokenId, { type })],
       READONLY_SIM_SOURCE_G,
     )
     return parseOwnerOfReturn(native)
+  }
+  try {
+    return await tryOwner("owner_of", "u64")
+  } catch {
+    /* Freighter / tooling a veces compilan la llamada con u32 */
+  }
+  try {
+    return await tryOwner("owner_of_u32", "u32")
   } catch {
     return null
   }

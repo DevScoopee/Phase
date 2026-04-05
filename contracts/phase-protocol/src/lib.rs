@@ -1,7 +1,7 @@
 #![no_std]
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Bytes, Env,
-    String, Symbol,
+    Map, String, Symbol,
 };
 
 /// Errores del protocolo PHASE
@@ -78,6 +78,8 @@ pub enum DataKey {
     Collection(u64),
     CreatorToCollection(Address),
     ProtocolTreasury,
+    /// Recuento de NFTs de utilidad por titular (SEP-41 / Freighter); mantenido en mint y transfer.
+    Balance(Address),
 }
 
 #[contracttype]
@@ -139,12 +141,18 @@ fn u64_to_dec_string(env: &Env, mut n: u64) -> String {
     String::from_bytes(env, &out[..i])
 }
 
+/// URI del JSON de metadata. Incluye `?c=<contract_id>` para que `/api/metadata/{id}` resuelva
+/// el mismo contrato que Freighter aunque el despliegue no coincida con el default del servidor.
 fn build_metadata_token_uri(env: &Env, token_id: u64) -> String {
     let mut b = Bytes::from_slice(env, DEFAULT_METADATA_BASE_URL);
     let suf = u64_to_dec_string(env, token_id);
     append_soroban_str_to_bytes(&mut b, &suf);
+    append_literal_to_bytes(&mut b, b"?c=");
+    let cid = env.current_contract_address().to_string();
+    append_soroban_str_to_bytes(&mut b, &cid);
     let bl = b.len() as usize;
-    let mut out = [0u8; 96];
+    const URI_CAP: usize = 256;
+    let mut out = [0u8; URI_CAP];
     if bl > out.len() {
         return String::from_str(env, "");
     }
@@ -163,6 +171,99 @@ fn append_soroban_str_to_bytes(acc: &mut Bytes, s: &String) {
     }
     s.copy_into_slice(&mut buf[..n]);
     acc.extend_from_slice(&buf[..n]);
+}
+
+fn append_literal_to_bytes(acc: &mut Bytes, lit: &[u8]) {
+    acc.extend_from_slice(lit);
+}
+
+fn adjust_nft_balance_count(env: &Env, account: Address, delta: i128) {
+    let key = DataKey::Balance(account);
+    let cur: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+    let next = cur.saturating_add(delta);
+    if next <= 0 {
+        env.storage().persistent().remove(&key);
+    } else {
+        env.storage().persistent().set(&key, &next);
+    }
+}
+
+/// Convierte `Bytes` acumulados a `String` acotada (límite típico metadatos JSON).
+fn bytes_to_bounded_string(env: &Env, b: &Bytes, max: usize) -> String {
+    let n = b.len() as usize;
+    if n == 0 {
+        return String::from_str(env, "");
+    }
+    let take = n.min(max).min(256);
+    let mut buf = [0u8; 256];
+    b.copy_into_slice(&mut buf[..take]);
+    String::from_bytes(env, &buf[..take])
+}
+
+/// `name` alineado con [lib/phase-nft-metadata-build.ts] (colección > 0 + nombre o "Phase").
+fn build_token_display_name(env: &Env, token_id: u64) -> String {
+    let col_id_opt: Option<u64> = env.storage().persistent().get(&DataKey::TokenCollection(token_id));
+    let mut acc = Bytes::from_slice(env, b"");
+    match col_id_opt {
+        Some(cid) if cid > 0 => {
+            let coll_name: String =
+                if let Some(settings) = env
+                    .storage()
+                    .persistent()
+                    .get::<DataKey, CollectionSettings>(&DataKey::Collection(cid))
+                {
+                    if settings.name.len() > 0 {
+                        settings.name
+                    } else {
+                        String::from_str(env, "Phase")
+                    }
+                } else {
+                    String::from_str(env, "Phase")
+                };
+            append_soroban_str_to_bytes(&mut acc, &coll_name);
+            append_literal_to_bytes(&mut acc, b" Artifact #");
+        }
+        _ => {
+            append_literal_to_bytes(&mut acc, b"Phase Artifact #");
+        }
+    }
+    let suf = u64_to_dec_string(env, token_id);
+    append_soroban_str_to_bytes(&mut acc, &suf);
+    bytes_to_bounded_string(env, &acc, 256)
+}
+
+/// `description` alineado con el JSON off-chain (nivel PHASE opcional).
+fn build_metadata_description_string(env: &Env, phase_level: Option<String>) -> String {
+    let base = String::from_str(env, "Forged on Soroban via x402 AI Protocol");
+    match phase_level {
+        Some(pl) if pl.len() > 0 => {
+            let mut acc = Bytes::from_slice(env, b"");
+            append_soroban_str_to_bytes(&mut acc, &base);
+            append_literal_to_bytes(&mut acc, b" \xC2\xB7 PHASE level ");
+            append_soroban_str_to_bytes(&mut acc, &pl);
+            bytes_to_bounded_string(env, &acc, 512)
+        }
+        _ => base,
+    }
+}
+
+/// `image`: solo URI on-chain de la colección (sin resolver OG/site; el GET `/api/metadata` puede enriquecer).
+fn build_token_image_raw_string(env: &Env, token_id: u64) -> String {
+    let col_id_opt: Option<u64> = env.storage().persistent().get(&DataKey::TokenCollection(token_id));
+    match col_id_opt {
+        Some(cid) if cid > 0 => {
+            if let Some(settings) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, CollectionSettings>(&DataKey::Collection(cid))
+            {
+                settings.image_uri
+            } else {
+                String::from_str(env, "")
+            }
+        }
+        _ => String::from_str(env, ""),
+    }
 }
 
 /// Eventos alineados con OpenZeppelin / borrador SEP-50 para indexadores y wallets que lean por eventos.
@@ -370,6 +471,7 @@ impl PhaseProtocol {
             .set(&DataKey::TokenCollection(new_id), &collection_id);
 
         env.storage().persistent().set(&DataKey::PhaseCounter, &new_id);
+        adjust_nft_balance_count(&env, user.clone(), 1);
 
         env.events().publish(
             (Symbol::new(&env, "phase_initiated"), user.clone()),
@@ -505,6 +607,7 @@ impl PhaseProtocol {
             env.storage()
                 .persistent()
                 .set(&DataKey::PhaseCounter, &new_id);
+            adjust_nft_balance_count(&env, user.clone(), 1);
 
             env.events().publish(
                 (Symbol::new(&env, "phase_nft_minted"), user.clone()),
@@ -641,7 +744,11 @@ impl PhaseProtocol {
         String::from_str(&env, "PHASE")
     }
 
-    pub fn decimals(_env: Env) -> u32 {
+    // --- FUNCIONES ESTÁNDAR SEP-41 REQUERIDAS POR FREIGHTER ---
+
+    /// Freighter usa esto para saber si el token es divisible. NFT → 0.
+    pub fn decimals(env: Env) -> u32 {
+        let _ = env;
         0
     }
 
@@ -662,28 +769,10 @@ impl PhaseProtocol {
         }
     }
 
-    pub fn balance(env: Env, owner: Address) -> i128 {
-        let total: u64 = env
-            .storage()
-            .persistent()
-            .get(&DataKey::PhaseCounter)
-            .unwrap_or(0);
-
-        let mut count: i128 = 0;
-        let mut id = 1u64;
-        while id <= total {
-            if let Some(token_owner) = env
-                .storage()
-                .persistent()
-                .get::<DataKey, Address>(&DataKey::TokenOwner(id))
-            {
-                if token_owner == owner {
-                    count = count.saturating_add(1);
-                }
-            }
-            id = id.saturating_add(1);
-        }
-        count
+    /// Freighter: cuántos NFTs tiene la cuenta en total (contador persistente, misma clave que el mint/transfer mantienen).
+    pub fn balance(env: Env, id: Address) -> i128 {
+        let key = DataKey::Balance(id);
+        env.storage().persistent().get(&key).unwrap_or(0)
     }
 
     /// SEP-0050 / Freighter: debe fallar (panic host) si el token no existe — no `Option` vacío.
@@ -696,6 +785,11 @@ impl PhaseProtocol {
             Some(a) => a,
             None => panic!("Phase NFT: invalid token id"),
         }
+    }
+
+    /// Algunos clientes invocan `owner_of` con `u32`; misma semántica que `owner_of(u64)`.
+    pub fn owner_of_u32(env: Env, token_id: u32) -> Address {
+        Self::owner_of(env, token_id as u64)
     }
 
     /// `token_id` → `collection_id` (0 = pool protocolo). Lectura para indexadores y `/api/metadata`.
@@ -758,6 +852,8 @@ impl PhaseProtocol {
         if state.token_id != token_id {
             return Err(PhaseError::NftNotFound);
         }
+        adjust_nft_balance_count(&env, from.clone(), -1);
+        adjust_nft_balance_count(&env, to.clone(), 1);
         env
             .storage()
             .persistent()
@@ -800,6 +896,33 @@ impl PhaseProtocol {
     /// Alias con `u32` por compatibilidad con clientes que invocan `token_uri` con entero de 32 bits.
     pub fn token_uri_u32(env: Env, token_id: u32) -> String {
         Self::token_uri(env, token_id as u64)
+    }
+
+    /// Metadatos como `Map` (claves `name`, `description`, `image`) para simulación / exploradores.
+    /// Alineado con el JSON de `GET /api/metadata/{id}` salvo `image` vacío → el endpoint puede usar OG/site.
+    /// SEP-0050: panic si el token no existe.
+    pub fn token_metadata(env: Env, token_id: u64) -> Map<Symbol, String> {
+        if env
+            .storage()
+            .persistent()
+            .get::<DataKey, Address>(&DataKey::TokenOwner(token_id))
+            .is_none()
+        {
+            panic!("Phase NFT: invalid token id");
+        }
+        let name = build_token_display_name(&env, token_id);
+        let phase_level = Self::get_phase_level(env.clone(), token_id);
+        let description = build_metadata_description_string(&env, phase_level);
+        let image = build_token_image_raw_string(&env, token_id);
+        let mut m = Map::new(&env);
+        m.set(Symbol::new(&env, "name"), name);
+        m.set(Symbol::new(&env, "description"), description);
+        m.set(Symbol::new(&env, "image"), image);
+        m
+    }
+
+    pub fn token_metadata_u32(env: Env, token_id: u32) -> Map<Symbol, String> {
+        Self::token_metadata(env, token_id as u64)
     }
 
     pub fn get_energy_level_bp(env: Env, user: Address, collection_id: u64) -> Option<u32> {

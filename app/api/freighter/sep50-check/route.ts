@@ -3,6 +3,7 @@ import { extractBaseAddress, StrKey } from "@stellar/stellar-sdk"
 import {
   fetchNftCollectionName,
   fetchNftCollectionSymbol,
+  fetchTokenMetadataMap,
   fetchTokenOwnerAddress,
   fetchTokenUriString,
   phaseProtocolContractIdForServer,
@@ -51,6 +52,7 @@ export async function GET(request: NextRequest) {
 
   let metadataJsonOk = false
   let metadataDetail = ""
+  let metadataJson: { name: string; description: string; image: string } | null = null
   if (httpsOk && uriTrim) {
     try {
       const ctrl = new AbortController()
@@ -70,6 +72,13 @@ export async function GET(request: NextRequest) {
           j.name.length > 0 &&
           j.image.length > 0
         metadataDetail = metadataJsonOk ? "ok" : "missing_name_description_or_image"
+        if (metadataJsonOk) {
+          metadataJson = {
+            name: j.name as string,
+            description: j.description as string,
+            image: j.image as string,
+          }
+        }
       }
     } catch (e) {
       metadataDetail = e instanceof Error ? e.message : "fetch_failed"
@@ -79,7 +88,54 @@ export async function GET(request: NextRequest) {
   }
   checks.metadata_json = { ok: metadataJsonOk, detail: metadataDetail || undefined }
 
-  const sep50Ready = Object.values(checks).every((c) => c.ok)
+  const onChainMeta = await fetchTokenMetadataMap(tokenId, contractId)
+  const hasMetaKeys =
+    onChainMeta != null &&
+    typeof onChainMeta.name === "string" &&
+    typeof onChainMeta.description === "string" &&
+    typeof onChainMeta.image === "string"
+  checks.token_metadata = {
+    ok: Boolean(hasMetaKeys),
+    detail: hasMetaKeys
+      ? "ok"
+      : onChainMeta == null
+        ? "missing_or_old_wasm"
+        : "missing_name_description_or_image_keys",
+  }
+
+  let metaAlignDetail = ""
+  let metaAlignOk = false
+  if (!hasMetaKeys || !metadataJson || !onChainMeta) {
+    metaAlignDetail = !hasMetaKeys ? "skipped_no_on_chain_map" : "skipped_no_json"
+    metaAlignOk = true
+  } else {
+    const m = onChainMeta
+    const n = m.name === metadataJson.name
+    const d = m.description === metadataJson.description
+    const chainImg = m.image
+    const jsonImg = metadataJson.image
+    const img =
+      chainImg === jsonImg || (chainImg.length === 0 && jsonImg.length > 0)
+    metaAlignOk = n && d && img
+    if (!metaAlignOk) {
+      const parts: string[] = []
+      if (!n) parts.push("name_mismatch")
+      if (!d) parts.push("description_mismatch")
+      if (!img) parts.push("image_mismatch")
+      metaAlignDetail = parts.join(",")
+    } else {
+      metaAlignDetail =
+        chainImg.length === 0 && jsonImg.length > 0 ? "image_enriched_off_chain_only" : "ok"
+    }
+  }
+  checks.token_metadata_json_align = { ok: metaAlignOk, detail: metaAlignDetail || undefined }
+
+  const sep50Ready =
+    checks.name.ok &&
+    checks.symbol.ok &&
+    checks.owner_of.ok &&
+    checks.token_uri_https.ok &&
+    checks.metadata_json.ok
 
   return NextResponse.json(
     {

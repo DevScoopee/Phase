@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server"
+import { StrKey } from "@stellar/stellar-sdk"
 import { buildPhaseTokenMetadataJson } from "@/lib/phase-nft-metadata-build"
 import { phaseProtocolContractIdForServer } from "@/lib/phase-protocol"
 
@@ -17,7 +18,7 @@ export async function OPTIONS() {
 }
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
   const { id } = await context.params
@@ -29,7 +30,9 @@ export async function GET(
     )
   }
 
-  const contractId = phaseProtocolContractIdForServer()
+  const cParam = request.nextUrl.searchParams.get("c")?.trim() ?? ""
+  const contractId =
+    cParam && StrKey.isValidContract(cParam) ? cParam : phaseProtocolContractIdForServer()
   const payload = await buildPhaseTokenMetadataJson(contractId, tokenId)
   if (!payload) {
     return NextResponse.json(
