@@ -113,9 +113,13 @@ fn str_is_safe_for_json_fragment(s: &String, max_len: u32) -> bool {
     true
 }
 
-/// Base HTTPS donde la app sirve JSON de metadatos (`GET /api/metadata/{token_id}`).
-/// Debe coincidir con el despliegue de producción (Vercel). Tras redesplegar otro host, recompila con otra base o añade setter on-chain.
-const DEFAULT_METADATA_BASE_URL: &[u8] = b"https://www.phasee.xyz/api/metadata/";
+/// Base HTTPS donde la app sirve JSON Freighter/SEP (`GET …/api/metadata/{token_id}`).
+/// Debe terminar en `/`. Por defecto producción; para ngrok / preview:
+/// `PHASE_METADATA_BASE_URL=https://tu-tunel.ngrok-free.app/api/metadata/ cargo build ...`
+const DEFAULT_METADATA_BASE_URL: &[u8] = match option_env!("PHASE_METADATA_BASE_URL") {
+    Some(url) => url.as_bytes(),
+    None => b"https://www.phasee.xyz/api/metadata/",
+};
 
 fn u64_to_dec_string(env: &Env, mut n: u64) -> String {
     if n == 0 {
@@ -627,11 +631,12 @@ impl PhaseProtocol {
         env.current_contract_address()
     }
 
-    /// Metadatos a nivel contrato (descubrimiento SEP-20 / wallets). Por token: `token_uri` → URL HTTPS off-chain.
+    /// Colección (Freighter / SEP-0050 / SEP-20 metadata): lectura on-chain sin estado.
     pub fn name(env: Env) -> String {
         String::from_str(&env, "Phase Artifact")
     }
 
+    /// Símbolo corto del NFT de utilidad (Freighter collectibles).
     pub fn symbol(env: Env) -> String {
         String::from_str(&env, "PHASE")
     }
@@ -777,9 +782,9 @@ impl PhaseProtocol {
             .unwrap_or(0)
     }
 
-    /// URI de metadatos **HTTP(S)** (estilo ERC-721): la wallet hace GET y espera JSON (`name`, `description`, `image`).
-    /// Los argumentos on-chain siguen siendo `u64` (IDs de fase); encajan en `u32` cuando aplica el tooling.
-    /// SEP-0050: URI de metadatos; panic si `token_id` no existe (Freighter / clientes SEP-50).
+    /// URI HTTPS del JSON de metadata (Freighter hace GET → `{ name, description, image }`).
+    /// On-chain usamos `u64` (tooling Soroban); ids que entran en u32 siguen siendo válidos.
+    /// SEP-0050: panic si el token no existe.
     pub fn token_uri(env: Env, token_id: u64) -> String {
         if env
             .storage()
@@ -790,6 +795,11 @@ impl PhaseProtocol {
             panic!("Phase NFT: invalid token id");
         }
         build_metadata_token_uri(&env, token_id)
+    }
+
+    /// Alias con `u32` por compatibilidad con clientes que invocan `token_uri` con entero de 32 bits.
+    pub fn token_uri_u32(env: Env, token_id: u32) -> String {
+        Self::token_uri(env, token_id as u64)
     }
 
     pub fn get_energy_level_bp(env: Env, user: Address, collection_id: u64) -> Option<u32> {

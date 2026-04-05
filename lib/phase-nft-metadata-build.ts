@@ -64,8 +64,8 @@ export async function buildPhaseTokenMetadataJson(
 
   const description =
     phaseLevel && phaseLevel.length > 0
-      ? `Forged via x402 on Soroban · PHASE level ${phaseLevel}`
-      : "Forged via x402 on Soroban"
+      ? `Forged on Soroban via x402 AI Protocol · PHASE level ${phaseLevel}`
+      : "Forged on Soroban via x402 AI Protocol"
 
   return {
     name,

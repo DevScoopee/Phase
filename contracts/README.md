@@ -61,6 +61,19 @@ stellar keys fund --source phase-deployer --network testnet
 
 ## Comandos de Build y Deploy
 
+### 0. Atajo recomendado: deploy + `initialize` (script del repo)
+
+Tras los pasos **1 (compilar)** y **2 (optimizar)** de `phase-protocol`, puedes desplegar una **instancia nueva** y llamar a `initialize` sin copiar comandos largos:
+
+```bash
+# Desde la raíz del monorepo (no dentro de contracts/)
+npm run deploy:phase-sep50
+```
+
+Requiere `.env.local` con `ADMIN_SECRET_KEY`, `NEXT_PUBLIC_PHASER_TOKEN_ID` (SAC PHASELQ `C…`) y `NEXT_PUBLIC_CLASSIC_LIQ_ISSUER` (`G…` tesorería). Opcional: `REQUIRED_AMOUNT` (por defecto `10000000` = 1.0 unidad con 7 decimales). El script actualiza `lib/phase-contract-defaults.ts` y las variables `NEXT_PUBLIC_PHASE_PROTOCOL_ID` / `PHASE_PROTOCOL_ID` en `.env.local`.
+
+**Nota:** Cada deploy crea un **contrato `C…` nuevo**. Los NFT del despliegue anterior siguen en el contrato viejo. Este WASM **no** está documentado como *upgradeable*; `stellar contract install` solo sube bytes WASM al ledger — **no sustituye** la lógica de una instancia ya desplegada salvo que el contrato exponga flujo de upgrade explícito.
+
 ### 1. Compilar Contratos
 
 ```bash
@@ -94,54 +107,100 @@ stellar contract optimize \
 
 ### 3. Desplegar a Testnet
 
+En **Stellar CLI 25+** conviene fijar RPC y passphrase (o exportar `STELLAR_RPC_URL` y `STELLAR_NETWORK_PASSPHRASE`). `--source-account` acepta identidad, `G…` o clave secreta `S…` (mejor usar identidad / variable de entorno, no pegar secretos en el historial).
+
 ```bash
-# Desplegar Mock Token
+RPC="https://soroban-testnet.stellar.org"
+PASS="Test SDF Network ; September 2015"
+
+# Desplegar Mock Token (desde contracts/mock-token/)
 stellar contract deploy \
   --wasm target/wasm32-unknown-unknown/release/mock_token.optimized.wasm \
-  --source TU_ADDRESS_DE_FREIGHTER \
-  --network testnet
+  --source-account TU_CUENTA_O_IDENTIDAD \
+  --network testnet \
+  --rpc-url "$RPC" \
+  --network-passphrase "$PASS"
 
-# Guarda el contract ID que te devuelve (ej: CABC...1234)
-# Este es tu MOCK_TOKEN_ID
+# Guarda el contract ID (ej: CABC…1234) → MOCK_TOKEN_ID
 
-# Desplegar Phase Protocol
+# Desplegar Phase Protocol (desde contracts/phase-protocol/)
 stellar contract deploy \
   --wasm target/wasm32-unknown-unknown/release/phase_protocol.optimized.wasm \
-  --source TU_ADDRESS_DE_FREIGHTER \
-  --network testnet
+  --source-account TU_CUENTA_O_IDENTIDAD \
+  --network testnet \
+  --rpc-url "$RPC" \
+  --network-passphrase "$PASS"
 
-# Guarda el contract ID (ej: CDEF...5678)
-# Este es tu PHASE_PROTOCOL_ID
+# Guarda el contract ID → PHASE_PROTOCOL_ID
 ```
 
 ### 4. Inicializar Contratos
 
 ```bash
+RPC="https://soroban-testnet.stellar.org"
+PASS="Test SDF Network ; September 2015"
+
 # Inicializar Mock Token
 stellar contract invoke \
   --id MOCK_TOKEN_ID \
-  --source TU_ADDRESS_DE_FREIGHTER \
+  --source-account TU_CUENTA_O_IDENTIDAD \
   --network testnet \
+  --rpc-url "$RPC" \
+  --network-passphrase "$PASS" \
   -- \
   initialize \
-  --admin TU_ADDRESS_DE_FREIGHTER \
+  --admin TU_ADDRESS_G \
   --decimals 7 \
   --name "Mock Test Token" \
   --symbol "MOCK"
 
-# Inicializar Phase Protocol (protocol_treasury = G… que recibe el 5% en colecciones con creador)
+# Inicializar Phase Protocol (tesorería = G… que recibe el 5% en settles con creador)
 stellar contract invoke \
   --id PHASE_PROTOCOL_ID \
-  --source TU_ADDRESS_DE_FREIGHTER \
+  --source-account TU_CUENTA_O_IDENTIDAD \
   --network testnet \
+  --rpc-url "$RPC" \
+  --network-passphrase "$PASS" \
   -- \
   initialize \
-  --admin TU_ADDRESS_DE_FREIGHTER \
-  --token_address MOCK_TOKEN_ID \
+  --admin TU_ADDRESS_G \
+  --token_address SAC_PHASELQ_C_O_MOCK_TOKEN_ID \
   --required_amount 10000000 \
   --protocol_treasury TU_TESORERIA_G
-  # 10000000 = 1.0 PHASELQ con 7 decimales (ajusta si tu token usa otros decimales)
+# 10000000 = 1.0 PHASELQ si el token usa 7 decimales (no uses 1000000 salvo que quieras 0.1)
 ```
+
+### 4b. URL embebida de metadata (`token_uri`)
+
+La base HTTPS que el contrato concatena con el `token_id` se fija **al compilar** con la variable de entorno opcional `PHASE_METADATA_BASE_URL` (debe terminar en `/`). Si no existe, el default es `https://www.phasee.xyz/api/metadata/`. Recompilá, optimizá y **desplegá una instancia nueva** tras cambiarla (o `npm run deploy:phase-sep50`).
+
+**Ejemplo ngrok:**
+
+```bash
+export PHASE_METADATA_BASE_URL="https://TU_SUBDOMINIO.ngrok-free.app/api/metadata/"
+cd contracts/phase-protocol
+cargo build --target wasm32-unknown-unknown --release
+stellar contract optimize \
+  --wasm target/wasm32-unknown-unknown/release/phase_protocol.wasm \
+  --wasm-out target/wasm32-unknown-unknown/release/phase_protocol.optimized.wasm
+```
+
+**Deploy a testnet (WASM optimizado):**
+
+```bash
+RPC="https://soroban-testnet.stellar.org"
+PASS="Test SDF Network ; September 2015"
+
+cd contracts/phase-protocol
+stellar contract deploy \
+  --wasm target/wasm32-unknown-unknown/release/phase_protocol.optimized.wasm \
+  --source-account TU_IDENTIDAD_STELLAR \
+  --network testnet \
+  --rpc-url "$RPC" \
+  --network-passphrase "$PASS"
+```
+
+La app Next.js debe exponer `GET /api/metadata/{id}` con JSON `{ "name", "description", "image" }` y CORS (incl. `OPTIONS`); en este repo: `app/api/metadata/[id]/route.ts`.
 
 ### 5. Stellar Asset Contract (SAC) del PHASELQ clásico — “relanzar” / instalar en testnet
 
