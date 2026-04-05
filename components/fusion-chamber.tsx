@@ -37,6 +37,7 @@ import {
   fetchPhaseUtilityNftCount,
   fetchTokenOwnerAddress,
   fetchTokenSymbol,
+  fetchTokenMetadataDisplay,
   fetchTokenUriString,
   formatLiq,
   getProtocolSettleTokenBalance,
@@ -48,7 +49,6 @@ import {
   isPhaseInsufficientBalanceError,
   isPhaseUnauthorizedError,
   isStellarDesyncError,
-  parseTokenUriMetadata,
   sendTransaction,
   stellarExpertPhaserLiqUrl,
   stroopsToLiqDisplay,
@@ -321,12 +321,13 @@ export function FusionChamber() {
     setTokenUriLookupDone(false)
     setTokenUriExists(false)
     void fetchTokenUriString(phaseId)
-      .then((raw) => {
+      .then(async (raw) => {
         if (cancelled) return
         const hasUri = Boolean(raw && raw.trim().length > 0)
         setTokenUriExists(hasUri)
         if (hasUri && raw) {
-          const { image } = parseTokenUriMetadata(raw)
+          const { image } = await fetchTokenMetadataDisplay(raw)
+          if (cancelled) return
           if (image && image.trim().length > 0) setArtifactImageFromUri(image.trim())
         }
         setTokenUriLookupDone(true)

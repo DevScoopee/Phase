@@ -128,7 +128,7 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
         blocks: [
           {
             type: "p",
-            text: "Red: Soroban testnet. Passphrase: Test SDF Network ; September 2015. RPC Soroban: https://soroban-testnet.stellar.org. Horizon: https://horizon-testnet.stellar.org. Los IDs por defecto están en lib/phase-protocol.ts; puedes sobrescribirlos con NEXT_PUBLIC_PHASE_PROTOCOL_ID, NEXT_PUBLIC_TOKEN_CONTRACT_ID (y equivalentes sin prefijo para servidor).",
+            text: "Red: Soroban testnet. Passphrase: Test SDF Network ; September 2015. RPC Soroban: https://soroban-testnet.stellar.org. Horizon: https://horizon-testnet.stellar.org. Los IDs por defecto están en lib/phase-contract-defaults.ts (vía lib/phase-protocol.ts); puedes sobrescribirlos con NEXT_PUBLIC_PHASE_PROTOCOL_ID, NEXT_PUBLIC_TOKEN_CONTRACT_ID (y equivalentes sin prefijo para servidor).",
           },
           {
             type: "ul",
@@ -479,7 +479,7 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
         blocks: [
           {
             type: "p",
-            text: "Network: Soroban testnet. Passphrase: Test SDF Network ; September 2015. Soroban RPC: https://soroban-testnet.stellar.org. Horizon: https://horizon-testnet.stellar.org. Default IDs are defined in lib/phase-protocol.ts; override with NEXT_PUBLIC_PHASE_PROTOCOL_ID, NEXT_PUBLIC_TOKEN_CONTRACT_ID (and server-side equivalents without the prefix).",
+            text: "Network: Soroban testnet. Passphrase: Test SDF Network ; September 2015. Soroban RPC: https://soroban-testnet.stellar.org. Horizon: https://horizon-testnet.stellar.org. Default IDs are defined in lib/phase-contract-defaults.ts (via lib/phase-protocol.ts); override with NEXT_PUBLIC_PHASE_PROTOCOL_ID, NEXT_PUBLIC_TOKEN_CONTRACT_ID (and server-side equivalents without the prefix).",
           },
           {
             type: "ul",

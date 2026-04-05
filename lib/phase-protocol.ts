@@ -1047,6 +1047,44 @@ export function parseTokenUriMetadata(json: string): { image?: string; name?: st
   }
 }
 
+function unwrapTokenUriReturn(native: unknown): string | null {
+  if (native == null) return null
+  if (typeof native === "string") {
+    const s = native.trim()
+    return s.length > 0 ? s : null
+  }
+  if (typeof native === "object" && native !== null && "ok" in native) {
+    const inner = (native as { ok?: unknown }).ok
+    if (typeof inner === "string" && inner.trim().length > 0) return inner.trim()
+    return null
+  }
+  return null
+}
+
+/**
+ * Si `token_uri` on-chain es una URL HTTPS, la resuelve (JSON tipo ERC-721/SEP).
+ * Si es JSON incrustado (WASM antiguo), hace `parseTokenUriMetadata`.
+ */
+export async function fetchTokenMetadataDisplay(raw: string): Promise<{ image?: string; name?: string }> {
+  const t = raw.trim()
+  if (!t) return {}
+  const lower = t.toLowerCase()
+  if (lower.startsWith("https://") || lower.startsWith("http://")) {
+    try {
+      const res = await fetch(t, { cache: "no-store" })
+      if (!res.ok) return {}
+      const o = (await res.json()) as Record<string, unknown>
+      return {
+        image: typeof o.image === "string" ? o.image : undefined,
+        name: typeof o.name === "string" ? o.name : undefined,
+      }
+    } catch {
+      return {}
+    }
+  }
+  return parseTokenUriMetadata(t)
+}
+
 export async function fetchTokenUriString(tokenId: number): Promise<string | null> {
   if (tokenId <= 0) return null
   try {
@@ -1056,12 +1094,62 @@ export async function fetchTokenUriString(tokenId: number): Promise<string | nul
       [nativeToScVal(tokenId, { type: "u64" })],
       READONLY_SIM_SOURCE_G,
     )
-    if (native == null) return null
-    const s = typeof native === "string" ? native : String(native)
-    return s.length > 0 ? s : null
+    return unwrapTokenUriReturn(native)
   } catch {
     return null
   }
+}
+
+export async function fetchPhaseLevelForToken(tokenId: number): Promise<string | null> {
+  if (tokenId <= 0) return null
+  try {
+    const native = await simulateContractCall(
+      CONTRACT_ID,
+      "get_phase_level",
+      [nativeToScVal(tokenId, { type: "u64" })],
+      READONLY_SIM_SOURCE_G,
+    )
+    if (typeof native === "string" && native.trim().length > 0) return native.trim()
+    if (native && typeof native === "object" && "ok" in native) {
+      const v = (native as { ok: unknown }).ok
+      if (typeof v === "string" && v.trim().length > 0) return v.trim()
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * `get_token_collection_id` on-chain; si el WASM aún no lo expone, escanea colecciones con `get_user_phase`.
+ */
+export async function fetchTokenCollectionIdForToken(
+  tokenId: number,
+  ownerAddress: string | null,
+): Promise<number | null> {
+  if (tokenId <= 0) return null
+  try {
+    const native = await simulateContractCall(
+      CONTRACT_ID,
+      "get_token_collection_id",
+      [nativeToScVal(tokenId, { type: "u64" })],
+      READONLY_SIM_SOURCE_G,
+    )
+    if (native != null) {
+      const n = numLikeToNumber(native)
+      if (Number.isFinite(n) && n >= 0) return n
+    }
+  } catch {
+    /* contrato sin getter */
+  }
+  const o = ownerAddress?.trim()
+  if (!o || !StrKey.isValidEd25519PublicKey(o)) return null
+  const total = await fetchTotalCollections()
+  for (let col = 0; col <= total; col++) {
+    const art = await fetchUserPhaseArtifact(o, col)
+    if (art && art.tokenId === tokenId) return col
+  }
+  return null
 }
 
 export async function fetchCreatorCollectionId(creatorAddress: string): Promise<number | null> {

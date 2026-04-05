@@ -8,7 +8,7 @@ Estos IDs coinciden con `lib/phase-protocol.ts` en la app Next.js. Si redesplieg
 
 | Contrato | Contract ID | Stellar Expert |
 |----------|-------------|----------------|
-| **phase-protocol** (núcleo) | `CDZKNN7Z756OWAU3GY5WAOJ5BOMUBSZDVDCGLESG734LNEHIUDL3EQL6` | [Ver ↗](https://stellar.expert/explorer/testnet/contract/CDZKNN7Z756OWAU3GY5WAOJ5BOMUBSZDVDCGLESG734LNEHIUDL3EQL6) |
+| **phase-protocol** (núcleo) | `CCXV7F257OYT4WOZIHCVTPUX5PTIZMENYBAPGBGYE44GA37GGNHXBUQY` | [Ver ↗](https://stellar.expert/explorer/testnet/contract/CCXV7F257OYT4WOZIHCVTPUX5PTIZMENYBAPGBGYE44GA37GGNHXBUQY) |
 | **PHASELQ** (SAC; default app `TOKEN_ADDRESS`) | `CCKTFAHWI3MREYMDBFF4VB5ZPIIRVZH6LYYYYW34F6NZU54N2C3MHWBZ` | [Stellar Expert (asset) ↗](https://stellar.expert/explorer/testnet/asset/PHASELQ-GD7VAD4VDVHASKZIJPRORMXLML4RSVLRANYNRCCBWLO5ACOSYQZBSUFI) |
 | **PHASERLIQ** (SAC legacy, emisor GAXR…) | `CDOAXHWC6YJB7U3ELV67HKJY6HEMJFBNRGJK6WZGUAELBWP3WP77RLFD` | [Asset legado ↗](https://stellar.expert/explorer/testnet/asset/PHASERLIQ-GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS) |
 
@@ -129,7 +129,7 @@ stellar contract invoke \
   --name "Mock Test Token" \
   --symbol "MOCK"
 
-# Inicializar Phase Protocol
+# Inicializar Phase Protocol (protocol_treasury = G… que recibe el 5% en colecciones con creador)
 stellar contract invoke \
   --id PHASE_PROTOCOL_ID \
   --source TU_ADDRESS_DE_FREIGHTER \
@@ -138,8 +138,9 @@ stellar contract invoke \
   initialize \
   --admin TU_ADDRESS_DE_FREIGHTER \
   --token_address MOCK_TOKEN_ID \
-  --required_amount 10000000
-  # 10000000 = 1.0 token con 7 decimales
+  --required_amount 10000000 \
+  --protocol_treasury TU_TESORERIA_G
+  # 10000000 = 1.0 PHASELQ con 7 decimales (ajusta si tu token usa otros decimales)
 ```
 
 ### 5. Stellar Asset Contract (SAC) del PHASELQ clásico — “relanzar” / instalar en testnet

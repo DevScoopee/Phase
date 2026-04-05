@@ -18,12 +18,12 @@ import {
   checkHasPhased,
   fetchCollectionsCatalog,
   fetchTokenOwnerAddress,
+  fetchTokenMetadataDisplay,
   fetchTokenUriString,
   getTransactionResult,
   ipfsOrHttpsDisplayUrl,
   isValidClassicStellarAddress,
   liqToStroops,
-  parseTokenUriMetadata,
   PHASER_LIQ_SYMBOL,
   sendTransaction,
   stroopsToLiqDisplay,
@@ -163,7 +163,8 @@ export default function DashboardPage() {
         const owner = await fetchTokenOwnerAddress(CONTRACT_ID, phase.phaseId)
         if (!owner || owner !== address) return null
         const raw = await fetchTokenUriString(phase.phaseId)
-        const imageFromToken = raw ? parseTokenUriMetadata(raw).image?.trim() ?? "" : ""
+        const meta = raw ? await fetchTokenMetadataDisplay(raw) : {}
+        const imageFromToken = meta.image?.trim() ?? ""
         const imageUrl = imageFromToken || c.imageUri?.trim() || ""
         return {
           collectionId: c.collectionId,

@@ -30,7 +30,7 @@ pub struct CollectionSettings {
     pub name: String,
     /// Precio en unidades mínimas del token LIQ (x402)
     pub price: i128,
-    /// URL de arte (IPFS/https) embebida en `token_uri` JSON; sin `"` ni `\` (ASCII imprimible ≥32).
+    /// URL de arte (IPFS/https) expuesta vía `/api/metadata/[id]` y wallets; sin `"` ni `\` (ASCII imprimible ≥32).
     pub image_uri: String,
 }
 
@@ -55,9 +55,6 @@ pub struct PaymentRecord {
     pub settled: bool,
     pub timestamp: u64,
 }
-
-/// Tamaño máximo serializado de `token_uri` (bytes).
-const TOKEN_URI_CAP: u32 = 768;
 
 /// 95% creador, 5% tesorería protocolo (basis points implícitos 9500/500).
 const FEE_CREATOR_BP: i128 = 95;
@@ -113,6 +110,41 @@ fn str_is_safe_for_json_fragment(s: &String, max_len: u32) -> bool {
         }
     }
     true
+}
+
+/// Base HTTPS donde la app sirve JSON de metadatos (`GET /api/metadata/{token_id}`).
+/// Debe coincidir con el despliegue de producción (Vercel). Tras redesplegar otro host, recompila con otra base o añade setter on-chain.
+const DEFAULT_METADATA_BASE_URL: &[u8] = b"https://www.phasee.xyz/api/metadata/";
+
+fn u64_to_dec_string(env: &Env, mut n: u64) -> String {
+    if n == 0 {
+        return String::from_str(env, "0");
+    }
+    let mut rev = [0u8; 20];
+    let mut i = 0usize;
+    while n > 0 && i < rev.len() {
+        rev[i] = b'0' + (n % 10) as u8;
+        n /= 10;
+        i += 1;
+    }
+    let mut out = [0u8; 20];
+    for j in 0..i {
+        out[j] = rev[i - 1 - j];
+    }
+    String::from_bytes(env, &out[..i])
+}
+
+fn build_metadata_token_uri(env: &Env, token_id: u64) -> String {
+    let mut b = Bytes::from_slice(env, DEFAULT_METADATA_BASE_URL);
+    let suf = u64_to_dec_string(env, token_id);
+    append_soroban_str_to_bytes(&mut b, &suf);
+    let bl = b.len() as usize;
+    let mut out = [0u8; 96];
+    if bl > out.len() {
+        return String::from_str(env, "");
+    }
+    b.copy_into_slice(&mut out[..bl]);
+    String::from_bytes(env, &out[..bl])
 }
 
 fn append_soroban_str_to_bytes(acc: &mut Bytes, s: &String) {
@@ -578,9 +610,9 @@ impl PhaseProtocol {
         env.current_contract_address()
     }
 
-    /// Metadatos a nivel contrato (descubrimiento SEP-20 / wallets). Por token: `token_uri`.
+    /// Metadatos a nivel contrato (descubrimiento SEP-20 / wallets). Por token: `token_uri` → URL HTTPS off-chain.
     pub fn name(env: Env) -> String {
-        String::from_str(&env, "PHASE Utility Artifact")
+        String::from_str(&env, "Phase Artifact")
     }
 
     pub fn symbol(env: Env) -> String {
@@ -636,6 +668,13 @@ impl PhaseProtocol {
         env.storage()
             .persistent()
             .get(&DataKey::TokenOwner(token_id))
+    }
+
+    /// `token_id` → `collection_id` (0 = pool protocolo). Lectura para indexadores y `/api/metadata`.
+    pub fn get_token_collection_id(env: Env, token_id: u64) -> Option<u64> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::TokenCollection(token_id))
     }
 
     /// Alias **SEP-20 / Freighter**: misma firma que suelen exponer los NFT Soroban para descubrimiento en wallet.
@@ -713,60 +752,18 @@ impl PhaseProtocol {
             .unwrap_or(0)
     }
 
-    /// JSON `standard: SEP-20` con `name`, `image`, atributos; usado por Freighter / laboratorios.
-    pub fn token_uri(env: Env, token_id: u64) -> Option<String> {
-        let owner: Address = env.storage().persistent().get(&DataKey::TokenOwner(token_id))?;
-        let collection_id: u64 = env
+    /// URI de metadatos **HTTP(S)** (estilo ERC-721): la wallet hace GET y espera JSON (`name`, `description`, `image`).
+    /// Los argumentos on-chain siguen siendo `u64` (IDs de fase); encajan en `u32` cuando aplica el tooling.
+    pub fn token_uri(env: Env, token_id: u64) -> String {
+        if env
             .storage()
             .persistent()
-            .get(&DataKey::TokenCollection(token_id))?;
-        let state: PhaseState = env
-            .storage()
-            .persistent()
-            .get(&DataKey::UserPhase(owner, collection_id))?;
-
-        if !str_is_safe_for_json_fragment(&state.phase_level, 32) {
-            return None;
+            .get::<DataKey, Address>(&DataKey::TokenOwner(token_id))
+            .is_none()
+        {
+            return String::from_str(&env, "");
         }
-
-        let (meta_name, meta_img) = if collection_id > 0 {
-            match env
-                .storage()
-                .persistent()
-                .get::<DataKey, CollectionSettings>(&DataKey::Collection(collection_id))
-            {
-                Some(st) => (st.name, st.image_uri),
-                None => (
-                    String::from_str(&env, "PHASE Utility Artifact"),
-                    String::from_str(&env, ""),
-                ),
-            }
-        } else {
-            (
-                String::from_str(&env, "PHASE Utility Artifact"),
-                String::from_str(&env, ""),
-            )
-        };
-
-        let mut b = Bytes::from_slice(&env, b"{\"standard\":\"SEP-20\",\"image\":\"");
-        append_soroban_str_to_bytes(&mut b, &meta_img);
-        b.extend_from_slice(b"\",\"name\":\"");
-        append_soroban_str_to_bytes(&mut b, &meta_name);
-        b.extend_from_slice(b"\",\"attributes\":[{\"trait_type\":\"PHASE_LEVEL\",\"value\":\"");
-        append_soroban_str_to_bytes(&mut b, &state.phase_level);
-        b.extend_from_slice(b"\"}]}");
-
-        if b.len() > TOKEN_URI_CAP {
-            return None;
-        }
-
-        let bl = b.len() as usize;
-        let mut out = [0u8; 768];
-        if bl > out.len() {
-            return None;
-        }
-        b.copy_into_slice(&mut out[..bl]);
-        Some(String::from_bytes(&env, &out[..bl]))
+        build_metadata_token_uri(&env, token_id)
     }
 
     pub fn get_energy_level_bp(env: Env, user: Address, collection_id: u64) -> Option<u32> {

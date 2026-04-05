@@ -25,7 +25,7 @@ The stack combines Next.js (App Router), Soroban contracts, Freighter signing, a
 - **Network passphrase**: `Test SDF Network ; September 2015`
 - **Soroban RPC**: `https://soroban-testnet.stellar.org`
 - **Horizon**: `https://horizon-testnet.stellar.org`
-- **Source of truth for default IDs**: `lib/phase-protocol.ts`
+- **Source of truth for default contract IDs**: `lib/phase-contract-defaults.ts` (used by `lib/phase-protocol.ts`)
 
 ## Quick start
 
