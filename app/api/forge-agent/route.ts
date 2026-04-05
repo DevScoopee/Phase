@@ -49,11 +49,27 @@ const POLLINATIONS_STYLE_SUFFIX =
 
 const ERR_SETTLEMENT_REJECTED_BY_FACILITATOR = "[ ERROR: SETTLEMENT_REJECTED_BY_FACILITATOR ]"
 const ERR_NANO_BANANA_CORE_OVERLOAD = "[ ERROR: NANO_BANANA_CORE_OVERLOAD ]"
+type ForgeImageStyleMode = "adaptive" | "cyber"
+
+function normalizeForgeImageStyleMode(raw: unknown): ForgeImageStyleMode {
+  if (typeof raw !== "string") return "adaptive"
+  const v = raw.trim().toLowerCase()
+  if (v === "cyber" || v === "ai_cyber" || v === "ai-cyber") return "cyber"
+  return "adaptive"
+}
+
+function composeForgeImagePrompt(userPrompt: string, styleMode: ForgeImageStyleMode): string {
+  const trimmed = userPrompt.trim()
+  if (!trimmed) return ""
+  if (styleMode === "cyber") return `${trimmed}.${FORGE_IMAGE_STYLE_BLOCK}`
+  return trimmed
+}
 
 type ForgeAgentBody = {
   prompt?: string
   settlementTxHash?: string
   payerAddress?: string
+  imageStyleMode?: ForgeImageStyleMode | string
 }
 
 type LegacyChallenge = {
@@ -401,8 +417,9 @@ type ForgeAgentResponse =
   | ForgeAgentPaymentRequiredResponse
   | ForgeAgentErrorResponse
 
-function buildPollinationsImageUrl(userPrompt: string): string {
-  const imagePrompt = `${userPrompt.trim()}${POLLINATIONS_STYLE_SUFFIX}`
+function buildPollinationsImageUrl(userPrompt: string, styleMode: ForgeImageStyleMode): string {
+  const basePrompt = userPrompt.trim()
+  const imagePrompt = styleMode === "cyber" ? `${basePrompt}${POLLINATIONS_STYLE_SUFFIX}` : basePrompt
   return `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=1024&height=1024&nologo=true`
 }
 
@@ -543,9 +560,8 @@ function extractImageDataUrlFromGeminiResponse(response: { candidates?: { conten
 /**
  * Imagen vía Google Gemini (`gemini-3.1-flash-image-preview` por defecto): v1beta + modalidad IMAGE.
  */
-async function generateForgeImageDataUrl(genAI: GoogleGenerativeAI, userPrompt: string): Promise<string> {
-  const trimmed = userPrompt.trim()
-  const fullPrompt = `${trimmed}.${FORGE_IMAGE_STYLE_BLOCK}`
+async function generateForgeImageDataUrl(genAI: GoogleGenerativeAI, imagePrompt: string): Promise<string> {
+  const fullPrompt = imagePrompt.trim()
   const imageModelId = forgeGeminiImageModelId()
   const imageGenerationConfig = {
     responseModalities: ["IMAGE"],
@@ -585,6 +601,7 @@ async function generateForgeImageDataUrl(genAI: GoogleGenerativeAI, userPrompt: 
 
 async function runForgeAgentCore(
   userPrompt: string,
+  styleMode: ForgeImageStyleMode,
   nanobananaCallBackUrl: string,
 ): Promise<ForgeAgentSuccessResponse> {
   const trimmed = userPrompt.trim()
@@ -599,7 +616,10 @@ async function runForgeAgentCore(
   const genAI = new GoogleGenerativeAI(apiKey)
   const candidates = geminiModelCandidates()
 
-  const systemInstruction = `Eres el Arquitecto del Protocolo PHASE. Escribe una descripción de máximo 2 oraciones técnicas, oscuras, ciberpunk y enigmáticas sobre el siguiente artefacto forjado por el usuario: ${trimmed}`
+  const systemInstruction =
+    styleMode === "cyber"
+      ? `Eres el Arquitecto del Protocolo PHASE. Escribe una descripción de máximo 2 oraciones técnicas, oscuras, ciberpunk y enigmáticas sobre el siguiente artefacto forjado por el usuario: ${trimmed}`
+      : `Eres el Arquitecto del Protocolo PHASE. Escribe una descripción breve (máximo 2 oraciones) alineada a la idea exacta del usuario, sin imponer estética cyber por defecto: ${trimmed}`
 
   type GeminiGenerateResult = Awaited<
     ReturnType<ReturnType<GoogleGenerativeAI["getGenerativeModel"]>["generateContent"]>
@@ -653,7 +673,7 @@ async function runForgeAgentCore(
     throw new Error("GEMINI_EMPTY_LORE: el modelo no devolvió texto (revisa cuota o safety).")
   }
 
-  const imagePromptForApis = `${trimmed}.${FORGE_IMAGE_STYLE_BLOCK}`
+  const imagePromptForApis = composeForgeImagePrompt(trimmed, styleMode)
 
   function tryPollinationsOnOverload(e: unknown): boolean {
     const overload =
@@ -681,7 +701,7 @@ async function runForgeAgentCore(
       } catch (e) {
         if (tryPollinationsOnOverload(e)) {
           return {
-            imageUrl: buildPollinationsImageUrl(trimmed),
+            imageUrl: buildPollinationsImageUrl(trimmed, styleMode),
             image_source: "pollinations_fallback",
           }
         }
@@ -690,12 +710,12 @@ async function runForgeAgentCore(
     }
 
     try {
-      const url = await generateForgeImageDataUrl(genAI, trimmed)
+      const url = await generateForgeImageDataUrl(genAI, imagePromptForApis)
       return { imageUrl: url, image_source: "gemini" }
     } catch (e) {
       if (tryPollinationsOnOverload(e)) {
         return {
-          imageUrl: buildPollinationsImageUrl(trimmed),
+          imageUrl: buildPollinationsImageUrl(trimmed, styleMode),
           image_source: "pollinations_fallback",
         }
       }
@@ -755,7 +775,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<ForgeAgen
     const nanobananaCallBackUrl =
       process.env.NANOBANANA_CALLBACK_URL?.trim() ||
       `${request.nextUrl.origin}/api/webhooks/nanobanana`
-    const payload = await runForgeAgentCore(body.prompt, nanobananaCallBackUrl)
+    const styleMode = normalizeForgeImageStyleMode(body.imageStyleMode)
+    const payload = await runForgeAgentCore(body.prompt, styleMode, nanobananaCallBackUrl)
     return NextResponse.json(payload)
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)

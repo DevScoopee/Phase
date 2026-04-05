@@ -1,7 +1,6 @@
 import type React from "react"
 import type { Metadata } from "next"
 import { IBM_Plex_Sans, IBM_Plex_Mono, Bebas_Neue, Orbitron } from "next/font/google"
-import Script from "next/script"
 import { Analytics } from "@vercel/analytics/next"
 import { AppProviders } from "@/components/app-providers"
 import { SmoothScroll } from "@/components/smooth-scroll"
@@ -43,21 +42,6 @@ const defaultDescription =
 
 const metadataBaseResolved = siteMetadataBase()
 const canonicalUrl = new URL("/", metadataBaseResolved).href
-
-/**
- * Next 16 devtools registran `unhandledrejection` y pasan `reason` a `coerceError` (→ overlay).
- * Extensiones / wallets a veces rechazan con `undefined`. Hay que registrar **antes** que Next y
- * usar `stopImmediatePropagation` — `preventDefault` en un `useEffect` llega tarde.
- */
-const SWALLOW_EMPTY_UNHANDLED_REJECTION = `(function(){
-if(typeof window==="undefined")return;
-window.addEventListener("unhandledrejection",function(e){
-var r=e.reason;
-if(r!==void 0&&r!==null&&r!=="")return;
-e.preventDefault();
-try{if(typeof e.stopImmediatePropagation==="function")e.stopImmediatePropagation();}catch(_){}
-});
-})();`
 
 function ogImageUrl(): string {
   const override = process.env.NEXT_PUBLIC_OG_IMAGE_URL?.trim()
@@ -126,9 +110,6 @@ export default function RootLayout({
       <body
         className={`${ibmPlexSans.variable} ${bebasNeue.variable} ${ibmPlexMono.variable} ${orbitron.variable} font-sans antialiased overflow-x-hidden`}
       >
-        <Script id="phase-swallow-empty-rejection" strategy="beforeInteractive">
-          {SWALLOW_EMPTY_UNHANDLED_REJECTION}
-        </Script>
         <div className="noise-overlay" aria-hidden="true" />
         <SmoothScroll>
           <AppProviders>{children}</AppProviders>

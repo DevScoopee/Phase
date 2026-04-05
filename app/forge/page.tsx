@@ -133,6 +133,7 @@ const forgeNavBtn =
 
 type AgentState = "IDLE" | "AWAITING_PAYMENT" | "PROCESSING_PAYMENT" | "FORGING_MATTER" | "COMPLETE"
 type ForgeMode = "ORACLE" | "MANUAL"
+type OracleImageStyleMode = "adaptive" | "cyber"
 
 export default function ForgePage() {
   const { lang } = useLang()
@@ -144,6 +145,7 @@ export default function ForgePage() {
   const [name, setName] = useState("")
   const [priceLiq, setPriceLiq] = useState("1")
   const [anomalyDescription, setAnomalyDescription] = useState("")
+  const [oracleImageStyleMode, setOracleImageStyleMode] = useState<OracleImageStyleMode>("adaptive")
   const [forgeMode, setForgeMode] = useState<ForgeMode>("ORACLE")
   const [manualFile, setManualFile] = useState<File | null>(null)
   const [manualImageUrl, setManualImageUrl] = useState("")
@@ -423,14 +425,18 @@ export default function ForgePage() {
   )
 
   const initiateAgentForge = useCallback(
-    async (userPrompt: string, payerAddress: string): Promise<{ imageUrl: string; lore: string }> => {
+    async (
+      userPrompt: string,
+      payerAddress: string,
+      imageStyleMode: OracleImageStyleMode,
+    ): Promise<{ imageUrl: string; lore: string }> => {
       const ff = pickCopy(lang).forge
       setAgentState("AWAITING_PAYMENT")
 
       const probe = await fetch("/api/forge-agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: userPrompt }),
+        body: JSON.stringify({ prompt: userPrompt, imageStyleMode }),
       })
 
       if (probe.status !== 402) {
@@ -477,6 +483,7 @@ export default function ForgePage() {
         },
         body: JSON.stringify({
           prompt: userPrompt,
+          imageStyleMode,
           settlementTxHash: hash,
           payerAddress,
         }),
@@ -556,14 +563,14 @@ export default function ForgePage() {
     }
 
     try {
-      await initiateAgentForge(prompt, addr)
+      await initiateAgentForge(prompt, addr, oracleImageStyleMode)
     } catch (e) {
       setAgentState("IDLE")
       setAgentImageUrl(null)
       setLore(null)
       setError(mapFusionChamberError(e, ff.errors))
     }
-  }, [address, anomalyDescription, initiateAgentForge, lang, protocolReady, refresh])
+  }, [address, anomalyDescription, initiateAgentForge, lang, oracleImageStyleMode, protocolReady, refresh])
 
   const handleMintArtifact = useCallback(async () => {
     const ff = pickCopy(lang).forge
@@ -635,7 +642,7 @@ export default function ForgePage() {
   }, [shareUrl, lang])
 
   const shellClass = cn(
-    "tactical-cockpit-forge-shell tactical-frame relative flex min-h-full min-w-0 flex-col p-4 text-cyan-100 md:p-6",
+    "tactical-cockpit-forge-shell tactical-frame relative flex min-h-full min-w-0 w-full flex-col p-4 text-cyan-100 md:p-6",
     isMintingCollection && "forge-shell--deploying tactical-btn-forge-primary",
   )
 
@@ -644,7 +651,7 @@ export default function ForgePage() {
 
   const textareaClass = cn(
     inputClass,
-    "min-h-[11rem] resize-y font-mono text-[13px] leading-relaxed sm:min-h-[13rem] sm:text-sm",
+    "min-h-[8.25rem] resize-y font-mono text-[13px] leading-relaxed sm:min-h-[9.25rem] sm:text-sm",
   )
 
   const inputLabelClass =
@@ -688,7 +695,7 @@ export default function ForgePage() {
       <div className="tactical-crt-fine" aria-hidden />
       <TacticalCornerSigil className="pointer-events-none fixed bottom-2 left-2 z-50 hidden opacity-70 sm:block" />
 
-      <header className="tactical-header-bar relative z-10 flex shrink-0 flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-6">
+      <header className="tactical-header-bar relative z-10 flex shrink-0 flex-wrap items-center justify-between gap-2 px-3 py-2 md:px-5">
         <Link href="/" className={forgeNavBtn} onClick={() => playTacticalUiClick()}>
           {f.exit}
         </Link>
@@ -706,7 +713,7 @@ export default function ForgePage() {
         </div>
       </header>
 
-      <main className="custom-scrollbar relative z-10 mx-auto min-h-0 w-full max-w-[100rem] flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain px-3 pb-3 pt-1 md:px-5 [-webkit-overflow-scrolling:touch]">
+      <main className="custom-scrollbar relative z-10 min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain px-2 pb-2 pt-0.5 md:px-4 [-webkit-overflow-scrolling:touch]">
         <div className={shellClass}>
           {statusStripActive && (
             <div className="shrink-0">
@@ -782,7 +789,7 @@ export default function ForgePage() {
           )}
 
           {!statusStripActive && (
-            <p className="mt-2 line-clamp-6 shrink-0 text-[10px] leading-relaxed text-cyan-100/90 tactical-phosphor sm:text-[11px]">
+            <p className="mt-1.5 line-clamp-4 shrink-0 text-[9px] leading-relaxed text-cyan-100/90 tactical-phosphor sm:text-[10px]">
               {forgeMode === "ORACLE" ? f.intro : f.manualIntro}
             </p>
           )}
@@ -812,7 +819,7 @@ export default function ForgePage() {
           )}
 
           {shareUrl && createdId != null && (
-            <div className="custom-scrollbar mt-2 max-h-36 shrink-0 overflow-y-auto border-2 border-[#00ffff]/55 bg-[#00ffff]/5 p-2 text-[9px]">
+            <div className="custom-scrollbar mt-2 max-h-28 shrink-0 overflow-y-auto border-2 border-[#00ffff]/55 bg-[#00ffff]/5 p-2 text-[9px]">
               <p className="font-bold uppercase tracking-[0.15em] text-cyan-200">{f.collectionLive}</p>
               <p className="mt-1 font-mono text-[11px] text-cyan-50">
                 {f.collectionIdLabel} <span className="text-cyan-300">#{createdId}</span>
@@ -842,8 +849,8 @@ export default function ForgePage() {
             </div>
           )}
 
-          <div className="mt-4 flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:gap-8 lg:items-start">
-            <div className="flex w-full flex-col gap-2 lg:col-span-5">
+          <div className="mt-2.5 flex flex-col gap-3 lg:grid lg:grid-cols-12 lg:gap-5 lg:items-start">
+            <div className="flex w-full flex-col gap-1.5 lg:col-span-5">
               <div className="custom-scrollbar space-y-3 pr-0.5 lg:pr-0">
                 {forgeMode === "ORACLE" ? (
                   <div>
@@ -862,6 +869,32 @@ export default function ForgePage() {
                       spellCheck={lang === "es"}
                     />
                     <p className="mt-1 text-[9px] leading-relaxed text-cyan-400/75 sm:text-[10px]">{f.oracleHint}</p>
+                    <div className="mt-2">
+                      <label htmlFor="forge-style-mode" className={inputLabelClass}>
+                        {lang === "es" ? "Modo de estilo IA" : "AI style mode"}
+                      </label>
+                      <select
+                        id="forge-style-mode"
+                        value={oracleImageStyleMode}
+                        onChange={(e) => setOracleImageStyleMode(e.target.value as OracleImageStyleMode)}
+                        disabled={anomalyFieldLocked}
+                        className={cn(inputClass, "mt-1 font-mono text-[11px] uppercase tracking-[0.12em]")}
+                      >
+                        <option value="adaptive">
+                          {lang === "es" ? "ADAPTIVE // RESPETA_TU_IDEA" : "ADAPTIVE // RESPECT_YOUR_PROMPT"}
+                        </option>
+                        <option value="cyber">{lang === "es" ? "AI_CYBER // ESTILO_PHASE" : "AI_CYBER // PHASE_STYLE"}</option>
+                      </select>
+                      <p className="mt-1 text-[9px] leading-relaxed text-cyan-400/75 sm:text-[10px]">
+                        {oracleImageStyleMode === "cyber"
+                          ? lang === "es"
+                            ? "AI Cyber aplica estética cyber-brutalist/isométrica."
+                            : "AI Cyber applies cyber-brutalist/isometric aesthetics."
+                          : lang === "es"
+                            ? "Adaptive prioriza tu descripción sin forzar estilo cyber."
+                            : "Adaptive prioritizes your description without forcing cyber style."}
+                      </p>
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -950,8 +983,8 @@ export default function ForgePage() {
                         onChange={(e) => setManualLoreDraft(e.target.value)}
                         disabled={namePriceLocked}
                         placeholder={f.manualLorePlaceholder}
-                        rows={5}
-                        className={cn(textareaClass, "mt-1 min-h-[8rem]")}
+                        rows={4}
+                        className={cn(textareaClass, "mt-1 min-h-[6.5rem]")}
                         autoComplete="off"
                         spellCheck={lang === "es"}
                       />
@@ -1031,21 +1064,7 @@ export default function ForgePage() {
                 )}
               </div>
 
-              {address ? (
-                <div
-                  className="custom-scrollbar min-h-[12rem] max-h-[min(26rem,55vh)] shrink-0 overflow-y-auto overscroll-y-contain border-t border-cyan-900/50 pt-2 [-webkit-overflow-scrolling:touch]"
-                  onWheelCapture={captureWheelOnRewardsPanel}
-                >
-                  <LiquidityFaucetControl
-                    address={address}
-                    tokenBalance={tokenBalance}
-                    onRefreshBalance={refreshLiqBalance}
-                    className="rounded-none border-0 bg-transparent p-2 shadow-none"
-                  />
-                </div>
-              ) : null}
-
-              <div className="shrink-0 space-y-2 border-t border-cyan-900/50 pt-2">
+              <div className="shrink-0 space-y-1.5 border-t border-cyan-900/50 pt-1.5">
                 {!address ? (
                   <button
                     type="button"
@@ -1125,39 +1144,62 @@ export default function ForgePage() {
               </div>
             </div>
 
-            <div className="flex min-h-[220px] w-full flex-col lg:col-span-7">
-              <p className="mb-2 shrink-0 border-b border-cyan-500/35 pb-1.5 text-[9px] font-semibold uppercase tracking-[0.28em] text-cyan-200/95">
-                {f.artPreview}
-              </p>
-              <div className="art-retro-monitor flex min-h-[min(280px,42vh)] flex-col items-center justify-center overflow-hidden px-2 py-2 lg:min-h-[min(360px,50vh)]">
-                {previewSrc ? (
-                  <div className="phase-artifact-preview-clean tactical-holo-wrap relative z-[3] flex h-full max-h-full w-full max-w-full flex-col items-center justify-center gap-2">
-                    {/* eslint-disable-next-line @next/next/no-img-element -- Pollinations / IPFS URLs */}
-                    <img
-                      src={previewSrc}
-                      alt=""
-                      className="art-retro-monitor__img tactical-holo-img relative z-[3] max-h-[min(52vh,420px)] max-w-full object-contain"
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                    />
-                    {previewLoreText ? (
-                      <div className="custom-scrollbar max-h-28 w-full max-w-lg overflow-y-auto border border-cyan-500/25 bg-black/50 px-2 py-1.5 text-left">
-                        <p className="text-[8px] font-bold uppercase tracking-widest text-cyan-500/80">{f.lorePreview}</p>
-                        <p className="mt-1 whitespace-pre-wrap font-mono text-[10px] leading-snug text-cyan-100/90">
-                          {previewLoreText}
-                        </p>
+            <div className="flex min-h-[190px] w-full flex-col lg:col-span-7">
+              <div className="flex min-h-0 w-full flex-col gap-2 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)] lg:items-start lg:gap-4">
+                <div className="min-h-0 w-full">
+                  <p className="mb-2 shrink-0 border-b border-cyan-500/35 pb-1.5 text-[9px] font-semibold uppercase tracking-[0.28em] text-cyan-200/95">
+                    {f.artPreview}
+                  </p>
+                  <div className="art-retro-monitor flex min-h-[min(220px,34vh)] flex-col items-center justify-center overflow-hidden px-2 py-2 lg:min-h-[min(285px,40vh)]">
+                    {previewSrc ? (
+                      <div className="phase-artifact-preview-clean tactical-holo-wrap relative z-[3] flex h-full max-h-full w-full max-w-full flex-col items-center justify-center gap-2">
+                        {/* eslint-disable-next-line @next/next/no-img-element -- Pollinations / IPFS URLs */}
+                        <img
+                          src={previewSrc}
+                          alt=""
+                          className="art-retro-monitor__img tactical-holo-img relative z-[3] max-h-[min(52vh,420px)] max-w-full object-contain"
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                        />
+                        {previewLoreText ? (
+                          <div className="custom-scrollbar max-h-20 w-full max-w-lg overflow-y-auto border border-cyan-500/25 bg-black/50 px-2 py-1.5 text-left">
+                            <p className="text-[8px] font-bold uppercase tracking-widest text-cyan-500/80">{f.lorePreview}</p>
+                            <p className="mt-1 whitespace-pre-wrap font-mono text-[10px] leading-snug text-cyan-100/90">
+                              {previewLoreText}
+                            </p>
+                          </div>
+                        ) : null}
                       </div>
-                    ) : null}
+                    ) : (
+                      <span className="relative z-[3] px-2 text-center font-mono text-[9px] font-medium uppercase leading-relaxed tracking-[0.2em] text-cyan-400/85">
+                        {forgeMode === "MANUAL" ? f.manualAwaiting : f.awaitingFeed}
+                        <br />
+                        <span className="text-[8px] tracking-widest text-cyan-500/70">
+                          {forgeMode === "MANUAL" ? f.manualAwaitingHint : f.oracleHint}
+                        </span>
+                      </span>
+                    )}
                   </div>
-                ) : (
-                  <span className="relative z-[3] px-2 text-center font-mono text-[9px] font-medium uppercase leading-relaxed tracking-[0.2em] text-cyan-400/85">
-                    {forgeMode === "MANUAL" ? f.manualAwaiting : f.awaitingFeed}
-                    <br />
-                    <span className="text-[8px] tracking-widest text-cyan-500/70">
-                      {forgeMode === "MANUAL" ? f.manualAwaitingHint : f.oracleHint}
-                    </span>
-                  </span>
-                )}
+                </div>
+                {address ? (
+                  <aside className="tactical-frame ml-auto w-full border-cyan-500/35 bg-black/35 p-2.5 lg:sticky lg:top-2 lg:min-h-[min(20rem,52vh)]">
+                    <p className="mb-2 text-[9px] font-semibold uppercase tracking-[0.2em] text-cyan-300/90">
+                      {pickCopy(lang).chamber.rewardsSectionTitle}
+                    </p>
+                    <div
+                      className="custom-scrollbar max-h-[min(18rem,46vh)] overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]"
+                      onWheelCapture={captureWheelOnRewardsPanel}
+                    >
+                      <LiquidityFaucetControl
+                        address={address}
+                        tokenBalance={tokenBalance}
+                        compact
+                        onRefreshBalance={refreshLiqBalance}
+                        className="rounded-none border-0 bg-transparent p-0 shadow-none"
+                      />
+                    </div>
+                  </aside>
+                ) : null}
               </div>
             </div>
           </div>
