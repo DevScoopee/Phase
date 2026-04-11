@@ -1269,6 +1269,57 @@ export function FusionChamber() {
     await runNftTransferToRecipient(raw)
   }, [address, nftNumericTokenIdStr, freighterTransferBusy, freighterTransferTo, lang, runNftTransferToRecipient])
 
+  const handleCollectWithWalletKit = useCallback(async () => {
+    if (!phaseId || phaseId <= 0) return
+    playTacticalUiClick()
+    setClaimToWalletBusy(true)
+    const logs = pickCopy(lang).chamber.logs
+    try {
+      let recipient = address?.trim()
+      if (!recipient) {
+        const picked = await openWalletPicker()
+        if (!picked) return
+        recipient = picked
+      }
+      const res = await fetch("/api/phase-nft/custodian-release", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tokenId: phaseId, recipientWallet: recipient }),
+        cache: "no-store",
+      })
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean; hash?: string | null; error?: string; detail?: string; code?: string
+      }
+      if (!res.ok) {
+        const msg =
+          data.code === "NOT_ISSUER_CUSTODY"
+            ? lang === "es"
+              ? "El NFT no está en custodia del emisor (quizá ya está en tu wallet)."
+              : "This NFT is not held by the configured issuer (it may already be in your wallet)."
+            : data.detail || data.error || `HTTP ${res.status}`
+        appendLog(`[ NFT_COLLECT_FAIL ] ${msg}`)
+        toast.error(msg)
+        return
+      }
+      const hash = typeof data.hash === "string" ? data.hash : undefined
+      toast.success(
+        lang === "es"
+          ? `NFT enviado a tu wallet${hash ? `. Hash: ${hash}` : ""}`
+          : `NFT sent to your wallet${hash ? `. Hash: ${hash}` : ""}`,
+      )
+      if (hash) appendLog(`${logs.tracePrefix} ${hash}`)
+      setOnChainTokenOwner(recipient)
+      setTokenOwnerLookupDone(true)
+      await refreshStatus()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      appendLog(`[ NFT_COLLECT_ERROR ] ${msg}`)
+      toast.error(msg)
+    } finally {
+      setClaimToWalletBusy(false)
+    }
+  }, [address, openWalletPicker, phaseId, lang, appendLog, refreshStatus])
+
   const handleFreighterSep50Check = useCallback(async () => {
     const chCopy = pickCopy(lang).chamber
     if (!nftNumericTokenIdStr || freighterSep50Busy) return
@@ -1909,8 +1960,8 @@ export function FusionChamber() {
                         {phaseId != null && phaseId > 0 && !isOwnerOnChain ? (
                           <button
                             type="button"
-                            disabled={claimToWalletBusy || !address}
-                            onClick={() => void handleClaimNftToWallet()}
+                            disabled={claimToWalletBusy}
+                            onClick={() => void handleCollectWithWalletKit()}
                             className="tactical-interactive-glitch w-full border border-violet-400/55 bg-violet-950/30 py-2.5 text-[10px] font-bold uppercase tracking-widest text-violet-100 hover:border-violet-300 disabled:opacity-45"
                           >
                             {claimToWalletBusy
@@ -1919,46 +1970,6 @@ export function FusionChamber() {
                                 ? "[ COLECTAR A MI WALLET ]"
                                 : "[ COLLECT TO MY WALLET ]"}
                           </button>
-                        ) : null}
-                        {isOwnerOnChain ? (
-                          <>
-                            <button
-                              type="button"
-                              disabled={!nftNumericTokenIdStr || freighterIndexPingBusy}
-                              onClick={() => {
-                                playTacticalUiClick()
-                                void handleFreighterIndexPing()
-                              }}
-                              className="tactical-interactive-glitch w-full border border-amber-500/50 bg-amber-950/25 py-2 text-[10px] font-bold uppercase tracking-widest text-amber-100 hover:border-amber-300 disabled:opacity-45"
-                            >
-                              {freighterIndexPingBusy ? "…" : ch.freighterIndexPingButton}
-                            </button>
-                            <div className="space-y-2 rounded border border-fuchsia-500/35 bg-fuchsia-950/15 px-2 py-2">
-                              <p className="text-[9px] font-semibold uppercase tracking-wider text-fuchsia-300/80">
-                                {lang === "es" ? "Enviar a otra wallet" : "Send to another wallet"}
-                              </p>
-                              <input
-                                type="text"
-                                value={freighterTransferTo}
-                                onChange={(e) => setFreighterTransferTo(e.target.value)}
-                                placeholder={lang === "es" ? "Dirección G… del destinatario" : "Recipient G… address"}
-                                autoComplete="off"
-                                spellCheck={false}
-                                className="w-full border border-fuchsia-400/40 bg-black/60 px-2 py-1.5 text-[10px] font-mono text-fuchsia-100 placeholder:text-fuchsia-400/40 focus:border-fuchsia-300 focus:outline-none"
-                              />
-                              <button
-                                type="button"
-                                disabled={!nftNumericTokenIdStr || freighterTransferBusy || !freighterTransferTo.trim()}
-                                onClick={() => {
-                                  playTacticalUiClick()
-                                  void handleFreighterTransferFromInput()
-                                }}
-                                className="tactical-interactive-glitch w-full border border-fuchsia-400/55 bg-fuchsia-950/30 py-2.5 text-[10px] font-bold uppercase tracking-widest text-fuchsia-100 hover:border-fuchsia-300 disabled:opacity-45"
-                              >
-                                {freighterTransferBusy ? ch.freighterTransferSigningLabel : ch.freighterTransferClipboardButton}
-                              </button>
-                            </div>
-                          </>
                         ) : null}
                         <div className="rounded border border-cyan-500/20 bg-black/35 px-2 py-1.5">
                           <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-300/85">
