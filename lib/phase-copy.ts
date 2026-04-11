@@ -832,9 +832,9 @@ export const phaseCopy: Record<
       pedestalIssuerCustodyHint:
         "Utility NFT is still in issuer custody. Use COLLECT in the right-hand panel (server-signed transfer to your connected wallet).",
       pedestalIssuerCustodyScrollLink: "Jump to COLLECT panel ↓",
-      walletNftVisibilityTitle: “NFT NOT SHOWING IN YOUR WALLET?”,
+      walletNftVisibilityTitle: "NFT NOT SHOWING IN YOUR WALLET?",
       walletNftVisibilityBody:
-        “If your transaction history shows a successful settlement (invoke settle → true), the protocol already minted your NFT on-chain—that is the proof. Many wallets show Soroban transactions in history but do not display SEP-20 NFTs in the main balance view. This does not mean the NFT is lost.\n\n• Your PHASE utility NFT lives on testnet: verified by owner_of = your address on the PHASE contract.\n• Tap COPY · CONTRACT + TOKEN ID below to paste into your wallet’s \”add NFT manually\” (works with Freighter, Albedo, xBull, etc.).\n• PHASE Dashboard → Vault scans Soroban RPC and lists every PHASE NFT for your wallet (source of truth).\n• Stellar Expert (contract link) helps verify owner_of, token_uri, and transfers on-chain.”,
+        "If your transaction history shows a successful settlement (invoke settle → true), the protocol already minted your NFT on-chain—that is the proof. Many wallets show Soroban transactions in history but do not display SEP-20 NFTs in the main balance view. This does not mean the NFT is lost.\n\n• Your PHASE utility NFT lives on testnet: verified by owner_of = your address on the PHASE contract.\n• Tap COPY · CONTRACT + TOKEN ID below to paste into your wallet's \"add NFT manually\" (works with Freighter, Albedo, xBull, etc.).\n• PHASE Dashboard → Vault scans Soroban RPC and lists every PHASE NFT for your wallet (source of truth).\n• Stellar Expert (contract link) helps verify owner_of, token_uri, and transfers on-chain.",
       creatorCanMint: "CREATOR_MINT_ENABLED",
       creatorMintRule: "Creator can mint this collection too (one utility NFT per wallet per collection).",
       creatorAlreadyMinted: "Creator already minted this collection with this wallet.",
@@ -1287,9 +1287,9 @@ export const phaseCopy: Record<
       pedestalIssuerCustodyHint:
         "El NFT de utilidad sigue en custodia del emisor. Usá COLECTAR en el panel derecho (transfer firmado por el servidor a tu wallet conectada).",
       pedestalIssuerCustodyScrollLink: "Ir al panel COLECTAR ↓",
-      walletNftVisibilityTitle: “¿NO VES EL NFT EN TU WALLET?”,
+      walletNftVisibilityTitle: "¿NO VES EL NFT EN TU WALLET?",
       walletNftVisibilityBody:
-        “Si tu historial de transacciones muestra un settlement exitoso (invoke settle → true), el protocolo ya minteó tu NFT en el ledger—esa es la prueba. Muchas wallets muestran transacciones Soroban en el historial pero no exhiben NFTs SEP-20 en la vista principal de balance. Esto no significa que el NFT se haya perdido.\n\n• Tu NFT de utilidad PHASE vive en testnet: verificado por owner_of = tu dirección en el contrato PHASE.\n• Tocá COPIAR · CONTRATO + ID abajo para pegar en “añadir NFT manualmente” de tu wallet (funciona con Freighter, Albedo, xBull, etc.).\n• **Dashboard PHASE → Bóveda** escanea RPC Soroban y lista todos los NFT PHASE de tu wallet (fuente de verdad).\n• **Stellar Expert** sirve para verificar owner_of, token_uri y transferencias on-chain.”,
+        "Si tu historial de transacciones muestra un settlement exitoso (invoke settle → true), el protocolo ya minteó tu NFT en el ledger—esa es la prueba. Muchas wallets muestran transacciones Soroban en el historial pero no exhiben NFTs SEP-20 en la vista principal de balance. Esto no significa que el NFT se haya perdido.\n\n• Tu NFT de utilidad PHASE vive en testnet: verificado por owner_of = tu dirección en el contrato PHASE.\n• Tocá COPIAR · CONTRATO + ID abajo para pegar en \"añadir NFT manualmente\" de tu wallet (funciona con Freighter, Albedo, xBull, etc.).\n• **Dashboard PHASE → Bóveda** escanea RPC Soroban y lista todos los NFT PHASE de tu wallet (fuente de verdad).\n• **Stellar Expert** sirve para verificar owner_of, token_uri y transferencias on-chain.",
       creatorCanMint: "CREADOR_MINT_HABILITADO",
       creatorMintRule: "El creador también puede mintear esta colección (1 NFT de utilidad por wallet por colección).",
       creatorAlreadyMinted: "El creador ya minteó esta colección con esta wallet.",
