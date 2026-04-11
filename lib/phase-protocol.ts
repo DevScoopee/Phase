@@ -921,12 +921,12 @@ export async function buildTransferPhaseNftTransaction(
   fromAddress: string,
   toAddress: string,
   tokenId: number,
-  opts?: { transactionSourceAddress?: string },
+  opts?: { transactionSourceAddress?: string; contractId?: string },
 ) {
   const server = getRpc()
   const sourceG = (opts?.transactionSourceAddress ?? fromAddress).trim()
   const account = await rpcGetUserSourceAccount(server, sourceG)
-  const c = new Contract(CONTRACT_ID)
+  const c = new Contract(opts?.contractId ?? CONTRACT_ID)
   const args = [
     Address.fromString(fromAddress).toScVal(),
     Address.fromString(toAddress).toScVal(),
@@ -957,6 +957,208 @@ export async function buildTransferPhaseNftTransaction(
     console.log("[FORGE] Contract lacks transfer interface", lastError)
   }
   throw lastError instanceof Error ? lastError : new Error(String(lastError))
+}
+
+/**
+ * SEP-50 (borrador): `get_approved` → cuenta autorizada para `transfer_from` en este `token_id`, o `null` si no hay o expiró.
+ * Requiere WASM con `get_approved`; no sustituye a `owner_of`.
+ */
+export async function simulateGetApproved(tokenId: number): Promise<string | null> {
+  const native = await simulateContractCall(
+    CONTRACT_ID,
+    "get_approved",
+    [nativeToScVal(tokenId, { type: "u64" })],
+    READONLY_SIM_SOURCE_G,
+  )
+  return parseOptionalAddressRetval(native)
+}
+
+/** SEP-50: `is_approved_for_all(owner, operator)` (ledger de expiración on-chain). */
+export async function simulateIsApprovedForAll(owner: string, operator: string): Promise<boolean> {
+  const native = await simulateContractCall(
+    CONTRACT_ID,
+    "is_approved_for_all",
+    [Address.fromString(owner).toScVal(), Address.fromString(operator).toScVal()],
+    READONLY_SIM_SOURCE_G,
+  )
+  if (native === true || native === false) return native
+  return Boolean(native)
+}
+
+/**
+ * Enumeración on-chain (`token_of_owner_by_index`): el `index`-ésimo NFT del titular, o `null` si no existe.
+ * Requiere WASM con `OwnerTokenList` (despliegues recientes).
+ */
+export async function simulateTokenOfOwnerByIndex(
+  ownerAddress: string,
+  index: number,
+  contractId: string = CONTRACT_ID,
+): Promise<number | null> {
+  const native = await simulateContractCall(
+    contractId,
+    "token_of_owner_by_index",
+    [Address.fromString(ownerAddress.trim()).toScVal(), nativeToScVal(index >>> 0, { type: "u32" })],
+    READONLY_SIM_SOURCE_G,
+  )
+  return parseOptionalU64Retval(native)
+}
+
+/**
+ * Lista todos los `token_id` del titular vía `balance` + `token_of_owner_by_index`.
+ * Concurrencia por defecto 8; tope 1000 ítems.
+ * Acepta `contractId` para usarse desde rutas API con el contrato correcto.
+ */
+export async function simulateListedTokenIdsForOwner(
+  ownerAddress: string,
+  contractId: string = CONTRACT_ID,
+  concurrency = 8,
+): Promise<number[]> {
+  const balNative = await simulateContractCall(
+    contractId,
+    "balance",
+    [Address.fromString(ownerAddress.trim()).toScVal()],
+    READONLY_SIM_SOURCE_G,
+  )
+  let count = 0
+  if (typeof balNative === "bigint") count = Number(balNative)
+  else if (typeof balNative === "number") count = Math.max(0, Math.trunc(balNative))
+  else if (balNative !== null && typeof balNative === "object" && "i128" in (balNative as object)) {
+    const i = (balNative as { i128?: { lo?: number } | string }).i128
+    if (typeof i === "string") count = Math.max(0, parseInt(i, 10) || 0)
+    else if (i && typeof i === "object" && typeof i.lo === "number") count = Math.max(0, i.lo)
+  }
+  if (!Number.isFinite(count) || count <= 0) return []
+  const max = Math.min(count, 1000)
+  const conc = Math.max(1, Math.min(16, concurrency))
+  const out: Array<number | null> = new Array(max).fill(null)
+  let idx = 0
+  async function worker() {
+    for (;;) {
+      const i = idx++
+      if (i >= max) return
+      out[i] = await simulateTokenOfOwnerByIndex(ownerAddress, i, contractId)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(conc, max) }, () => worker()))
+  return out.filter((t): t is number => t != null).sort((a, b) => a - b)
+}
+
+/**
+ * SEP-50: permiso puntual. `liveUntilLedger` 0 = revocar allowance para ese id.
+ * Firma `approver` (dueño o operador con `approve_for_all` vigente).
+ */
+export async function buildApprovePhaseNftTransaction(
+  approverAddress: string,
+  approvedAddress: string,
+  tokenId: number,
+  liveUntilLedger: number,
+  opts?: { transactionSourceAddress?: string },
+) {
+  const server = getRpc()
+  const sourceG = (opts?.transactionSourceAddress ?? approverAddress).trim()
+  const account = await rpcGetUserSourceAccount(server, sourceG)
+  const c = new Contract(CONTRACT_ID)
+  const tx = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: Networks.TESTNET,
+  })
+    .addOperation(
+      c.call(
+        "approve",
+        Address.fromString(approverAddress).toScVal(),
+        Address.fromString(approvedAddress).toScVal(),
+        nativeToScVal(tokenId, { type: "u64" }),
+        nativeToScVal(liveUntilLedger >>> 0, { type: "u32" }),
+      ),
+    )
+    .setTimeout(WALLET_SIGN_TX_TIMEBOUND_SEC)
+    .build()
+  const prepared = await prepareTransactionWithRetry(server, tx)
+  return prepared.toXDR()
+}
+
+/** SEP-50: operador global hasta ledger (0 = revocar par owner/operator). */
+export async function buildApproveForAllPhaseNftTransaction(
+  ownerAddress: string,
+  operatorAddress: string,
+  liveUntilLedger: number,
+  opts?: { transactionSourceAddress?: string },
+) {
+  const server = getRpc()
+  const sourceG = (opts?.transactionSourceAddress ?? ownerAddress).trim()
+  const account = await rpcGetUserSourceAccount(server, sourceG)
+  const c = new Contract(CONTRACT_ID)
+  const tx = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: Networks.TESTNET,
+  })
+    .addOperation(
+      c.call(
+        "approve_for_all",
+        Address.fromString(ownerAddress).toScVal(),
+        Address.fromString(operatorAddress).toScVal(),
+        nativeToScVal(liveUntilLedger >>> 0, { type: "u32" }),
+      ),
+    )
+    .setTimeout(WALLET_SIGN_TX_TIMEBOUND_SEC)
+    .build()
+  const prepared = await prepareTransactionWithRetry(server, tx)
+  return prepared.toXDR()
+}
+
+/** SEP-50: `spender` autorizado (`get_approved` o `approve_for_all`) mueve el NFT `from` → `to`. */
+export async function buildTransferFromPhaseNftTransaction(
+  spenderAddress: string,
+  fromAddress: string,
+  toAddress: string,
+  tokenId: number,
+  opts?: { transactionSourceAddress?: string },
+) {
+  const server = getRpc()
+  const sourceG = (opts?.transactionSourceAddress ?? spenderAddress).trim()
+  const account = await rpcGetUserSourceAccount(server, sourceG)
+  const c = new Contract(CONTRACT_ID)
+  const tx = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: Networks.TESTNET,
+  })
+    .addOperation(
+      c.call(
+        "transfer_from",
+        Address.fromString(spenderAddress).toScVal(),
+        Address.fromString(fromAddress).toScVal(),
+        Address.fromString(toAddress).toScVal(),
+        nativeToScVal(tokenId, { type: "u64" }),
+      ),
+    )
+    .setTimeout(WALLET_SIGN_TX_TIMEBOUND_SEC)
+    .build()
+  const prepared = await prepareTransactionWithRetry(server, tx)
+  return prepared.toXDR()
+}
+
+/** `Option<u64>` / u64 suelto desde simulación Soroban. */
+function parseOptionalU64Retval(retval: unknown): number | null {
+  const u = unwrapScVal(retval)
+  if (u === null || u === undefined) return null
+  if (typeof u === "bigint") return Number(u)
+  if (typeof u === "number" && Number.isFinite(u)) return u
+  if (typeof u === "object" && u !== null) {
+    const o = u as Record<string, unknown>
+    if (o.u64 != null) return Number(String(o.u64))
+  }
+  return null
+}
+
+/** Convierte `retval` de `get_approved` (`Option<Address>`) en strkey o `null`. */
+function parseOptionalAddressRetval(retval: unknown): string | null {
+  const u = unwrapScVal(retval)
+  if (u === null || u === undefined) return null
+  const direct = addressLikeToString(u)
+  if (direct && (StrKey.isValidEd25519PublicKey(direct) || StrKey.isValidContract(direct))) return direct
+  const fromObj = parseScAddress(u as unknown)
+  if (fromObj && (StrKey.isValidEd25519PublicKey(fromObj) || StrKey.isValidContract(fromObj))) return fromObj
+  return null
 }
 
 function logSorobanRpcResultForDebug(context: string, result: unknown): void {
@@ -1403,7 +1605,7 @@ export async function fetchTokenUriString(
     const native = await simulateContractCall(
       protocolContractId,
       "token_uri",
-      [nativeToScVal(tokenId, { type: "u64" })],
+      [nativeToScVal(tokenId, { type: "u32" })],
       READONLY_SIM_SOURCE_G,
     )
     return unwrapTokenUriReturn(native)
@@ -1435,7 +1637,7 @@ export async function fetchTokenMetadataMap(
     const native = await simulateContractCall(
       protocolContractId,
       "token_metadata",
-      [nativeToScVal(tokenId, { type: "u64" })],
+      [nativeToScVal(tokenId, { type: "u32" })],
       READONLY_SIM_SOURCE_G,
     )
     return tokenMetadataRecordFromNative(native)
@@ -1633,8 +1835,9 @@ export async function fetchPhaseProtocolTotalSupply(
 }
 
 /**
- * Lista ids de NFT PHASE cuyo `owner_of(id)` coincide con la wallet (escaneo 1..min(supply, cap), vía RPC Soroban).
- * No usa indexadores de terceros.
+ * Lista ids de NFT PHASE cuyo `owner_of(id)` coincide con la wallet.
+ * Fast path: usa `balance(owner)` + `token_of_owner_by_index` (O(owned), requiere WASM con OwnerTokenList).
+ * Fallback: escaneo bruto `owner_of(1..total_supply)` si el fast path falla o devuelve vacío con supply > 0.
  */
 export async function fetchOwnedPhaseTokenIdsForWallet(
   ownerG: string,
@@ -1643,13 +1846,36 @@ export async function fetchOwnedPhaseTokenIdsForWallet(
   const contractId = opts?.contractId ?? CONTRACT_ID
   const g = extractBaseAddress(ownerG).trim().toUpperCase()
   if (!StrKey.isValidEd25519PublicKey(g)) return []
+  const conc = Math.max(1, Math.min(16, opts?.concurrency ?? 8))
 
+  // ── Fast path: balance + token_of_owner_by_index ──
+  try {
+    const fast = await simulateListedTokenIdsForOwner(ownerG, contractId, conc)
+    if (fast.length > 0) return fast
+    // Si fast devuelve [], puede ser que el contrato no tenga OwnerTokenList.
+    // Comprobamos total supply: si es > 0 y fast = [], el contrato puede no tener el método → fallback.
+    const total = await fetchPhaseProtocolTotalSupply(contractId)
+    if (total <= 0) return []
+    // total > 0 y balance devolvió 0 → o el usuario no tiene NFTs, o el método no existe en el WASM.
+    // Intentamos verificar al menos el token 1 con token_of_owner_by_index para distinguir los casos.
+    const probe = await simulateTokenOfOwnerByIndex(ownerG, 0, contractId)
+    if (probe === null) {
+      // El método existe y devuelve None → el usuario genuinamente no tiene tokens.
+      // (Si el método no existiera, simulateContractCall lanzaría, no devolvería null.)
+      return []
+    }
+    // probe tiene un valor → hay al menos un token; fast debió haberlo encontrado. Continúa igual.
+    return fast
+  } catch {
+    // El contrato no tiene balance/token_of_owner_by_index → fallback al escaneo bruto.
+  }
+
+  // ── Fallback: escaneo bruto owner_of(1..total_supply) ──
   const total = await fetchPhaseProtocolTotalSupply(contractId)
   if (total <= 0) return []
 
   const maxCap = opts?.maxTokenIdCap ?? 5000
   const cap = Math.min(total, Math.max(1, maxCap))
-  const conc = Math.max(1, Math.min(16, opts?.concurrency ?? 8))
 
   const owned: number[] = []
   for (let start = 1; start <= cap; start += conc) {
@@ -1789,7 +2015,7 @@ export async function fetchTokenOwnerAddress(
   tokenId: number,
 ): Promise<string | null> {
   if (!Number.isFinite(tokenId) || tokenId <= 0) return null
-  const tryOwner = async (method: "owner_of" | "owner_of_u32", type: "u64" | "u32") => {
+  const tryOwner = async (method: "owner_of" | "owner_of_u64", type: "u32" | "u64") => {
     const native = await simulateContractCall(
       contractId,
       method,
@@ -1799,12 +2025,12 @@ export async function fetchTokenOwnerAddress(
     return parseOwnerOfReturn(native)
   }
   try {
-    return await tryOwner("owner_of", "u64")
+    return await tryOwner("owner_of", "u32")
   } catch {
-    /* Freighter / tooling a veces compilan la llamada con u32 */
+    /* fallback para contratos legacy que exponen owner_of(u64) */
   }
   try {
-    return await tryOwner("owner_of_u32", "u32")
+    return await tryOwner("owner_of_u64", "u64")
   } catch {
     return null
   }
