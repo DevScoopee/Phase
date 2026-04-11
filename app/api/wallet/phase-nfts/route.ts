@@ -5,6 +5,7 @@ import {
   fetchOwnedPhaseTokenIdsForWallet,
   phaseProtocolContractIdForServer,
 } from "@/lib/phase-protocol"
+import { mercuryConfigured, fetchTokenIdsOwnedByMercury } from "@/lib/mercury-classic"
 
 export const dynamic = "force-dynamic"
 
@@ -52,11 +53,29 @@ export async function GET(request: NextRequest) {
   const scanConc = intEnv("PHASE_NFT_WALLET_SCAN_CONCURRENCY", 8, 1, 16)
   const metaConc = intEnv("PHASE_NFT_WALLET_METADATA_CONCURRENCY", 4, 1, 12)
 
-  const tokenIds = await fetchOwnedPhaseTokenIdsForWallet(address, {
-    contractId,
-    maxTokenIdCap: scanCap,
-    concurrency: scanConc,
-  })
+  // Mercury Classic es más rápido que RPC scan — úsalo si está configurado
+  let tokenIds: number[]
+  let indexedVia: string
+  if (mercuryConfigured()) {
+    try {
+      tokenIds = await fetchTokenIdsOwnedByMercury(contractId, address)
+      indexedVia = "mercury-classic"
+    } catch {
+      tokenIds = await fetchOwnedPhaseTokenIdsForWallet(address, {
+        contractId,
+        maxTokenIdCap: scanCap,
+        concurrency: scanConc,
+      })
+      indexedVia = "soroban-rpc-fallback"
+    }
+  } else {
+    tokenIds = await fetchOwnedPhaseTokenIdsForWallet(address, {
+      contractId,
+      maxTokenIdCap: scanCap,
+      concurrency: scanConc,
+    })
+    indexedVia = "soroban-rpc"
+  }
 
   const items = await mapWithConcurrency(tokenIds, metaConc, async (tokenId) => {
     const meta = await buildPhaseTokenMetadataJson(contractId, tokenId)
@@ -79,7 +98,7 @@ export async function GET(request: NextRequest) {
       owner: address,
       tokenIds,
       items,
-      indexedVia: "soroban-rpc",
+      indexedVia,
     },
     {
       headers: {

@@ -1,14 +1,30 @@
 "use client"
 
 import Link from "next/link"
+import dynamic from "next/dynamic"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { signTransaction } from "@stellar/freighter-api"
+import { signTransaction } from "@/lib/stellar-wallet-kit"
 import { FeeBumpTransaction, Transaction, TransactionBuilder, Networks } from "@stellar/stellar-sdk"
 import { ArtistAliasControl } from "@/components/artist-alias-control"
 import { LangToggle } from "@/components/lang-toggle"
 import { useLang } from "@/components/lang-context"
 import { TokenIcon } from "@/components/token-icon"
-import { TrustlineButton } from "@/components/trustline-button"
+const TrustlineButton = dynamic(
+  () => import("@/components/trustline-button").then((m) => ({ default: m.TrustlineButton })),
+  {
+    ssr: false,
+    loading: () => (
+      <section
+        className="tactical-frame mt-2 shrink-0 border-cyan-400/35 bg-cyan-950/20 px-2.5 py-2 shadow-[0_0_16px_rgba(34,211,238,0.1)]"
+        aria-busy="true"
+        aria-label="Trustline"
+      >
+        <div className="h-2.5 w-40 max-w-full rounded bg-cyan-500/15" />
+        <div className="mt-2 h-9 w-full rounded border border-cyan-500/25 bg-cyan-950/30" />
+      </section>
+    ),
+  },
+)
 import { useWallet } from "@/components/wallet-provider"
 import { pickCopy } from "@/lib/phase-copy"
 import { humanizePhaseHostErrorMessage } from "@/lib/phase-host-error"
@@ -24,6 +40,7 @@ import {
   buildCreateCollectionTransaction,
   buildSettleTransaction,
   fetchCreatorCollectionId,
+  fetchUserPhaseArtifact,
   getTokenBalance,
   getTransactionResult,
   ipfsOrHttpsDisplayUrl,
@@ -192,7 +209,7 @@ function textWithPhaserLiqLinks(text: string): React.ReactNode {
 }
 
 const forgeNavBtn =
-  "tactical-interactive-glitch tactical-phosphor inline-flex min-h-[40px] items-center rounded-sm border-2 border-cyan-400/50 bg-cyan-950/45 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.14)] transition-colors hover:border-cyan-300 hover:bg-cyan-900/35 hover:text-white"
+  "tactical-interactive-glitch tactical-phosphor inline-flex min-h-[40px] items-center rounded-sm border-2 border-cyan-400/50 bg-cyan-950/45 px-3 py-2 text-[11px] font-bold uppercase tracking-widest text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.14)] transition-colors hover:border-cyan-300 hover:bg-cyan-900/35 hover:text-white sm:text-xs"
 
 type AgentState =
   | "IDLE"
@@ -228,6 +245,8 @@ export default function ForgePage() {
   const [error, setError] = useState<string | null>(null)
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [createdId, setCreatedId] = useState<number | null>(null)
+  /** Token id del NFT PHASE (`get_user_phase`), no el id de colección — necesario para COLLECT en el panel lateral. */
+  const [collectionPhaseTokenId, setCollectionPhaseTokenId] = useState<number | null>(null)
   const [copied, setCopied] = useState(false)
   const [tickerIdx, setTickerIdx] = useState(0)
   const [agentTickerIdx, setAgentTickerIdx] = useState(0)
@@ -301,6 +320,27 @@ export default function ForgePage() {
       setTokenBalance("0")
     }
   }, [address, refresh])
+
+  useEffect(() => {
+    const g = address?.trim()
+    if (!g || createdId == null || createdId <= 0) {
+      setCollectionPhaseTokenId(null)
+      return
+    }
+    if (isMintingCollection) {
+      setCollectionPhaseTokenId(null)
+      return
+    }
+    let cancelled = false
+    void fetchUserPhaseArtifact(g, createdId).then((art) => {
+      if (cancelled) return
+      const tid = art?.tokenId
+      setCollectionPhaseTokenId(typeof tid === "number" && Number.isFinite(tid) && tid > 0 ? Math.floor(tid) : null)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [address, createdId, isMintingCollection])
 
   const onTrustlineRequestConnect = useCallback(async () => {
     await connect()
@@ -516,7 +556,19 @@ export default function ForgePage() {
       imageStyleMode: OracleImageStyleMode,
     ): Promise<{ imageUrl: string; lore: string }> => {
       const ff = pickCopy(lang).forge
-      setAgentState("AWAITING_PAYMENT")
+      // AWAITING_PAYMENT ya lo fija handleForgeAgent tras validar el prompt.
+
+      const invoiceId = Math.floor(Math.random() * 1_000_000)
+      // Mientras llega el 402, armamos en paralelo el settle con el monto cliente (coincide con el challenge en despliegues normales).
+      type SpecBuild = { ok: true; xdr: string } | { ok: false; error: unknown }
+      const specBuildPromise: Promise<SpecBuild> = buildSettleTransaction(
+        payerAddress,
+        String(REQUIRED_AMOUNT),
+        invoiceId,
+        0,
+      )
+        .then((xdr) => ({ ok: true as const, xdr }))
+        .catch((error: unknown) => ({ ok: false as const, error }))
 
       // 1) Primer POST: solo prompt → el backend responde 402 + challenge x402
       const first = await fetch("/api/forge-agent", {
@@ -526,6 +578,7 @@ export default function ForgePage() {
       })
 
       if (first.status !== 402) {
+        void specBuildPromise.catch(() => {})
         const errText = await first.text().catch(() => "")
         console.error("[forge-agent] expected 402 Payment Required, got", first.status, errText)
         if (first.ok) throw new Error(ff.errors.agentNot402)
@@ -540,6 +593,7 @@ export default function ForgePage() {
       try {
         paymentRequiredJson = (await first.json()) as typeof paymentRequiredJson
       } catch (e) {
+        void specBuildPromise.catch(() => {})
         console.error("[forge-agent] 402 response body is not valid JSON", e)
         throw new Error(ff.errors.agentRequest)
       }
@@ -552,11 +606,30 @@ export default function ForgePage() {
       const requiredStroops = String(challenge?.amount ?? REQUIRED_AMOUNT)
 
       // 2) Pago on-chain: invoke `settle` en el contrato PHASE (PHASELQ), no transfer de NFT
-      const invoiceId = Math.floor(Math.random() * 1_000_000)
       setAgentState("ARMING_SETTLEMENT")
       let unsignedXdr: string
+      let settleInvoiceId = invoiceId
+
       try {
-        unsignedXdr = await buildSettleTransaction(payerAddress, requiredStroops, invoiceId, 0)
+        if (requiredStroops !== String(REQUIRED_AMOUNT)) {
+          void specBuildPromise.catch(() => {})
+          settleInvoiceId = Math.floor(Math.random() * 1_000_000)
+          unsignedXdr = await buildSettleTransaction(payerAddress, requiredStroops, settleInvoiceId, 0)
+        } else {
+          const spec = await specBuildPromise
+          if (spec.ok) {
+            unsignedXdr = spec.xdr
+          } else {
+            // eslint-disable-next-line no-console
+            console.warn("[forge-agent] build settle especulativo falló, reconstruyendo", spec.error)
+            unsignedXdr = await buildSettleTransaction(
+              payerAddress,
+              requiredStroops,
+              settleInvoiceId,
+              0,
+            )
+          }
+        }
       } catch (armErr) {
         console.error("[forge-agent] buildSettleTransaction failed (RPC / simulación / contrato)", armErr)
         setAgentState("IDLE")
@@ -581,28 +654,18 @@ export default function ForgePage() {
         kind: "settle_unsigned_xdr",
         xdrLength: unsignedXdr.length,
         xdrPrefix: unsignedXdr.slice(0, 72),
-        invoiceId,
+        invoiceId: settleInvoiceId,
         requiredStroops,
         payerPreview: `${payerAddress.slice(0, 6)}…${payerAddress.slice(-4)}`,
       }
-      console.log("Transacción armada, llamando a Freighter...", tx)
+      console.log("Transacción armada, solicitando firma en la wallet...", tx)
 
-      let signResult: Awaited<ReturnType<typeof signTransaction>>
-      try {
-        signResult = await signTransaction(unsignedXdr, {
-          networkPassphrase: NETWORK_PASSPHRASE,
-          address: payerAddress,
-        })
-      } catch (freighterThrow) {
-        console.error(
-          "[forge-agent] signTransaction lanzó excepción (¿Freighter cerrado, red distinta o extensión bloqueada?)",
-          freighterThrow,
-        )
-        setAgentState("IDLE")
-        throw freighterThrow
-      }
+      const signResult = await signTransaction(unsignedXdr, {
+        networkPassphrase: NETWORK_PASSPHRASE,
+        address: payerAddress,
+      })
       if (signResult.error) {
-        console.error("[forge-agent] Freighter rejected settle signature", signResult.error)
+        console.error("[forge-agent] La wallet rechazó la firma del settle", signResult.error)
         setAgentState("IDLE")
         throw new Error("FUSION_ABORTED_BY_USER")
       }
@@ -611,7 +674,7 @@ export default function ForgePage() {
         (signResult as { signedTxXdr?: string }).signedTxXdr ||
         (signResult as { signedTransaction?: string }).signedTransaction
       if (!signedXdr) {
-        console.error("[forge-agent] No signed XDR returned from Freighter", signResult)
+        console.error("[forge-agent] No signed XDR returned from wallet", signResult)
         setAgentState("IDLE")
         throw new Error("NO_SIGNED_XDR")
       }
@@ -722,25 +785,32 @@ export default function ForgePage() {
       return
     }
 
-    const wrongNet = await freighterTestnetMismatchLabel()
-    if (wrongNet) {
-      setError(ff.errors.freighterWrongNetwork.replace("{network}", wrongNet))
-      return
-    }
-
     const prompt = anomalyDescription.trim()
     if (prompt.length < 4) {
       setError(ff.errors.anomalyShort)
       return
     }
 
+    // Feedback inmediato: el usuario ve actividad mientras RPC + Freighter API corren en paralelo.
+    setAgentState("AWAITING_PAYMENT")
+
     try {
-      const bal = await getTokenBalance(addr)
+      const [wrongNet, bal] = await Promise.all([
+        freighterTestnetMismatchLabel(),
+        getTokenBalance(addr),
+      ])
+      if (wrongNet) {
+        setAgentState("IDLE")
+        setError(ff.errors.freighterWrongNetwork.replace("{network}", wrongNet))
+        return
+      }
       if (BigInt(bal) < BigInt(REQUIRED_AMOUNT)) {
+        setAgentState("IDLE")
         setError(ff.errors.lowEnergyAgent)
         return
       }
     } catch (e) {
+      setAgentState("IDLE")
       const msg = e instanceof Error ? e.message : String(e)
       if (
         /503|502|504|429|timeout|timed out|RPC|proxy|Soroban|disponible|status code|network|ECONNRESET|fetch failed/i.test(
@@ -846,15 +916,15 @@ export default function ForgePage() {
   )
 
   const inputClass =
-    "tactical-frame w-full border-cyan-500/35 bg-black/55 px-3 py-2.5 text-[15px] leading-snug text-cyan-50 placeholder:text-cyan-500/40 focus:border-cyan-400/70 focus:outline-none focus:shadow-[0_0_16px_rgba(0,255,255,0.12)]"
+    "tactical-frame w-full border-cyan-500/35 bg-black/55 px-3 py-2.5 text-[16px] leading-snug text-cyan-50 placeholder:text-cyan-500/40 focus:border-cyan-400/70 focus:outline-none focus:shadow-[0_0_16px_rgba(0,255,255,0.12)]"
 
   const textareaClass = cn(
     inputClass,
-    "min-h-[8.25rem] resize-y font-mono text-[13px] leading-relaxed sm:min-h-[9.25rem] sm:text-sm",
+    "min-h-[8.25rem] resize-y font-mono text-[14px] leading-relaxed sm:min-h-[9.25rem] sm:text-[15px]",
   )
 
   const inputLabelClass =
-    "text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-200/90 tactical-phosphor sm:text-[11px]"
+    "text-[11px] font-semibold uppercase tracking-[0.14em] text-cyan-200/90 tactical-phosphor sm:text-[12px]"
 
   const priceReadout = stroopsToLiqDisplay(liqToStroops(priceLiq))
 
@@ -893,6 +963,89 @@ export default function ForgePage() {
 
   const showCollectionLivePanel = shareUrl != null && createdId != null
 
+  const forgeUx = useMemo(() => {
+    const hasManualAsset = Boolean(manualFile || manualImageUrl.trim())
+    const oracle = forgeMode === "ORACLE"
+    const manual = forgeMode === "MANUAL"
+    const muteRings = isMintingCollection
+
+    const oracleStep1 = oracle && agentState === "IDLE" && !isMintingCollection
+    const oracleStep2 = oracle && agentState === "COMPLETE" && !isMintingCollection
+    const oraclePipelineBusy =
+      oracle &&
+      (agentState === "AWAITING_PAYMENT" ||
+        agentState === "ARMING_SETTLEMENT" ||
+        agentState === "PROCESSING_PAYMENT" ||
+        agentState === "FORGING_MATTER")
+
+    const manualStep1 = manual && !hasManualAsset && !isMintingCollection && !namePriceLocked
+    const manualStep2 = manual && hasManualAsset && !isMintingCollection && !namePriceLocked
+
+    const railCurrent: 1 | 2 =
+      oracle
+        ? agentState === "COMPLETE" || isMintingCollection
+          ? 2
+          : 1
+        : hasManualAsset || isMintingCollection
+          ? 2
+          : 1
+
+    const railStepAClass = cn(
+      "forge-ux-rail__step",
+      railCurrent === 2 && "forge-ux-rail__step--done",
+      railCurrent === 1 && oraclePipelineBusy && "forge-ux-rail__step--processing",
+      railCurrent === 1 && !oraclePipelineBusy && "forge-ux-rail__step--current",
+    )
+    const railStepBClass = cn("forge-ux-rail__step", railCurrent === 2 && "forge-ux-rail__step--current")
+
+    const oracleSourceRing = cn(
+      "forge-field-ring",
+      !muteRings && oracleStep1 && "forge-field-ring--active",
+      (muteRings || !oracleStep1) && "forge-field-ring--dim",
+    )
+    const manualSourceRing = cn(
+      "forge-field-ring",
+      !muteRings && manualStep1 && "forge-field-ring--active",
+      (muteRings || !manualStep1) && "forge-field-ring--dim",
+    )
+    const collectionRing = cn(
+      "forge-field-ring mt-1",
+      !muteRings && (oracleStep2 || manualStep2) && "forge-field-ring--active",
+      ((!muteRings && (oracleStep1 || manualStep1)) || muteRings) && "forge-field-ring--dim",
+    )
+
+    const initiateGlow =
+      oracle && agentState === "IDLE" && !isMintingCollection && anomalyDescription.trim().length >= 4
+    const mintOracleGlow = oracle && agentState === "COMPLETE" && !isMintingCollection
+    const mintManualGlow = manual && hasManualAsset && !isMintingCollection
+
+    return {
+      hasManualAsset,
+      oracleStep1,
+      oracleStep2,
+      oraclePipelineBusy,
+      manualStep1,
+      manualStep2,
+      railCurrent,
+      railStepAClass,
+      railStepBClass,
+      oracleSourceRing,
+      manualSourceRing,
+      collectionRing,
+      initiateGlow,
+      mintOracleGlow,
+      mintManualGlow,
+    }
+  }, [
+    forgeMode,
+    agentState,
+    isMintingCollection,
+    manualFile,
+    manualImageUrl,
+    namePriceLocked,
+    anomalyDescription,
+  ])
+
   return (
     <div className="tactical-command-root tactical-command-root--stable tactical-command-root--cockpit relative flex h-screen max-h-[100dvh] flex-col overflow-x-hidden overflow-y-hidden font-mono text-foreground antialiased">
       <div className="tactical-film-grain" aria-hidden />
@@ -904,7 +1057,7 @@ export default function ForgePage() {
         <Link href="/" className={forgeNavBtn} onClick={() => playTacticalUiClick()}>
           {f.exit}
         </Link>
-        <span className="tactical-phosphor max-w-[min(52vw,18rem)] text-center text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-50 sm:text-xs">
+        <span className="tactical-phosphor max-w-[min(52vw,18rem)] text-center text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-50 sm:text-sm">
           {f.title}
         </span>
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -923,13 +1076,13 @@ export default function ForgePage() {
           {statusStripActive && (
             <div className="shrink-0">
               <div className="forge-scanline" aria-hidden />
-              <div className="pointer-events-none absolute right-3 top-3 flex items-center gap-2 text-[9px] uppercase tracking-widest text-[#00ffff]">
+              <div className="pointer-events-none absolute right-3 top-3 flex items-center gap-2 text-[10px] uppercase tracking-widest text-[#00ffff]">
                 <span className="forge-status-led inline-block size-2 rounded-full bg-[#00ffff]" />
                 {isMintingCollection ? f.deployStatus : f.agentDeployStatus}
               </div>
               <p
                 className={cn(
-                  "mb-2 border-b border-[#00ffff]/30 pb-2 font-mono text-[9px] uppercase tracking-[0.18em]",
+                  "mb-2 border-b border-[#00ffff]/30 pb-2 font-mono text-[10px] uppercase tracking-[0.18em]",
                   agentState === "PROCESSING_PAYMENT" && "forge-x402-blink",
                   agentState === "FORGING_MATTER" && "forge-forge-glitch text-[#00ffff]/90",
                   (agentState === "AWAITING_PAYMENT" ||
@@ -944,7 +1097,7 @@ export default function ForgePage() {
           )}
 
           {!statusStripActive && (
-            <h1 className="tactical-phosphor shrink-0 border-b border-cyan-500/30 pb-2 text-[11px] font-bold uppercase tracking-[0.22em] text-cyan-50 sm:text-xs">
+            <h1 className="tactical-phosphor shrink-0 border-b border-cyan-500/30 pb-2 text-[12px] font-bold uppercase tracking-[0.22em] text-cyan-50 sm:text-sm">
               ◈ {f.registerTitle}
             </h1>
           )}
@@ -962,7 +1115,7 @@ export default function ForgePage() {
                 disabled={tabSwitchLocked}
                 onClick={() => selectForgeMode("ORACLE")}
                 className={cn(
-                  "min-h-[40px] flex-1 rounded-none border-0 px-2 py-2.5 font-mono text-[9px] font-bold uppercase tracking-[0.14em] transition-colors sm:px-3 sm:text-[10px]",
+                  "min-h-[40px] flex-1 rounded-none border-0 px-2 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.14em] transition-colors sm:px-3 sm:text-[11px]",
                   forgeMode === "ORACLE"
                     ? "bg-cyan-950/50 text-cyan-200 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.45),0_0_16px_rgba(34,211,238,0.1)]"
                     : "bg-transparent text-cyan-900/95 hover:bg-cyan-950/25 hover:text-cyan-700",
@@ -978,7 +1131,7 @@ export default function ForgePage() {
                 disabled={tabSwitchLocked}
                 onClick={() => selectForgeMode("MANUAL")}
                 className={cn(
-                  "min-h-[40px] flex-1 rounded-none border-l border-cyan-900/50 px-2 py-2.5 font-mono text-[9px] font-bold uppercase tracking-[0.14em] transition-colors sm:px-3 sm:text-[10px]",
+                  "min-h-[40px] flex-1 rounded-none border-l border-cyan-900/50 px-2 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.14em] transition-colors sm:px-3 sm:text-[11px]",
                   forgeMode === "MANUAL"
                     ? "bg-cyan-950/50 text-cyan-200 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.45),0_0_16px_rgba(34,211,238,0.1)]"
                     : "bg-transparent text-cyan-900/95 hover:bg-cyan-950/25 hover:text-cyan-700",
@@ -991,19 +1144,35 @@ export default function ForgePage() {
           )}
 
           {!statusStripActive && (
-            <p className="mt-2 font-mono text-[9px] font-semibold uppercase tracking-[0.24em] text-cyan-400/90">
+            <p className="mt-2 font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-400/90">
               {forgeMode === "ORACLE" ? f.oracleBadge : f.manualBadge}
             </p>
           )}
 
           {!statusStripActive && (
-            <p className="mt-1.5 line-clamp-4 shrink-0 text-[9px] leading-relaxed text-cyan-100/90 tactical-phosphor sm:text-[10px]">
+            <p className="mt-1.5 line-clamp-4 shrink-0 text-[10px] leading-relaxed text-cyan-100/90 tactical-phosphor sm:text-[11px]">
               {forgeMode === "ORACLE" ? f.intro : f.manualIntro}
             </p>
           )}
 
+          {!statusStripActive && (
+            <div
+              className="forge-ux-rail mt-2 max-w-xl"
+              role="navigation"
+              aria-label={lang === "es" ? "Pasos de forja" : "Forge steps"}
+            >
+              <span className={forgeUx.railStepAClass}>
+                {forgeMode === "ORACLE" ? f.uxRailStepAOracle : f.uxRailStepAManual}
+              </span>
+              <span className="forge-ux-rail__sep" aria-hidden>
+                —
+              </span>
+              <span className={forgeUx.railStepBClass}>{f.uxRailStepB}</span>
+            </div>
+          )}
+
           {ipfsConfigured === false && (
-            <div className="tactical-frame mt-2 shrink-0 border-amber-500/40 bg-amber-950/15 px-2 py-2 text-[9px] text-amber-100/90">
+            <div className="tactical-frame mt-2 shrink-0 border-amber-500/40 bg-amber-950/15 px-2 py-2 text-[10px] text-amber-100/90">
               <p className="font-mono uppercase tracking-widest text-amber-300/95">{f.ipfsOracleHint}</p>
             </div>
           )}
@@ -1016,20 +1185,20 @@ export default function ForgePage() {
 
           {error && (
             <div className="forge-error-banner relative z-[1] mt-2 shrink-0 px-2 py-2" role="alert">
-              <p className="relative z-[1] text-center text-[9px] font-bold uppercase tracking-wider text-red-200">{error}</p>
+              <p className="relative z-[1] text-center text-[10px] font-bold uppercase tracking-wider text-red-200">{error}</p>
             </div>
           )}
 
           {showCollectionLivePanel && (
-            <div className="mt-2 shrink-0 border-2 border-[#00ffff]/55 bg-[#00ffff]/5 p-2 text-[9px]">
+            <div className="mt-2 shrink-0 border-2 border-[#00ffff]/55 bg-[#00ffff]/5 p-2 text-[10px]">
               <p className="font-bold uppercase tracking-[0.15em] text-cyan-200">{f.collectionLive}</p>
-              <p className="mt-1 font-mono text-[11px] text-cyan-50">
+              <p className="mt-1 font-mono text-[12px] text-cyan-50">
                 {f.collectionIdLabel} <span className="text-cyan-300">#{createdId}</span>
               </p>
               <p className="mt-1 font-semibold uppercase tracking-widest text-cyan-400/80">{f.magicLink}</p>
               <a
                 href={shareUrl}
-                className="mt-1 block break-all rounded border border-[#00ffff]/25 bg-black/30 px-2 py-1 text-[9px] text-[#7fffd4] underline-offset-2 hover:underline"
+                className="mt-1 block break-all rounded border border-[#00ffff]/25 bg-black/30 px-2 py-1 text-[10px] text-[#7fffd4] underline-offset-2 hover:underline"
               >
                 {shareUrl}
               </a>
@@ -1037,13 +1206,13 @@ export default function ForgePage() {
                 <button
                   type="button"
                   onClick={() => void copyShare().catch(() => {})}
-                  className="inline-flex flex-1 items-center justify-center border-2 border-double border-[#00ffff]/80 px-3 py-2 text-[9px] uppercase tracking-widest text-[#00ffff] hover:bg-[#00ffff]/10 sm:flex-none"
+                  className="inline-flex flex-1 items-center justify-center border-2 border-double border-[#00ffff]/80 px-3 py-2 text-[10px] uppercase tracking-widest text-[#00ffff] hover:bg-[#00ffff]/10 sm:flex-none"
                 >
                   {copied ? f.copied : f.copy}
                 </button>
                 <Link
                   href={`/chamber?collection=${createdId}`}
-                  className="inline-flex flex-1 items-center justify-center border-2 border-double border-cyan-400/55 bg-cyan-950/25 px-3 py-2 text-center text-[9px] font-bold uppercase tracking-widest text-cyan-100 hover:bg-cyan-900/35 sm:flex-none"
+                  className="inline-flex flex-1 items-center justify-center border-2 border-double border-cyan-400/55 bg-cyan-950/25 px-3 py-2 text-center text-[10px] font-bold uppercase tracking-widest text-cyan-100 hover:bg-cyan-900/35 sm:flex-none"
                 >
                   {f.openChamber}
                 </Link>
@@ -1055,7 +1224,7 @@ export default function ForgePage() {
             <div className="flex w-full flex-col gap-1.5 lg:col-span-5">
               <div className="custom-scrollbar space-y-3 pr-0.5 lg:pr-0">
                 {forgeMode === "ORACLE" ? (
-                  <div>
+                  <div className={forgeUx.oracleSourceRing}>
                     <label htmlFor="forge-anomaly" className={inputLabelClass}>
                       {f.anomalyLabel}
                     </label>
@@ -1070,7 +1239,7 @@ export default function ForgePage() {
                       autoComplete="off"
                       spellCheck={lang === "es"}
                     />
-                    <p className="mt-1 text-[9px] leading-relaxed text-cyan-400/75 sm:text-[10px]">{f.oracleHint}</p>
+                    <p className="mt-1 text-[10px] leading-relaxed text-cyan-400/75 sm:text-[11px]">{f.oracleHint}</p>
                     <div className="mt-2">
                       <label htmlFor="forge-style-mode" className={inputLabelClass}>
                         {lang === "es" ? "Modo de estilo IA" : "AI style mode"}
@@ -1080,14 +1249,14 @@ export default function ForgePage() {
                         value={oracleImageStyleMode}
                         onChange={(e) => setOracleImageStyleMode(e.target.value as OracleImageStyleMode)}
                         disabled={anomalyFieldLocked}
-                        className={cn(inputClass, "mt-1 font-mono text-[11px] uppercase tracking-[0.12em]")}
+                        className={cn(inputClass, "mt-1 font-mono text-[12px] uppercase tracking-[0.12em]")}
                       >
                         <option value="adaptive">
                           {lang === "es" ? "ADAPTIVE // RESPETA_TU_IDEA" : "ADAPTIVE // RESPECT_YOUR_PROMPT"}
                         </option>
                         <option value="cyber">{lang === "es" ? "AI_CYBER // ESTILO_PHASE" : "AI_CYBER // PHASE_STYLE"}</option>
                       </select>
-                      <p className="mt-1 text-[9px] leading-relaxed text-cyan-400/75 sm:text-[10px]">
+                      <p className="mt-1 text-[10px] leading-relaxed text-cyan-400/75 sm:text-[11px]">
                         {oracleImageStyleMode === "cyber"
                           ? lang === "es"
                             ? "AI Cyber aplica estética cyber-brutalist/isométrica."
@@ -1099,7 +1268,7 @@ export default function ForgePage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className={cn("space-y-3", forgeUx.manualSourceRing)}>
                     <input
                       ref={manualFileInputRef}
                       type="file"
@@ -1145,17 +1314,17 @@ export default function ForgePage() {
                           namePriceLocked && "pointer-events-none opacity-45",
                         )}
                       >
-                        <span className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-200/90">
+                        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-cyan-200/90">
                           {manualFile ? manualFile.name : "[ TAP_OR_DROP ]"}
                         </span>
-                        <span className="mt-1 text-[8px] uppercase tracking-widest text-cyan-600/90">{f.manualDropHint}</span>
+                        <span className="mt-1 text-[9px] uppercase tracking-widest text-cyan-600/90">{f.manualDropHint}</span>
                       </button>
                       {manualFile ? (
                         <button
                           type="button"
                           disabled={namePriceLocked}
                           onClick={() => setManualFile(null)}
-                          className="mt-1 font-mono text-[8px] uppercase tracking-widest text-cyan-500/80 underline-offset-2 hover:text-cyan-300"
+                          className="mt-1 font-mono text-[9px] uppercase tracking-widest text-cyan-500/80 underline-offset-2 hover:text-cyan-300"
                         >
                           [ CLEAR_FILE ]
                         </button>
@@ -1171,7 +1340,7 @@ export default function ForgePage() {
                         onChange={(e) => setManualImageUrl(e.target.value)}
                         disabled={namePriceLocked}
                         placeholder={f.placeholders.manualImageUrl}
-                        className={cn(inputClass, "mt-1 font-mono text-[12px]")}
+                        className={cn(inputClass, "mt-1 font-mono text-[13px]")}
                         autoComplete="off"
                       />
                     </div>
@@ -1194,69 +1363,71 @@ export default function ForgePage() {
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
-                  <div>
-                    <label htmlFor="forge-name" className={inputLabelClass}>
-                      {f.collectionName}
-                    </label>
-                    <input
-                      id="forge-name"
-                      value={name}
-                      onChange={(e) => {
-                        const v = e.target.value
-                        setName(v)
-                        if (error === f.errors.nameShort && v.trim().length >= 2) {
-                          setError(null)
-                        }
-                      }}
-                      maxLength={64}
-                      disabled={namePriceLocked}
-                      placeholder={f.placeholders.collectionName}
-                      className={cn(inputClass, "mt-1")}
-                    />
+                <div className={cn("space-y-2", forgeUx.collectionRing)}>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+                    <div>
+                      <label htmlFor="forge-name" className={inputLabelClass}>
+                        {f.collectionName}
+                      </label>
+                      <input
+                        id="forge-name"
+                        value={name}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          setName(v)
+                          if (error === f.errors.nameShort && v.trim().length >= 2) {
+                            setError(null)
+                          }
+                        }}
+                        maxLength={64}
+                        disabled={namePriceLocked}
+                        placeholder={f.placeholders.collectionName}
+                        className={cn(inputClass, "mt-1")}
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="forge-price" className={inputLabelClass}>
+                        {textWithPhaserLiqLinks(f.fusionPrice)}
+                      </label>
+                      <input
+                        id="forge-price"
+                        value={priceLiq}
+                        onChange={(e) => setPriceLiq(e.target.value)}
+                        inputMode="decimal"
+                        disabled={namePriceLocked}
+                        placeholder={f.placeholders.price}
+                        className={cn(inputClass, "mt-1")}
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label htmlFor="forge-price" className={inputLabelClass}>
-                      {textWithPhaserLiqLinks(f.fusionPrice)}
-                    </label>
-                    <input
-                      id="forge-price"
-                      value={priceLiq}
-                      onChange={(e) => setPriceLiq(e.target.value)}
-                      inputMode="decimal"
-                      disabled={namePriceLocked}
-                      placeholder={f.placeholders.price}
-                      className={cn(inputClass, "mt-1")}
-                    />
-                  </div>
+                  <p className="font-mono text-[12px] tabular-nums tracking-wide text-cyan-200/95 sm:text-sm">
+                    <span className="text-cyan-400/90">{f.readout}</span>
+                    <span className="mx-2 text-cyan-600/50 select-none" aria-hidden>
+                      →
+                    </span>
+                    <span className="text-cyan-50">{priceReadout}</span>
+                    <span className="ml-2 inline-flex items-center">
+                      <PhaserLiqExpertLink>
+                        <TokenIcon className="h-4 w-4 shrink-0" />
+                        {PHASER_LIQ_SYMBOL}
+                      </PhaserLiqExpertLink>
+                    </span>
+                  </p>
                 </div>
-                <p className="font-mono text-[11px] tabular-nums tracking-wide text-cyan-200/95 sm:text-xs">
-                  <span className="text-cyan-400/90">{f.readout}</span>
-                  <span className="mx-2 text-cyan-600/50 select-none" aria-hidden>
-                    →
-                  </span>
-                  <span className="text-cyan-50">{priceReadout}</span>
-                  <span className="ml-2 inline-flex items-center">
-                    <PhaserLiqExpertLink>
-                      <TokenIcon className="h-4 w-4 shrink-0" />
-                      {PHASER_LIQ_SYMBOL}
-                    </PhaserLiqExpertLink>
-                  </span>
-                </p>
 
                 {!address ? null : (
                   <div className="space-y-2 border-t border-cyan-900/40 pt-2">
-                    <p className="text-[10px] text-cyan-100/90 sm:text-[11px]">
+                    <p className="text-[11px] text-cyan-100/90 sm:text-[12px]">
                       {f.walletLabel}: <span className="font-medium text-cyan-50">{truncateAddress(address)}</span>
                     </p>
-                    <p className="text-[10px] text-cyan-200/88 sm:text-[11px]">
+                    <p className="text-[11px] text-cyan-200/88 sm:text-[12px]">
                       {lang === "es" ? "Artista" : "Artist"}:{" "}
                       <span className="font-medium text-cyan-100">{artistAlias ?? (lang === "es" ? "sin alias" : "no alias")}</span>
                     </p>
                     <div className="rounded border border-cyan-900/50 bg-black/40 p-2">
                       <ArtistAliasControl compact />
                     </div>
-                    <p className="font-mono text-[11px] tabular-nums text-cyan-200/95 sm:text-xs">
+                    <p className="font-mono text-[12px] tabular-nums text-cyan-200/95 sm:text-sm">
                       <span className="text-cyan-300/90">{pickCopy(lang).chamber.liqBalance}</span>
                       {": "}
                       <span className="text-cyan-50">{stroopsToLiqDisplay(tokenBalance)} </span>
@@ -1277,7 +1448,7 @@ export default function ForgePage() {
                         .then(() => refresh())
                         .catch(() => {})
                     }}
-                    className="tactical-interactive-glitch w-full border-4 border-double border-[#00ffff]/60 py-2.5 text-[10px] uppercase tracking-widest text-[#00ffff] transition-colors hover:bg-[#00ffff]/10 disabled:opacity-50"
+                    className="tactical-interactive-glitch w-full border-4 border-double border-[#00ffff]/60 py-2.5 text-[11px] uppercase tracking-widest text-[#00ffff] transition-colors hover:bg-[#00ffff]/10 disabled:opacity-50 sm:text-xs"
                   >
                     {connecting ? f.linking : f.linkWallet}
                   </button>
@@ -1292,8 +1463,9 @@ export default function ForgePage() {
                           void handleManualUploadAndMint().catch(() => {})
                         }}
                         className={cn(
-                          "tactical-interactive-glitch w-full border-4 border-double border-[#00ffff] bg-[#00ffff]/5 py-3 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[#00ffff] shadow-[0_0_20px_rgba(0,255,255,0.14)] transition-all hover:bg-[#00ffff]/15 hover:shadow-[0_0_28px_rgba(0,255,255,0.2)] disabled:opacity-40 sm:text-[11px]",
+                          "tactical-interactive-glitch w-full border-4 border-double border-[#00ffff] bg-[#00ffff]/5 py-3 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-[#00ffff] shadow-[0_0_20px_rgba(0,255,255,0.14)] transition-all hover:bg-[#00ffff]/15 hover:shadow-[0_0_28px_rgba(0,255,255,0.2)] disabled:opacity-40 sm:text-[12px]",
                           isMintingCollection && "forge-forge-glitch",
+                          forgeUx.mintManualGlow && "forge-cta-pulse",
                         )}
                       >
                         {isMintingCollection ? statusLine || f.deploying : f.manualUploadMint}
@@ -1307,8 +1479,9 @@ export default function ForgePage() {
                           void handleMintArtifact().catch(() => {})
                         }}
                         className={cn(
-                          "tactical-interactive-glitch w-full border-4 border-double border-[#00ffff] bg-[#00ffff]/5 py-3 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[#00ffff] shadow-[0_0_20px_rgba(0,255,255,0.14)] transition-all hover:bg-[#00ffff]/15 hover:shadow-[0_0_28px_rgba(0,255,255,0.2)] disabled:opacity-40 sm:text-[11px]",
+                          "tactical-interactive-glitch w-full border-4 border-double border-[#00ffff] bg-[#00ffff]/5 py-3 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-[#00ffff] shadow-[0_0_20px_rgba(0,255,255,0.14)] transition-all hover:bg-[#00ffff]/15 hover:shadow-[0_0_28px_rgba(0,255,255,0.2)] disabled:opacity-40 sm:text-[12px]",
                           isMintingCollection && "forge-forge-glitch",
+                          forgeUx.mintOracleGlow && "forge-cta-pulse",
                         )}
                       >
                         {isMintingCollection ? statusLine || f.deploying : "[ ARTIFACT_READY_FOR_MINT ]"}
@@ -1322,9 +1495,10 @@ export default function ForgePage() {
                           void handleForgeAgent().catch(() => {})
                         }}
                         className={cn(
-                          "tactical-interactive-glitch w-full border-4 border-double border-[#00ffff] bg-[#00ffff]/5 py-3 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[#00ffff] shadow-[0_0_20px_rgba(0,255,255,0.14)] transition-all hover:bg-[#00ffff]/15 hover:shadow-[0_0_28px_rgba(0,255,255,0.2)] disabled:opacity-40 sm:text-[11px]",
+                          "tactical-interactive-glitch w-full border-4 border-double border-[#00ffff] bg-[#00ffff]/5 py-3 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-[#00ffff] shadow-[0_0_20px_rgba(0,255,255,0.14)] transition-all hover:bg-[#00ffff]/15 hover:shadow-[0_0_28px_rgba(0,255,255,0.2)] disabled:opacity-40 sm:text-[12px]",
                           agentState === "PROCESSING_PAYMENT" && "forge-x402-blink",
                           agentState === "FORGING_MATTER" && "forge-forge-glitch",
+                          forgeUx.initiateGlow && "forge-cta-pulse",
                         )}
                       >
                         {initiatePrimaryLabel}
@@ -1337,7 +1511,7 @@ export default function ForgePage() {
                         disconnect()
                         void refresh().catch(() => {})
                       }}
-                      className="tactical-interactive-glitch w-full border-2 border-cyan-500/35 py-1.5 text-[9px] font-semibold uppercase tracking-widest text-cyan-400/80 hover:border-red-500/50 hover:text-red-300"
+                      className="tactical-interactive-glitch w-full border-2 border-cyan-500/35 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-cyan-400/80 hover:border-red-500/50 hover:text-red-300"
                     >
                       {f.disconnect}
                     </button>
@@ -1354,7 +1528,7 @@ export default function ForgePage() {
             >
               <div className="flex min-h-0 w-full flex-col gap-2 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)] lg:items-start lg:gap-4">
                 <div className="min-h-0 w-full">
-                  <p className="mb-2 shrink-0 border-b border-cyan-500/35 pb-1.5 text-[9px] font-semibold uppercase tracking-[0.28em] text-cyan-200/95">
+                  <p className="mb-2 shrink-0 border-b border-cyan-500/35 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.28em] text-cyan-200/95">
                     {f.artPreview}
                   </p>
                   <div
@@ -1382,18 +1556,18 @@ export default function ForgePage() {
                         />
                         {previewLoreText ? (
                           <div className="custom-scrollbar max-h-20 w-full max-w-lg overflow-y-auto border border-cyan-500/25 bg-black/50 px-2 py-1.5 text-left">
-                            <p className="text-[8px] font-bold uppercase tracking-widest text-cyan-500/80">{f.lorePreview}</p>
-                            <p className="mt-1 whitespace-pre-wrap font-mono text-[10px] leading-snug text-cyan-100/90">
+                            <p className="text-[9px] font-bold uppercase tracking-widest text-cyan-500/80">{f.lorePreview}</p>
+                            <p className="mt-1 whitespace-pre-wrap font-mono text-[11px] leading-snug text-cyan-100/90">
                               {previewLoreText}
                             </p>
                           </div>
                         ) : null}
                       </div>
                     ) : (
-                      <span className="relative z-[3] px-2 text-center font-mono text-[9px] font-medium uppercase leading-relaxed tracking-[0.2em] text-cyan-400/85">
+                      <span className="relative z-[3] px-2 text-center font-mono text-[10px] font-medium uppercase leading-relaxed tracking-[0.2em] text-cyan-400/85">
                         {forgeMode === "MANUAL" ? f.manualAwaiting : f.awaitingFeed}
                         <br />
-                        <span className="text-[8px] tracking-widest text-cyan-500/70">
+                        <span className="text-[9px] tracking-widest text-cyan-500/70">
                           {forgeMode === "MANUAL" ? f.manualAwaitingHint : f.oracleHint}
                         </span>
                       </span>
@@ -1402,7 +1576,7 @@ export default function ForgePage() {
                 </div>
                 {address ? (
                   <aside className="tactical-frame ml-auto w-full border-cyan-500/35 bg-black/35 p-2.5 lg:sticky lg:top-2 lg:self-start">
-                    <p className="mb-2 text-[9px] font-semibold uppercase tracking-[0.2em] text-cyan-300/90">
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-300/90">
                       {pickCopy(lang).chamber.rewardsSectionTitle}
                     </p>
                     <div className="w-full" onWheelCapture={captureWheelOnRewardsPanel}>
@@ -1412,6 +1586,9 @@ export default function ForgePage() {
                         compact
                         onRefreshBalance={refreshLiqBalance}
                         className="rounded-none border-0 bg-transparent p-0 shadow-none"
+                        freighterNftCollect={
+                          collectionPhaseTokenId != null ? { tokenId: collectionPhaseTokenId } : null
+                        }
                       />
                     </div>
                   </aside>

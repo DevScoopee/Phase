@@ -10,7 +10,13 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { getAddress, isAllowed, requestAccess, WatchWalletChanges } from "@stellar/freighter-api"
+import {
+  albedoImplicitTxAllowed,
+  isAlbedoSelectedInKit,
+  requestAlbedoImplicitTxFlow,
+} from "@/lib/albedo-intent-client"
+import { initStellarWalletKit, kit, KitEventType, parseError } from "@/lib/stellar-wallet-kit"
+import { cn } from "@/lib/utils"
 
 type WalletContextValue = {
   address: string | null
@@ -20,8 +26,13 @@ type WalletContextValue = {
   aliasLoading: boolean
   connect: () => Promise<void>
   disconnect: () => void
-  /** Re-read Freighter; returns the active address or null. */
+  /** Re-sync con la wallet vía kit; devuelve la dirección activa o null. */
   refresh: () => Promise<string | null>
+  /**
+   * Abre el modal de @creit.tech/stellar-wallets-kit para elegir o cambiar wallet (misma sesión que `connect`).
+   * Útil antes de firmar un settle: el usuario confirma qué G… firma y recibe el NFT. `null` si cierra el modal.
+   */
+  openWalletPicker: () => Promise<string | null>
   refreshArtistAlias: () => Promise<string | null>
   saveArtistAlias: (alias: string) => Promise<{ ok: true } | { ok: false; error: string }>
 }
@@ -37,6 +48,10 @@ const FAUCET_AUTO_CLAIM_DEDUPE_MS = 4000
 const lastFaucetAutoClaimAt = new Map<string, number>()
 
 export function WalletProvider({ children }: { children: ReactNode }) {
+  if (typeof window !== "undefined") {
+    initStellarWalletKit()
+  }
+
   const [address, setAddress] = useState<string | null>(null)
   const [connecting, setConnecting] = useState(false)
   const [hint, setHint] = useState<string | null>(null)
@@ -44,11 +59,34 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [aliasLoading, setAliasLoading] = useState(false)
 
   /**
-   * Freighter sigue “permitido” tras desconectar en la app; sin esto, cualquier
-   * `refresh()` (p. ej. tras DISCONNECT o al enfocar la ventana) vuelve a rellenar la dirección.
+   * Tras conectar, el kit mantiene la dirección en memoria; al desconectar en la app
+   * no queremos que un `refresh()` vuelva a rellenarla hasta un nuevo `connect`.
    */
   const userDisconnectedRef = useRef(false)
   const autoFundedWalletsRef = useRef<Set<string>>(new Set())
+
+  /** Albedo: sin `implicit_flow` para `tx`, el popup de firma se bloquea tras awaits largos (Soroban). */
+  const [albedoTxPrep, setAlbedoTxPrep] = useState<"hidden" | "needed" | "checking">("hidden")
+  const [albedoPrepBusy, setAlbedoPrepBusy] = useState(false)
+  const [albedoPrepError, setAlbedoPrepError] = useState<string | null>(null)
+
+  const syncAlbedoTxPrep = useCallback(async (addr: string | null) => {
+    if (!addr || typeof window === "undefined") {
+      setAlbedoTxPrep("hidden")
+      return
+    }
+    if (!isAlbedoSelectedInKit()) {
+      setAlbedoTxPrep("hidden")
+      return
+    }
+    setAlbedoTxPrep("checking")
+    try {
+      const ok = await albedoImplicitTxAllowed(addr)
+      setAlbedoTxPrep(ok ? "hidden" : "needed")
+    } catch {
+      setAlbedoTxPrep("needed")
+    }
+  }, [])
 
   const refresh = useCallback((): Promise<string | null> => {
     const run = async (): Promise<string | null> => {
@@ -57,33 +95,29 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           setAddress(null)
           return null
         }
-        const allowed = await isAllowed()
-        if (allowed.error || !allowed.isAllowed) {
-          setAddress(null)
-          return null
+        initStellarWalletKit()
+        const { address: addr } = await kit.getAddress()
+        if (addr) {
+          setAddress(addr)
+          return addr
         }
-        const { address: addr, error } = await getAddress()
-        if (error || !addr) {
-          setAddress(null)
-          return null
-        }
-        setAddress(addr)
-        return addr
+        setAddress(null)
+        return null
       } catch (e) {
-        const msg =
-          e instanceof Error
-            ? e.message
-            : e === undefined || e === null
-              ? "Freighter unavailable"
-              : String(e)
-        setHint(msg === "undefined" ? "Freighter unavailable" : msg)
+        const pe = parseError(e)
+        if (pe.code === -1 && pe.message === "No wallet has been connected.") {
+          setAddress(null)
+          return null
+        }
+        const msg = pe.message || "Wallet unavailable"
+        setHint(msg)
         setAddress(null)
         return null
       }
     }
     return run().catch(() => {
       setAddress(null)
-      setHint("Freighter unavailable")
+      setHint("Wallet unavailable")
       return null
     })
   }, [])
@@ -99,22 +133,17 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, [refresh])
 
   useEffect(() => {
-    if (!address || userDisconnectedRef.current) return
-    const watcher = new WatchWalletChanges(3000)
-    watcher.watch((params) => {
+    initStellarWalletKit()
+    const stop = kit.on(KitEventType.STATE_UPDATED, ({ payload }) => {
       try {
         if (userDisconnectedRef.current) return
-        if (params.error) {
-          setAddress(null)
-          return
-        }
-        setAddress(params.address || null)
+        setAddress(payload.address ?? null)
       } catch {
         setAddress(null)
       }
     })
-    return () => watcher.stop()
-  }, [address])
+    return stop
+  }, [])
 
   useEffect(() => {
     if (!address || userDisconnectedRef.current) return
@@ -223,33 +252,30 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     void refreshArtistAlias().catch(() => {})
   }, [address, refreshArtistAlias])
 
+  useEffect(() => {
+    void syncAlbedoTxPrep(address)
+  }, [address, syncAlbedoTxPrep])
+
   const connect = useCallback((): Promise<void> => {
     const run = async (): Promise<void> => {
       userDisconnectedRef.current = false
       setConnecting(true)
       setHint(null)
+      initStellarWalletKit()
       try {
-        const res = await requestAccess()
-        if (res.error) {
-          setAddress(null)
-          setHint(res.error.message || "Freighter rejected connection")
-          return
+        const { address: next } = await kit.authModal()
+        if (!userDisconnectedRef.current) {
+          setAddress(next)
+          // Defer: el kit persiste `selectedModuleId` en localStorage en un effect de Preact.
+          queueMicrotask(() => void syncAlbedoTxPrep(next))
         }
-        if (res.address) {
-          if (!userDisconnectedRef.current) {
-            setAddress(res.address)
-          }
-          setHint(null)
-        }
+        setHint(null)
       } catch (e) {
-        const msg =
-          e instanceof Error
-            ? e.message
-            : e === undefined || e === null
-              ? "Freighter request failed"
-              : String(e)
+        const pe = parseError(e)
         setAddress(null)
-        setHint(msg === "undefined" ? "Freighter request failed" : msg)
+        if (pe.code !== -1) {
+          setHint(pe.message || "Wallet connection failed")
+        }
       } finally {
         setConnecting(false)
       }
@@ -257,15 +283,43 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     return run().catch(() => {
       setConnecting(false)
       setAddress(null)
-      setHint("Freighter unavailable")
+      setHint("Wallet unavailable")
     })
-  }, [])
+  }, [syncAlbedoTxPrep])
+
+  const openWalletPicker = useCallback((): Promise<string | null> => {
+    userDisconnectedRef.current = false
+    initStellarWalletKit()
+    return kit
+      .authModal()
+      .then(({ address: next }) => {
+        const g = typeof next === "string" ? next.trim() : ""
+        if (!g) {
+          setAddress(null)
+          return null
+        }
+        setAddress(g)
+        setHint(null)
+        queueMicrotask(() => void syncAlbedoTxPrep(g))
+        return g
+      })
+      .catch((e: unknown) => {
+        const pe = parseError(e)
+        if (pe.code !== -1) {
+          setHint(pe.message || "Wallet unavailable")
+        }
+        return null
+      })
+  }, [syncAlbedoTxPrep])
 
   const disconnect = useCallback(() => {
     userDisconnectedRef.current = true
+    void kit.disconnect().catch(() => {})
     setAddress(null)
     setArtistAlias(null)
     setHint(null)
+    setAlbedoTxPrep("hidden")
+    setAlbedoPrepError(null)
   }, [])
 
   const value = useMemo(
@@ -278,6 +332,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       connect,
       disconnect,
       refresh,
+      openWalletPicker,
       refreshArtistAlias,
       saveArtistAlias,
     }),
@@ -290,12 +345,63 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       connect,
       disconnect,
       refresh,
+      openWalletPicker,
       refreshArtistAlias,
       saveArtistAlias,
     ],
   )
 
-  return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>
+  return (
+    <>
+      <WalletContext.Provider value={value}>{children}</WalletContext.Provider>
+      {address && albedoTxPrep === "needed" && (
+        <div
+          role="status"
+          className={cn(
+            "fixed bottom-0 left-0 right-0 z-[300] border-t border-cyan-500/40 bg-background/95 px-4 py-3 text-sm shadow-lg backdrop-blur-sm",
+          )}
+        >
+          <div className="mx-auto flex max-w-3xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-foreground">
+              <strong>Albedo:</strong> concedé permiso de firma en esta pestaña (una vez). Sin esto, el navegador suele
+              bloquear el diálogo tras cargar Horizon o armar Soroban (incl. trustline PHASELQ). /{" "}
+              <span className="text-foreground/80">
+                Grant signing once so wallet dialogs are not blocked after Horizon/Soroban (including PHASELQ trustline).
+              </span>
+            </p>
+            <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
+              {albedoPrepError ? (
+                <span className="text-xs text-destructive sm:max-w-[200px]">{albedoPrepError}</span>
+              ) : null}
+              <button
+                type="button"
+                disabled={albedoPrepBusy}
+                className="rounded-md border border-cyan-500/60 bg-cyan-500/10 px-3 py-1.5 font-mono text-xs font-semibold text-cyan-200 hover:bg-cyan-500/20 disabled:opacity-50"
+                onClick={() => {
+                  setAlbedoPrepBusy(true)
+                  setAlbedoPrepError(null)
+                  void requestAlbedoImplicitTxFlow()
+                    .then((r) => {
+                      if (r.ok) {
+                        setAlbedoTxPrep("hidden")
+                        return
+                      }
+                      setAlbedoPrepError(r.message)
+                    })
+                    .catch((e: unknown) => {
+                      setAlbedoPrepError(e instanceof Error ? e.message : String(e))
+                    })
+                    .finally(() => setAlbedoPrepBusy(false))
+                }}
+              >
+                {albedoPrepBusy ? "…" : "Permitir firma / Allow signing"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
 }
 
 export function useWallet() {

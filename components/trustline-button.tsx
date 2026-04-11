@@ -1,17 +1,24 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { signTransaction } from "@stellar/freighter-api"
+import {
+  albedoImplicitTxAllowed,
+  isAlbedoSelectedInKit,
+  requestAlbedoImplicitTxFlow,
+} from "@/lib/albedo-intent-client"
+import { signTransaction } from "@/lib/stellar-wallet-kit"
 import { useLang } from "@/components/lang-context"
 import { TokenIcon } from "@/components/token-icon"
 import {
-  buildClassicTrustlineTransactionXdr,
+  buildClassicTrustlineXdrFromSequence,
   classicLiqAssetConfigFromPublicEnv,
+  fetchTestnetHorizonAccountJson,
+  nativeXlmBalanceFromHorizonAccount,
   parseSignedTxXdr,
   readClassicWalletStatus,
 } from "@/lib/classic-liq"
 import { pickCopy } from "@/lib/phase-copy"
-import { HORIZON_URL } from "@/lib/phase-protocol"
+import { HORIZON_URL, NETWORK_PASSPHRASE } from "@/lib/phase-protocol"
 import { playTacticalUiClick } from "@/lib/tactical-ui-click"
 import { cn } from "@/lib/utils"
 
@@ -56,10 +63,27 @@ export function TrustlineButton({ address, onRequestConnect, onReady, className 
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string>("")
   const [xlmBalance, setXlmBalance] = useState<number | null>(null)
+  /** null = no aplica (no Albedo) o comprobando; false = hace falta permiso implícito */
+  const [albedoImplicitOk, setAlbedoImplicitOk] = useState<boolean | null>(null)
+  const [albedoPrepBusy, setAlbedoPrepBusy] = useState(false)
 
   useEffect(() => {
     setWalletAddress(address ?? null)
   }, [address])
+
+  useEffect(() => {
+    if (!walletAddress || !isAlbedoSelectedInKit()) {
+      setAlbedoImplicitOk(null)
+      return
+    }
+    let cancelled = false
+    void albedoImplicitTxAllowed(walletAddress).then((ok) => {
+      if (!cancelled) setAlbedoImplicitOk(ok)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [walletAddress])
 
   const refreshTrustlineState = useCallback(
     async (addr: string) => {
@@ -126,7 +150,35 @@ export function TrustlineButton({ address, onRequestConnect, onReady, className 
     setBusy(true)
     setMessage("")
     try {
-      const xlm = await fetchNativeXlmBalance(addr)
+      if (isAlbedoSelectedInKit()) {
+        const allowed = await albedoImplicitTxAllowed(addr)
+        setAlbedoImplicitOk(allowed)
+        if (!allowed) {
+          setMessage(
+            lang === "es"
+              ? "Con Albedo: primero tocá «Permitir firma con Albedo» abajo (o la barra inferior). Así el navegador no bloquea el diálogo tras cargar la cuenta."
+              : "With Albedo: tap “Allow Albedo signing” below (or the bottom bar) first so the browser does not block the dialog after Horizon loads.",
+          )
+          return
+        }
+      }
+
+      // Un solo GET Horizon: menos awaits antes de firmar (mejor para Albedo, xBull, etc.).
+      let accountJson: Awaited<ReturnType<typeof fetchTestnetHorizonAccountJson>>
+      try {
+        accountJson = await fetchTestnetHorizonAccountJson(addr)
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        if (msg.includes("not found") || msg.includes("Fund")) {
+          setUiState("GET_TESTNET_XLM")
+          setMessage(ff.trustline_msg_empty_account)
+          setXlmBalance(0)
+          return
+        }
+        throw e
+      }
+
+      const xlm = nativeXlmBalanceFromHorizonAccount(accountJson)
       setXlmBalance(xlm)
       if (xlm < 2) {
         setUiState("GET_TESTNET_XLM")
@@ -134,10 +186,13 @@ export function TrustlineButton({ address, onRequestConnect, onReady, className 
         return
       }
 
+      const sequence = accountJson.sequence?.trim()
+      if (!sequence) throw new Error("Missing account sequence.")
+
       setUiState("SIGNING")
-      const txXdr = await buildClassicTrustlineTransactionXdr(addr, asset)
+      const txXdr = buildClassicTrustlineXdrFromSequence(addr, asset, sequence)
       const signed = await signTransaction(txXdr, {
-        networkPassphrase: "Test SDF Network ; September 2015",
+        networkPassphrase: NETWORK_PASSPHRASE,
         address: addr,
       })
       if (signed.error) throw new Error(signed.error.message || "SIGN_REJECTED")
@@ -199,6 +254,7 @@ export function TrustlineButton({ address, onRequestConnect, onReady, className 
     ff.trustline_msg_empty_account,
     ff.trustline_msg_protocol_ready,
     ff.trustline_msg_waiting_confirmation,
+    lang,
     uiState,
     walletAddress,
   ])
@@ -211,10 +267,43 @@ export function TrustlineButton({ address, onRequestConnect, onReady, className 
       )}
     >
       <p className="tactical-phosphor text-[9px] uppercase tracking-[0.2em] text-cyan-300/85">{ff.trustline_section_title}</p>
+      {walletAddress && albedoImplicitOk === false ? (
+        <div className="mb-2 rounded border border-amber-500/45 bg-amber-950/30 p-2">
+          <p className="text-[9px] font-semibold uppercase tracking-wide text-amber-200/95">
+            {ff.trustline_albedo_prep_title}
+          </p>
+          <p className="mt-1 text-[8px] leading-relaxed text-amber-100/85">{ff.trustline_albedo_prep_body}</p>
+          <button
+            type="button"
+            disabled={albedoPrepBusy}
+            className="mt-2 w-full border border-amber-500/60 bg-amber-500/15 px-2 py-1.5 text-[9px] font-bold uppercase tracking-wider text-amber-100 hover:bg-amber-500/25 disabled:opacity-50"
+            onClick={() => {
+              playTacticalUiClick()
+              setAlbedoPrepBusy(true)
+              setMessage("")
+              void requestAlbedoImplicitTxFlow()
+                .then((r) => {
+                  if (r.ok && walletAddress) {
+                    void albedoImplicitTxAllowed(walletAddress).then(setAlbedoImplicitOk)
+                    return
+                  }
+                  setMessage(r.ok ? "" : r.message)
+                })
+                .catch((e: unknown) => setMessage(e instanceof Error ? e.message : String(e)))
+                .finally(() => setAlbedoPrepBusy(false))
+            }}
+          >
+            {albedoPrepBusy ? ff.trustline_albedo_prep_working : ff.trustline_albedo_prep_button}
+          </button>
+        </div>
+      ) : null}
       <button
         type="button"
         onClick={() => void handleClick().catch(() => {})}
-        disabled={busy}
+        disabled={
+          busy ||
+          (isAlbedoSelectedInKit() && albedoImplicitOk === false)
+        }
         className={cn(
           "tactical-interactive-glitch mt-1.5 w-full border-2 px-2 py-2 text-[10px] font-bold uppercase tracking-[0.16em] transition-colors",
           uiState === "READY"
@@ -256,7 +345,7 @@ export function TrustlineButton({ address, onRequestConnect, onReady, className 
         <div className="mt-2 text-[8px] text-cyan-400/60">
           <p className="uppercase tracking-wider">Asset:</p>
           <p className="font-mono">{asset.code}:{asset.issuer.slice(0, 12)}...</p>
-          <p className="mt-0.5 italic opacity-80">Necesario para recibir PHASELQ del faucet</p>
+          <p className="mt-0.5 italic opacity-80">{ff.trustline_asset_hint}</p>
         </div>
       )}
     </section>

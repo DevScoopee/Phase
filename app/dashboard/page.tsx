@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { signTransaction } from "@stellar/freighter-api"
+import { signTransaction } from "@/lib/stellar-wallet-kit"
 import { LangToggle } from "@/components/lang-toggle"
 import { useLang } from "@/components/lang-context"
 import { PhaseProtectedPreview } from "@/components/phase-protected-preview"

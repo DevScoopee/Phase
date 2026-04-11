@@ -1,9 +1,10 @@
 "use client"
 
+import { albedoImplicitTxAllowed, isAlbedoSelectedInKit } from "@/lib/albedo-intent-client"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react"
-import { signTransaction } from "@stellar/freighter-api"
+import { signTransaction } from "@/lib/stellar-wallet-kit"
 import { toast } from "sonner"
 import { ArtistAliasControl } from "@/components/artist-alias-control"
 import { LangToggle } from "@/components/lang-toggle"
@@ -22,6 +23,7 @@ import {
   type ClassicLiqWalletStatus,
 } from "@/lib/classic-liq"
 import type { CollectionInfo } from "@/lib/phase-protocol"
+import { extractBaseAddress } from "@stellar/stellar-sdk"
 import {
   CONTRACT_ID,
   NETWORK_PASSPHRASE,
@@ -42,6 +44,7 @@ import {
   fetchTokenUriString,
   formatLiq,
   getProtocolSettleTokenBalance,
+  getPublicClassicLiqIssuerG,
   getTokenBalance,
   getTransactionResult,
   ipfsOrHttpsDisplayUrl,
@@ -52,6 +55,7 @@ import {
   isStellarDesyncError,
   sendTransaction,
   stellarExpertPhaserLiqUrl,
+  stellarExpertTestnetContractUrl,
   stroopsToLiqDisplay,
 } from "@/lib/phase-protocol"
 import { PhaseArtifactVisualizer, type ArtifactVerificationMode } from "@/components/phase-artifact-visualizer"
@@ -176,7 +180,7 @@ export function FusionChamber() {
     return Number.isFinite(n) && n >= 0 ? n : 0
   }, [searchParams])
 
-  const { address, connect, disconnect, connecting, refresh, artistAlias } = useWallet()
+  const { address, connect, disconnect, connecting, refresh, openWalletPicker, artistAlias } = useWallet()
   const logEndModalRef = useRef<HTMLDivElement>(null)
   const logEndDockRef = useRef<HTMLDivElement>(null)
   const logId = useRef(0)
@@ -196,6 +200,8 @@ export function FusionChamber() {
   const [systemDesync, setSystemDesync] = useState(false)
   /** Pedestal: acuñación NFT de fase en curso */
   const [mintingArtifact, setMintingArtifact] = useState(false)
+  /** THE_REACTOR: POST /api/phase-nft/custodian-release (mismo flujo que el panel COLLECT). */
+  const [claimToWalletBusy, setClaimToWalletBusy] = useState(false)
   const [logsOpen, setLogsOpen] = useState(false)
   const [collectionInfo, setCollectionInfo] = useState<CollectionInfo | null>(null)
   const [collectionLoadState, setCollectionLoadState] = useState<"idle" | "loading" | "done">("idle")
@@ -640,31 +646,55 @@ export function FusionChamber() {
 
   const initiateX402 = async () => {
     const logs = pickCopy(lang).chamber.logs
-    if (!address || lowEnergy || x402Tx === "busy" || invalidCollection) return
-    try {
-      // Verificación doble de balance antes de iniciar
-      const bal = await getProtocolSettleTokenBalance(address)
-      const balBigInt = BigInt(bal || "0")
-      const requiredBigInt = BigInt(effectivePriceStroops)
+    if (x402Tx === "busy" || invalidCollection) return
 
-      if (balBigInt < requiredBigInt) {
-        const balDisplay = stroopsToLiqDisplay(bal)
-        const reqDisplay = stroopsToLiqDisplay(effectivePriceStroops)
-        appendLog(`[ BALANCE_CHECK ] Balance: ${balDisplay} PHASELQ, Required: ${reqDisplay} PHASELQ`)
-        appendLog(logs.lowEnergyWarning)
-        if (faucetEnabled && balBigInt === BigInt("0")) {
-          appendLog(`[ SUGERENCIA ] Tu balance es 0. Ve al panel del faucet y reclama Genesis Supply o Daily Recharge.`)
-        }
-        return
+    appendLog(logs.walletKitPickerForSettle)
+    const picked = await openWalletPicker()
+    if (!picked) {
+      appendLog(logs.walletKitPickerDismissed)
+      return
+    }
+    const signerAddress = picked.trim()
+    if (!signerAddress) {
+      appendLog(logs.walletKitPickerDismissed)
+      return
+    }
+
+    const bal = await getProtocolSettleTokenBalance(signerAddress)
+    const balBigInt = BigInt(bal || "0")
+    const requiredBigInt = BigInt(effectivePriceStroops)
+
+    if (balBigInt < requiredBigInt) {
+      const balDisplay = stroopsToLiqDisplay(bal)
+      const reqDisplay = stroopsToLiqDisplay(effectivePriceStroops)
+      appendLog(
+        `[ BALANCE_CHECK ] ${signerAddress.slice(0, 6)}… · ${balDisplay} PHASELQ, Required: ${reqDisplay} PHASELQ`,
+      )
+      appendLog(logs.lowEnergyWarning)
+      if (faucetEnabled && balBigInt === BigInt("0")) {
+        appendLog(
+          lang === "es"
+            ? "[ SUGERENCIA ] Esa cuenta tiene 0 PHASELQ en el SAC. Usá el faucet u otra wallet desde el modal."
+            : "[ HINT ] That account has 0 PHASELQ on the SAC. Use the faucet or pick another wallet from the modal.",
+        )
       }
+      return
+    }
+
+    try {
       setX402Tx("busy")
       appendLog(logs.x402Initiating)
       await delayLog([logs.receivingChallenge, logs.signingAuth, logs.settlingPayment])
       const invoiceId = Math.floor(Math.random() * 1_000_000)
-      const txEnvelope = await buildSettleTransaction(address, effectivePriceStroops, invoiceId, collectionId)
+      const txEnvelope = await buildSettleTransaction(
+        signerAddress,
+        effectivePriceStroops,
+        invoiceId,
+        collectionId,
+      )
       const signResult = await signTransaction(txEnvelope, {
         networkPassphrase: NETWORK_PASSPHRASE,
-        address,
+        address: signerAddress,
       })
       if (signResult.error) throw new Error(signResult.error.message || "SIGN_FAIL")
       const signedXdr =
@@ -708,6 +738,58 @@ export function FusionChamber() {
       setX402Tx("idle")
     }
   }
+
+  const handleClaimNftToWallet = useCallback(async () => {
+    if (!address || phaseId == null || phaseId <= 0) return
+    playTacticalUiClick()
+    setClaimToWalletBusy(true)
+    const logs = pickCopy(lang).chamber.logs
+    try {
+      const res = await fetch("/api/phase-nft/custodian-release", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tokenId: phaseId,
+          recipientWallet: address.trim(),
+        }),
+        cache: "no-store",
+      })
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean
+        hash?: string | null
+        error?: string
+        detail?: string
+        code?: string
+      }
+      if (!res.ok) {
+        const msg =
+          data.code === "NOT_ISSUER_CUSTODY"
+            ? lang === "es"
+              ? "El NFT no está en custodia del emisor (quizá ya está en tu wallet)."
+              : "This NFT is not held by the configured issuer (it may already be in your wallet)."
+            : data.detail || data.error || `HTTP ${res.status}`
+        appendLog(`[ NFT_COLLECT_FAIL ] ${msg}`)
+        toast.error(msg)
+        return
+      }
+      const hash = typeof data.hash === "string" ? data.hash : undefined
+      toast.success(
+        lang === "es"
+          ? `NFT enviado a tu wallet${hash ? `. Hash: ${hash}` : ""}`
+          : `NFT sent to your wallet${hash ? `. Hash: ${hash}` : ""}`,
+      )
+      if (hash) appendLog(`${logs.tracePrefix} ${hash}`)
+      setOnChainTokenOwner(address.trim())
+      setTokenOwnerLookupDone(true)
+      await refreshStatus()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      toast.error(msg)
+      appendLog(`${logs.faucetFailPrefix} ${msg}`)
+    } finally {
+      setClaimToWalletBusy(false)
+    }
+  }, [address, phaseId, lang, appendLog, refreshStatus])
 
   const lowEnergy = address ? isLowEnergy(tokenBalance, effectivePriceStroops) : false
   const canInitializeGenesisSupply = Boolean(
@@ -881,6 +963,12 @@ export function FusionChamber() {
     if (!address || classicBusy || !classicAsset) return
     setClassicBusy(true)
     try {
+      const chCopy = pickCopy(lang).chamber
+      if (isAlbedoSelectedInKit() && !(await albedoImplicitTxAllowed(address))) {
+        toast.error(chCopy.rewardsTrustlineAlbedoImplicitRequired)
+        appendLog(chCopy.rewardsTrustlineAlbedoImplicitRequired)
+        return
+      }
       const trustTx = await buildClassicTrustlineTransactionXdr(address, classicAsset)
       const signResult = await signTransaction(trustTx, {
         networkPassphrase: NETWORK_PASSPHRASE,
@@ -904,7 +992,7 @@ export function FusionChamber() {
           : `[ TRUSTLINE_ENABLED ] ${classicAsset.code}:${truncateAddress(classicAsset.issuer)}`,
       )
       toast.success(
-        lang === "es" ? "Trustline activada en Freighter." : "Freighter trustline enabled.",
+        lang === "es" ? "Trustline activada." : "Trustline enabled.",
       )
       await refreshClassicStatus()
       await requestClassicBootstrap()
@@ -1049,6 +1137,23 @@ export function FusionChamber() {
   const expertUrl = stellarExpertPhaserLiqUrl()
   const isOwnerOnChain =
     phased && phaseId != null && tokenOwnerLookupDone && isAuthentic(address, onChainTokenOwner)
+  /** `owner_of` = emisor clásico PHASELQ: el usuario puede usar COLLECT en el panel lateral (servidor firma transfer). */
+  const issuerCustodyForCollect = useMemo(() => {
+    if (!phased || phaseId == null || phaseId <= 0 || !tokenOwnerLookupDone || !onChainTokenOwner?.trim()) {
+      return false
+    }
+    if (isAuthentic(address, onChainTokenOwner)) return false
+    const issuerG = getPublicClassicLiqIssuerG().trim()
+    if (!issuerG) return false
+    try {
+      return (
+        extractBaseAddress(onChainTokenOwner).trim().toUpperCase() ===
+        extractBaseAddress(issuerG).trim().toUpperCase()
+      )
+    } catch {
+      return false
+    }
+  }, [address, onChainTokenOwner, phased, phaseId, tokenOwnerLookupDone])
   const authenticityPending = phased && phaseId != null && address != null && !tokenOwnerLookupDone
   const freighterCollectibleReady =
     phased &&
@@ -1534,6 +1639,19 @@ export function FusionChamber() {
                             : "SYNCING balance()…"}
                       </p>
                     </div>
+                  ) : issuerCustodyForCollect ? (
+                    <div className="shrink-0 rounded-lg border border-violet-400/45 bg-violet-950/20 px-3 py-2.5 shadow-[inset_0_0_0_1px_rgba(167,139,250,0.12)] sm:px-4">
+                      <p className="text-center text-[9px] leading-snug text-violet-100/85 sm:text-left">
+                        {ch.pedestalIssuerCustodyHint}
+                      </p>
+                      <a
+                        href="#chamber-collect-panel"
+                        onClick={() => playTacticalUiClick()}
+                        className="tactical-interactive-glitch mt-2 block w-full border border-violet-400/55 py-2 text-center text-[10px] font-bold uppercase tracking-widest text-violet-100 hover:border-violet-300 hover:text-white sm:w-auto sm:px-4"
+                      >
+                        {ch.pedestalIssuerCustodyScrollLink}
+                      </a>
+                    </div>
                   ) : null}
                   <div className="grid min-h-0 flex-1 grid-cols-1 items-stretch gap-2 overflow-hidden md:grid-cols-[minmax(0,1.25fr)_minmax(22rem,1fr)]">
                   <div className="flex min-h-0 flex-col items-center gap-1.5 overflow-hidden sm:gap-2">
@@ -1643,6 +1761,32 @@ export function FusionChamber() {
                     </div>
                     {manualAddEnabled ? (
                     <div className="w-full rounded border border-cyan-500/35 bg-cyan-950/20 px-3.5 py-3.5">
+                      <div className="mb-3 rounded border border-violet-500/40 bg-violet-950/30 px-3 py-2.5 shadow-[inset_0_0_0_1px_rgba(167,139,250,0.12)]">
+                        <p className="text-left text-[10px] font-bold uppercase tracking-[0.18em] text-violet-200/95">
+                          {ch.walletNftVisibilityTitle}
+                        </p>
+                        <p className="mt-1.5 whitespace-pre-line text-left text-[11px] leading-relaxed text-violet-100/88">
+                          {ch.walletNftVisibilityBody}
+                        </p>
+                        <div className="mt-2.5 flex flex-wrap gap-2">
+                          <Link
+                            href="/dashboard"
+                            onClick={() => playTacticalUiClick()}
+                            className="tactical-interactive-glitch inline-flex border border-violet-400/55 bg-violet-950/40 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-violet-100 hover:border-violet-300 hover:text-white"
+                          >
+                            {lang === "es" ? "Bóveda PHASE (Dashboard) ↗" : "PHASE vault (Dashboard) ↗"}
+                          </Link>
+                          <a
+                            href={stellarExpertTestnetContractUrl(CONTRACT_ID)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() => playTacticalUiClick()}
+                            className="tactical-interactive-glitch inline-flex border border-violet-400/55 bg-violet-950/40 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-violet-100 hover:border-violet-300 hover:text-white"
+                          >
+                            Stellar Expert ↗
+                          </a>
+                        </div>
+                      </div>
                       <p className="text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-cyan-200">
                         {ch.freighterManualAddTitle}
                       </p>
@@ -1818,12 +1962,11 @@ export function FusionChamber() {
               <button
                 type="button"
                 disabled={
-                  !address ||
                   processing ||
                   genesisLoading ||
                   invalidCollection ||
                   collectionLoadState === "loading" ||
-                  (!canInitializeGenesisSupply && lowEnergy)
+                  (canInitializeGenesisSupply && !address)
                 }
                 onClick={() => {
                   playTacticalUiClick()
@@ -1835,7 +1978,7 @@ export function FusionChamber() {
                 }}
                 className={cn(
                   "tactical-interactive-glitch tactical-btn tactical-btn-x402 relative py-2.5 text-xs uppercase tracking-[0.18em] sm:py-3 sm:text-sm",
-                  (!canInitializeGenesisSupply && (lowEnergy || !address))
+                  canInitializeGenesisSupply && !address
                     ? "cursor-not-allowed opacity-40"
                     : "text-cyan-100 tactical-btn-x402--armed",
                   processing && x402Tx === "busy" && "tactical-btn-x402--streaming",
@@ -1853,9 +1996,58 @@ export function FusionChamber() {
               </button>
             </div>
           ) : (
-            <p className="tactical-phosphor-green relative z-10 text-center text-[10px] uppercase tracking-widest text-[#39ff14]/90 lg:text-left">
-              ● {ch.solidStateStandby}
-            </p>
+            <div className="relative z-10 mx-auto flex w-full max-w-[min(52rem,100%)] shrink-0 flex-col items-stretch gap-2 px-1 sm:px-2 lg:mx-0 lg:max-w-none">
+              {authenticityPending ? (
+                <p className="tactical-phosphor text-center text-[10px] uppercase tracking-[0.2em] text-cyan-500/85">
+                  {lang === "es" ? "◌ VERIFICANDO_PROPIETARIO_ON_CHAIN…" : "◌ VERIFYING_ON_CHAIN_OWNER…"}
+                </p>
+              ) : !address ? (
+                <p className="tactical-phosphor text-center text-[10px] uppercase tracking-[0.2em] text-cyan-500/85">
+                  {ch.linkWallet}
+                </p>
+              ) : issuerCustodyForCollect && phaseId != null ? (
+                <button
+                  type="button"
+                  disabled={claimToWalletBusy}
+                  onClick={() => void handleClaimNftToWallet()}
+                  className={cn(
+                    "tactical-interactive-glitch tactical-btn tactical-btn-x402 relative border-violet-400/45 py-2.5 text-xs uppercase tracking-[0.18em] text-violet-100 sm:py-3 sm:text-sm",
+                    "tactical-btn-x402--armed",
+                    claimToWalletBusy && "tactical-btn-x402--streaming",
+                  )}
+                >
+                  <span className="tactical-x402-label px-2 text-base font-bold tracking-widest sm:text-lg md:text-xl">
+                    {claimToWalletBusy
+                      ? `▶▶ ${ch.rewardsNftCollectSending}`
+                      : ch.reactorClaimNftCta}
+                  </span>
+                </button>
+              ) : isOwnerOnChain ? (
+                <div className="rounded-lg border border-emerald-500/40 bg-emerald-950/20 px-3 py-3 text-center shadow-[inset_0_0_0_1px_rgba(16,185,129,0.12)]">
+                  <p className="tactical-phosphor-green text-[10px] uppercase tracking-[0.22em] text-[#39ff14]/95">
+                    ● {ch.solidStateStandby}
+                  </p>
+                  <p className="mt-1.5 text-[9px] uppercase tracking-[0.12em] text-emerald-200/85">
+                    {ch.reactorNftSecuredHint}
+                  </p>
+                  <Link
+                    href="/dashboard"
+                    onClick={() => playTacticalUiClick()}
+                    className="tactical-interactive-glitch mt-2 inline-flex border border-emerald-400/50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-100 hover:border-emerald-300 hover:text-white"
+                  >
+                    {lang === "es" ? "Dashboard →" : "Dashboard →"}
+                  </Link>
+                </div>
+              ) : tokenOwnerLookupDone && phaseId != null ? (
+                <p className="text-center text-[9px] leading-relaxed uppercase tracking-[0.18em] text-amber-200/90">
+                  {ch.reactorClaimUnavailableHint}
+                </p>
+              ) : (
+                <p className="tactical-phosphor-green text-center text-[10px] uppercase tracking-widest text-[#39ff14]/90">
+                  ● {ch.solidStateStandby}
+                </p>
+              )}
+            </div>
           )}
 
           {address ? (
@@ -1882,7 +2074,10 @@ export function FusionChamber() {
 
           {address ? (
             <aside className="relative z-10 mt-1 flex w-full min-h-0 shrink-0 flex-col gap-2 lg:mt-0 lg:h-full lg:max-h-full lg:min-h-0 lg:overflow-hidden lg:self-stretch">
-              <div className="tactical-frame shrink-0 border border-cyan-400/40 bg-black/45 p-2 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.06)]">
+              <div
+                id="chamber-collect-panel"
+                className="tactical-frame shrink-0 scroll-mt-4 border border-cyan-400/40 bg-black/45 p-2 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.06)]"
+              >
                 <p className="tactical-phosphor mb-1.5 border-b border-cyan-500/20 pb-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-100/95">
                   ▣ {ch.collectInfoPanelTitle}
                 </p>
@@ -1894,11 +2089,10 @@ export function FusionChamber() {
                   compact
                   omitHeader
                   omitMissionChain
+                  omitFreighterNftBlock={Boolean(issuerCustodyForCollect || isOwnerOnChain)}
                   className="rounded-none border-0 bg-transparent p-0 shadow-none"
                   freighterNftCollect={
-                    phased && phaseId != null && tokenOwnerLookupDone && !isOwnerOnChain
-                      ? { tokenId: phaseId }
-                      : null
+                    phased && phaseId != null && tokenOwnerLookupDone ? { tokenId: phaseId } : null
                   }
                 />
               </div>

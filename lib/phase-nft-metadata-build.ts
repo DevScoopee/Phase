@@ -31,6 +31,12 @@ export type PhaseTokenMetadataJson = {
   name: string
   description: string
   image: string
+  external_url: string
+  attributes: Array<{
+    trait_type: string
+    value: string | number
+    display_type?: "number"
+  }>
   collectionId: number | null
 }
 
@@ -71,6 +77,16 @@ export async function buildPhaseTokenMetadataJson(
     name,
     description,
     image,
+    external_url: `${base}/chamber${colId != null && colId > 0 ? `?collection=${colId}` : ""}`,
+    attributes: [
+      ...(colId != null && colId > 0
+        ? [{ trait_type: "collection_id", value: colId, display_type: "number" as const }]
+        : []),
+      { trait_type: "token_id", value: tokenId, display_type: "number" as const },
+      ...(phaseLevel && phaseLevel.length > 0 ? [{ trait_type: "phase_level", value: phaseLevel }] : []),
+      { trait_type: "network", value: "stellar-testnet" },
+      { trait_type: "standard", value: "SEP-50-draft" },
+    ],
     collectionId: colId != null && Number.isFinite(colId) ? colId : null,
   }
 }

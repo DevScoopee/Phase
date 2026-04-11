@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  transpilePackages: ["@creit.tech/stellar-wallets-kit"],
   // Rust build trees are committed in this repo; exclude from serverless traces (250 MB limit on Vercel).
   outputFileTracingExcludes: {
     "*": ["./contracts/**/*", "./scripts/**/*"],

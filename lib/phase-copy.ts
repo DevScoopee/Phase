@@ -20,6 +20,10 @@ export type ChamberLogsCopy = {
   mintConfirmedViewPedestal: string
   lowEnergyWarning: string
   x402Initiating: string
+  /** Antes del settle: se abre Stellar Wallets Kit para elegir la wallet que firma y recibe el NFT. */
+  walletKitPickerForSettle: string
+  /** Usuario cerró el modal del kit sin elegir wallet. */
+  walletKitPickerDismissed: string
   receivingChallenge: string
   signingAuth: string
   settlingPayment: string
@@ -257,6 +261,12 @@ export const phaseCopy: Record<
       manualUploadMint: string
       manualAwaiting: string
       manualAwaitingHint: string
+      /** Mini rail UX en /forge: paso 1 (Oráculo). */
+      uxRailStepAOracle: string
+      /** Mini rail UX en /forge: paso 1 (Manual). */
+      uxRailStepAManual: string
+      /** Mini rail UX en /forge: paso 2 (colección + precio + despliegue). */
+      uxRailStepB: string
       deployStatus: string
       agentDeployStatus: string
       deployTickers: readonly [string, string, string, string, string]
@@ -277,6 +287,12 @@ export const phaseCopy: Record<
       trustline_msg_protocol_ready: string
       trustline_gas_label: string
       trustline_friendbot_link: string
+      /** Subtítulo bajo el asset (qué hace este bloque). */
+      trustline_asset_hint: string
+      trustline_albedo_prep_title: string
+      trustline_albedo_prep_body: string
+      trustline_albedo_prep_button: string
+      trustline_albedo_prep_working: string
       oracle_blocked_msg: string
       mint_blocked_msg: string
       ipfsOracleHint: string
@@ -376,6 +392,12 @@ export const phaseCopy: Record<
       genesisSupplyLoading: string
       manualPhase: string
       solidStateStandby: string
+      /** THE_REACTOR: un solo CTA para enviar el NFT desde custodia del emisor a la wallet conectada. */
+      reactorClaimNftCta: string
+      /** NFT ya en la wallet conectada — reactor en espera (enlace opcional al dashboard). */
+      reactorNftSecuredHint: string
+      /** `owner_of` no es el emisor ni la wallet: no se puede COLECTAR desde reactor. */
+      reactorClaimUnavailableHint: string
       systemLogs: string
       logsToggle: string
       logsClose: string
@@ -392,7 +414,7 @@ export const phaseCopy: Record<
       collectionLinkTitle: string
       faucetButton: string
       rewardsSectionTitle: string
-      /** Columna derecha: genesis/daily + Freighter collect (sin quests). */
+      /** Columna derecha: genesis/daily + panel COLLECT NFT (sin quests). */
       collectInfoPanelTitle: string
       /** Bajo THE_REACTOR: cadena de misiones (quests). */
       reactorQuestsSectionTitle: string
@@ -404,6 +426,28 @@ export const phaseCopy: Record<
       rewardsHelpQuestsTitle: string
       rewardsHelpQuestsBody: string
       rewardsQuestProgress: string
+      /** Panel COLLECT: ya sos owner on-chain del utility NFT (columna derecha). */
+      rewardsNftInWalletTitle: string
+      /** Enlace a Stellar Expert del contrato PHASE (C…). */
+      rewardsNftStellarExpertLink: string
+      /** Panel custodia emisor → COLLECT (cualquier wallet; el servidor firma el transfer). */
+      rewardsNftCollectPanelTitle: string
+      /** `{tokenId}` `{issuerShort}` — primeros caracteres del emisor clásico PHASELQ. */
+      rewardsNftCollectPanelBody: string
+      /** `{tokenId}` — owner on-chain no es el emisor; COLLECT no aplica. */
+      rewardsNftNotIssuerCustodyBody: string
+      rewardsNftCollectButton: string
+      rewardsNftCollectSending: string
+      /** Mientras corre POST /api/phase-nft/verify para COLLECT. */
+      rewardsNftCollectVerifying: string
+      /** Título si verify falla; el detalle sale del estado (mensaje API). */
+      rewardsNftCollectVerifyFailed: string
+      /** Pedestal: NFT aún en custodia del emisor; ancla al panel lateral COLLECT. */
+      pedestalIssuerCustodyHint: string
+      pedestalIssuerCustodyScrollLink: string
+      /** Pedestal: wallets sin galería Soroban — el NFT existe en ledger aunque no se vea en la UI. */
+      walletNftVisibilityTitle: string
+      walletNftVisibilityBody: string
       creatorCanMint: string
       creatorMintRule: string
       creatorAlreadyMinted: string
@@ -445,6 +489,8 @@ export const phaseCopy: Record<
       rewardsTrustlineRejectedToast: string
       /** Cuenta sin XLM / no existe en testnet. */
       rewardsTrustlineAccountMissing: string
+      /** Albedo: falta permiso implícito antes del flujo automático de trustline. */
+      rewardsTrustlineAlbedoImplicitRequired: string
       /** Error narrativo si el mensaje contiene "unauthorized" sin código PHASE claro. */
       biometricTrustGateClosed: string
       /** Índice 0 vacío; 1..13 = PhaseError on-chain. */
@@ -577,7 +623,8 @@ export const phaseCopy: Record<
       artPreview: "Art preview",
       lorePreview: "ARTIFACT_LORE // SEP-20",
       awaitingFeed: "AWAITING_ORACLE_SIGNAL",
-      oracleHint: "Describe the artifact to forge. Payment opens in Freighter when the protocol returns 402.",
+      oracleHint:
+        "Describe the artifact to forge. Payment opens in your wallet when the server returns 402. Establish the PHASELQ trustline (section below) first if you have not yet.",
       collectionLive: "Collection live",
       magicLink: "Share link",
       copy: "Copy link",
@@ -598,6 +645,9 @@ export const phaseCopy: Record<
       manualUploadMint: "[ UPLOAD_AND_MINT_ARTIFACT ]",
       manualAwaiting: "NO_ARTIFACT_SIGNAL",
       manualAwaitingHint: "Drop an image or paste https:// or ipfs://",
+      uxRailStepAOracle: "1 · Oracle",
+      uxRailStepAManual: "1 · Image",
+      uxRailStepB: "2 · Collection · deploy",
       deployStatus: "CONTRACT_DEPLOY",
       agentDeployStatus: "ORACLE_PIPELINE",
       deployTickers: [
@@ -614,22 +664,31 @@ export const phaseCopy: Record<
       ],
       signingPayment: "[ X402 ] OPENING_FREIGHTER — PHASELQ_SETTLE…",
       paywallNegotiating: "[ X402 ] NEGOTIATING_PAYWALL…",
-      trustline_section_title: "PHASER protocol init",
-      trustline_standby: "[ INITIALIZE_PHASER_PROTOCOL ]",
-      trustline_signing: "[ SIGNING_PROTOCOL... ]",
-      trustline_syncing: "[ SYNCING_WITH_BLOCKCHAIN... ]",
-      trustline_ready: "[ PROTOCOL_READY ]",
+      trustline_section_title: "PHASER · Trustline in wallet",
+      trustline_standby: "[ ESTABLISH_PHASELQ_TRUSTLINE ]",
+      trustline_signing: "[ SIGN_changeTrust_IN_WALLET ]",
+      trustline_syncing: "[ SYNCING_TRUSTLINE… ]",
+      trustline_ready: "[ TRUSTLINE_ACTIVE ]",
       trustline_get_testnet_xlm: "[ GET_TESTNET_XLM ]",
-      trustline_msg_initialized: "PHASER protocol initialized.",
+      trustline_msg_initialized: "PHASELQ trustline is active — your wallet can hold the asset.",
       trustline_msg_empty_account: "Your testnet account is empty. Request funds from Friendbot.",
-      trustline_msg_connect_wallet: "Connect your Freighter wallet first.",
+      trustline_msg_connect_wallet: "Connect your wallet first, then establish the trustline here.",
       trustline_msg_config_missing: "Classic asset is not configured in NEXT_PUBLIC_CLASSIC_LIQ_*.",
-      trustline_msg_waiting_confirmation: "Transaction sent. Waiting for ledger confirmation...",
-      trustline_msg_protocol_ready: "Protocol ready.",
+      trustline_msg_waiting_confirmation: "Trustline transaction sent. Waiting for ledger confirmation...",
+      trustline_msg_protocol_ready: "Trustline ready — PHASELQ faucet and rewards can credit your account.",
       trustline_gas_label: "XLM gas",
       trustline_friendbot_link: "Friendbot ↗",
-      oracle_blocked_msg: "[ INITIALIZE_PHASER_PROTOCOL ] before using Oracle.",
-      mint_blocked_msg: "[ INITIALIZE_PHASER_PROTOCOL ] before minting.",
+      trustline_asset_hint:
+        "This control opens the PHASELQ classic trustline in whatever wallet you connected (Freighter, Albedo, xBull, …).",
+      trustline_albedo_prep_title: "Albedo signing (trustline)",
+      trustline_albedo_prep_body:
+        "Allow signing once below so the wallet dialog is not blocked after Horizon loads. You can also use the bar at the bottom of the page.",
+      trustline_albedo_prep_button: "Allow Albedo signing",
+      trustline_albedo_prep_working: "Opening Albedo…",
+      oracle_blocked_msg:
+        "Establish the PHASELQ trustline in your wallet first (section above), then use the Oracle.",
+      mint_blocked_msg:
+        "Establish the PHASELQ trustline in your wallet first (section above), then mint.",
       ipfsOracleHint:
         "Tip: configure PINATA_JWT on the server so long image URLs (e.g. Pollinations) are sealed to ipfs:// before mint (256-char on-chain limit).",
       errors: {
@@ -727,6 +786,10 @@ export const phaseCopy: Record<
       genesisSupplyLoading: "INITIALIZING_GENESIS_SUPPLY...",
       manualPhase: "MANUAL_PHASE_TRANSITION",
       solidStateStandby: "SOLID_STATE_ACTIVE — REACTOR_STANDBY",
+      reactorClaimNftCta: "[ ◈ CLAIM_NFT_TO_WALLET ]",
+      reactorNftSecuredHint: "UTILITY_NFT_IN_WALLET — USE_DASHBOARD_OR_FREIGHTER_TO_PIN",
+      reactorClaimUnavailableHint:
+        "NFT_ON_CHAIN_BUT_NOT_CLAIMABLE_HERE — HOLDER_IS_NOT_ISSUER_CUSTODY",
       systemLogs: "SYSTEM_LOGS",
       logsToggle: "Logs",
       logsClose: "Close logs",
@@ -743,7 +806,7 @@ export const phaseCopy: Record<
       collectionLinkTitle: "Collection #{id}",
       faucetButton: "[ ⚡ RECHARGE_PHASELQ ]",
       rewardsSectionTitle: "[ LIQ_REWARDS ]",
-      collectInfoPanelTitle: "COLLECT // LIQUIDITY + FREIGHTER",
+      collectInfoPanelTitle: "COLLECT // LIQUIDITY + NFT",
       reactorQuestsSectionTitle: "OPERATOR_QUESTS // REACTOR_LANE",
       rewardsHelpAria: "Help: PHASELQ and reward programs",
       rewardsHelpClose: "Close",
@@ -755,12 +818,29 @@ export const phaseCopy: Record<
       rewardsHelpQuestsBody:
         "Genesis is a one-time starting grant for new wallets. Daily recharge refills on a 24-hour timer. Quests are one-time missions (connect wallet, forge a collection, complete a settlement). Progress bars show eligibility; Claim requests a server-signed mint when requirements are met.",
       rewardsQuestProgress: "QUEST PROGRESS",
+      rewardsNftInWalletTitle: "[ ACTIVELY CUSTODIED IN YOUR WALLET ]",
+      rewardsNftStellarExpertLink: "[ VIEW ON STELLAR EXPERT ]",
+      rewardsNftCollectPanelTitle: "COLLECT · UTILITY NFT (SEP-20)",
+      rewardsNftCollectPanelBody:
+        "Token #{tokenId}: the NFT is held by the classic PHASELQ issuer ({issuerShort}…). Collect sends transfer(issuer → your wallet), signed by the server — no wallet signature needed. Works with Albedo, Freighter, xBull, etc.",
+      rewardsNftNotIssuerCustodyBody:
+        "Token #{tokenId}: on-chain owner is not the PHASELQ issuer; server Collect does not apply. Use your wallet’s “add NFT manually” (contract address + Token ID) if your app supports it.",
+      rewardsNftCollectButton: "COLLECT",
+      rewardsNftCollectSending: "SENDING…",
+      rewardsNftCollectVerifying: "[ VERIFYING_NFT_ON_LEDGER… ]",
+      rewardsNftCollectVerifyFailed: "[ COLLECT · LEDGER CHECK FAILED ]",
+      pedestalIssuerCustodyHint:
+        "Utility NFT is still in issuer custody. Use COLLECT in the right-hand panel (server-signed transfer to your connected wallet).",
+      pedestalIssuerCustodyScrollLink: "Jump to COLLECT panel ↓",
+      walletNftVisibilityTitle: “NFT NOT SHOWING IN YOUR WALLET?”,
+      walletNftVisibilityBody:
+        “If your transaction history shows a successful settlement (invoke settle → true), the protocol already minted your NFT on-chain—that is the proof. Many wallets show Soroban transactions in history but do not display SEP-20 NFTs in the main balance view. This does not mean the NFT is lost.\n\n• Your PHASE utility NFT lives on testnet: verified by owner_of = your address on the PHASE contract.\n• Tap COPY · CONTRACT + TOKEN ID below to paste into your wallet’s \”add NFT manually\” (works with Freighter, Albedo, xBull, etc.).\n• PHASE Dashboard → Vault scans Soroban RPC and lists every PHASE NFT for your wallet (source of truth).\n• Stellar Expert (contract link) helps verify owner_of, token_uri, and transfers on-chain.”,
       creatorCanMint: "CREATOR_MINT_ENABLED",
       creatorMintRule: "Creator can mint this collection too (one utility NFT per wallet per collection).",
       creatorAlreadyMinted: "Creator already minted this collection with this wallet.",
-      freighterManualAddTitle: "FREIGHTER_COLLECTIBLE",
+      freighterManualAddTitle: "SOROBAN_NFT · MANUAL_ADD (ANY_WALLET)",
       freighterManualAddBody:
-        "If it does not appear automatically: Freighter -> Collectibles -> Add manually.",
+        "If it does not appear in your wallet UI: look for “add NFT / Soroban contract” (Albedo builds vary) or use Freighter Collectibles → Add manually.",
       freighterManualAddTroubleshoot:
         "Freighter’s Collectibles flow may rely on its own backend or a public indexer — independent from this app. If Add manually fails, use “Ping Freighter index” below (no-op self-transfer, emits a standard transfer event), wait, then retry. In PHASE, your authoritative list is the dashboard vault (Soroban RPC scan) — no Mercury subscription required for that.",
       freighterIndexPingButton: "[ PING FREIGHTER INDEX · SELF-TRANSFER ]",
@@ -771,12 +851,12 @@ export const phaseCopy: Record<
         "Runs on our server: Soroban name(), symbol(), owner_of, token_uri, then fetches metadata JSON. Freighter still uses its own indexer for auto-list — this only proves the contract + URL match the SEP-0050 draft.",
       freighterSep50CheckFailToast: "SEP-50 check request failed.",
       freighterOwnerOnChainAddBody:
-        "You already own this NFT on the PHASE contract. Freighter does not always show Soroban collectibles automatically: open Collectibles → Add manually and paste the Collection address + Token ID below (same network: testnet).",
+        "You already own this NFT on the PHASE contract. Albedo often shows nothing here even though the ledger does—use COPY below + Dashboard vault. Freighter: Collectibles → Add manually with the same C… + Token ID (testnet).",
       onChainMetaNftContractLabel: "NFT_PROTOCOL_CONTRACT",
       onChainMetaPhaselqSacLabel: "PHASELQ_SAC (fungible)",
-      freighterCopyBundleButton: "[ COPY FOR FREIGHTER · CONTRACT + TOKEN ID ]",
+      freighterCopyBundleButton: "[ COPY · C… CONTRACT + TOKEN ID ]",
       freighterCopyBundleToast:
-        "Copied 2 lines: (1) PHASE NFT contract C… for “Collection”, (2) numeric Token ID. Paste into Freighter → Collectibles → Add manually.",
+        "Copied 2 lines: (1) PHASE NFT contract C…, (2) numeric Token ID. Paste into your wallet’s manual add (Albedo / Freighter / etc.) or keep for Lab.",
       artifactSecuredLedgerVault: "[ ARTIFACT SECURED IN LEDGER // VIEW IN PHASE VAULT ]",
       artifactLedgerBalanceContract: "CONTRACT balance() · {count} utility NFT(s) attributed to this wallet",
       protocolStackLabel:
@@ -787,9 +867,11 @@ export const phaseCopy: Record<
       rewardsButtonEstablishingTrustline: "[ ESTABLISHING_TRUSTLINE... ]",
       rewardsButtonTransmittingFunds: "[ TRANSMITTING_FUNDS... ]",
       rewardsTokenTicker: "LIQ",
-      rewardsTrustlineRejectedToast: "[ TRUSTLINE_REQUIRED_TO_RECEIVE_FUNDS ] Approve changeTrust in Freighter.",
+      rewardsTrustlineRejectedToast: "[ TRUSTLINE_REQUIRED_TO_RECEIVE_FUNDS ] Approve changeTrust in your wallet.",
       rewardsTrustlineAccountMissing:
         "Stellar account not on testnet or unfunded. Add test XLM (Friendbot) before claiming PHASELQ.",
+      rewardsTrustlineAlbedoImplicitRequired:
+        "Albedo: allow signing first (bottom bar or Forge trustline card), then claim again.",
       biometricTrustGateClosed: "[ ERROR: BIOMETRIC_TRUST_GATE_CLOSED ]",
       phaseHostContractErrors: PHASE_HOST_CONTRACT_ERRORS_EN,
       phaseHostContractUnknown: PHASE_HOST_CONTRACT_UNKNOWN_EN,
@@ -812,6 +894,9 @@ export const phaseCopy: Record<
         mintConfirmedViewPedestal: "[ PHASE_NFT_MINT_CONFIRMED ] VIEW_PEDESTAL",
         lowEnergyWarning: "[ LOW_ENERGY_WARNING: PROTOCOL_LOCKED ]",
         x402Initiating: "[ X402 ] INITIATING_SETTLEMENT_CHALLENGE…",
+        walletKitPickerForSettle:
+          "[ WALLET_KIT ] OPENING_MODAL · CHOOSE_WALLET_TO_SIGN_AND_RECEIVE_NFT…",
+        walletKitPickerDismissed: "[ WALLET_KIT ] MODAL_CLOSED — SETTLEMENT_ABORTED",
         receivingChallenge: "[ RECEIVING_CHALLENGE... ]",
         signingAuth: "[ SIGNING_AUTH_ENTRY... ]",
         settlingPayment: "[ SETTLING_PAYMENT... ]",
@@ -826,7 +911,7 @@ export const phaseCopy: Record<
         genesisSupplyRequested: "[ SOLICITANDO_ENERGÍA_AL_NÚCLEO... ]",
         genesisTransferComplete: "[ GENESIS_SUPPLY_TRANSFER_OK ] REACTOR_CHARGED",
         classicTrustlineEstablishing: "[ CLASSIC_PHASELQ ] CHECKING_TRUSTLINE_FOR_REWARD...",
-        classicTrustlineFreighter: "[ FREIGHTER ] AWAITING_changeTrust_SIGNATURE...",
+        classicTrustlineFreighter: "[ WALLET ] AWAITING_changeTrust_SIGNATURE...",
         classicTrustlineConfirmed: "[ TRUSTLINE_OK ] CLASSIC_ASSET_LINE_READY",
         classicTrustlineRejected: "[ TRUSTLINE_DENIED ] OPERATOR_ABORT",
         classicTrustlineAccountMissing: "[ ACCOUNT_MISSING ] FUND_TESTNET_XLM_FIRST",
@@ -993,7 +1078,8 @@ export const phaseCopy: Record<
       artPreview: "Vista previa",
       lorePreview: "LORE_ARTEFACTO // SEP-20",
       awaitingFeed: "ESPERANDO_SEÑAL_ORÁCULO",
-      oracleHint: "Describe el artefacto a forjar. El pago se abre en Freighter cuando el protocolo responde 402.",
+      oracleHint:
+        "Describe el artefacto a forjar. El pago se abre en tu wallet cuando el servidor responde 402. Establecé antes la trustline PHASELQ (bloque de abajo) si aún no lo hiciste.",
       collectionLive: "Colección en vivo",
       magicLink: "Enlace para compartir",
       copy: "Copiar enlace",
@@ -1014,6 +1100,9 @@ export const phaseCopy: Record<
       manualUploadMint: "[ UPLOAD_AND_MINT_ARTIFACT ]",
       manualAwaiting: "SIN_SEÑAL_ARTEFACTO",
       manualAwaitingHint: "Soltá una imagen o pegá https:// o ipfs://",
+      uxRailStepAOracle: "1 · Oráculo",
+      uxRailStepAManual: "1 · Imagen",
+      uxRailStepB: "2 · Colección · despliegue",
       deployStatus: "DESPLIEGUE_CONTRATO",
       agentDeployStatus: "TUBERÍA_ORÁCULO",
       deployTickers: [
@@ -1030,22 +1119,31 @@ export const phaseCopy: Record<
       ],
       signingPayment: "[ X402 ] ABRIENDO_FREIGHTER — SETTLE_PHASELQ…",
       paywallNegotiating: "[ X402 ] NEGOCIANDO_PAYWALL…",
-      trustline_section_title: "Inicialización protocolo PHASER",
-      trustline_standby: "[ INITIALIZE_PHASER_PROTOCOL ]",
-      trustline_signing: "[ SIGNING_PROTOCOL... ]",
-      trustline_syncing: "[ SYNCING_WITH_BLOCKCHAIN... ]",
-      trustline_ready: "[ PROTOCOL_READY ]",
+      trustline_section_title: "PHASER · Trustline en la wallet",
+      trustline_standby: "[ ABRIR_TRUSTLINE_PHASELQ ]",
+      trustline_signing: "[ FIRMANDO_changeTrust_EN_WALLET ]",
+      trustline_syncing: "[ SINCRONIZANDO_TRUSTLINE… ]",
+      trustline_ready: "[ TRUSTLINE_ACTIVA ]",
       trustline_get_testnet_xlm: "[ GET_TESTNET_XLM ]",
-      trustline_msg_initialized: "Protocolo PHASER inicializado.",
+      trustline_msg_initialized: "Trustline PHASELQ activa — tu wallet ya puede tener el asset.",
       trustline_msg_empty_account: "Tu cuenta de Testnet está vacía. Pide fondos al Friendbot.",
-      trustline_msg_connect_wallet: "Conecta tu wallet Freighter primero.",
+      trustline_msg_connect_wallet: "Conectá tu wallet primero y establecé la trustline acá.",
       trustline_msg_config_missing: "El asset clásico no está configurado en NEXT_PUBLIC_CLASSIC_LIQ_*.",
-      trustline_msg_waiting_confirmation: "Transacción enviada. Esperando confirmación en ledger...",
-      trustline_msg_protocol_ready: "Protocolo listo.",
+      trustline_msg_waiting_confirmation: "Transacción de trustline enviada. Esperando confirmación en ledger...",
+      trustline_msg_protocol_ready: "Trustline lista — el faucet y las recompensas pueden acreditarte PHASELQ.",
       trustline_gas_label: "Gas XLM",
       trustline_friendbot_link: "Friendbot ↗",
-      oracle_blocked_msg: "[ INITIALIZE_PHASER_PROTOCOL ] antes de usar el Oráculo.",
-      mint_blocked_msg: "[ INITIALIZE_PHASER_PROTOCOL ] antes de mintear.",
+      trustline_asset_hint:
+        "Este bloque abre la trustline clásica PHASELQ en la wallet que tengas conectada (Freighter, Albedo, xBull…).",
+      trustline_albedo_prep_title: "Albedo y trustline",
+      trustline_albedo_prep_body:
+        "Concedé permiso de firma una vez (botón de abajo) para que el navegador no bloquee el diálogo tras cargar Horizon. También podés usar la barra inferior de la página.",
+      trustline_albedo_prep_button: "Permitir firma con Albedo",
+      trustline_albedo_prep_working: "Abriendo Albedo…",
+      oracle_blocked_msg:
+        "Primero establecé la trustline PHASELQ en tu wallet (sección de arriba), después usá el Oráculo.",
+      mint_blocked_msg:
+        "Primero establecé la trustline PHASELQ en tu wallet (sección de arriba), después minteá.",
       ipfsOracleHint:
         "Tip: configurá PINATA_JWT en el servidor para sellar URLs largas de imagen (p. ej. Pollinations) a ipfs:// antes del mint (límite 256 caracteres on-chain).",
       errors: {
@@ -1143,6 +1241,10 @@ export const phaseCopy: Record<
       genesisSupplyLoading: "INICIALIZANDO_GENESIS_SUPPLY...",
       manualPhase: "TRANSICIÓN_FASE_MANUAL",
       solidStateStandby: "ESTADO_SÓLIDO_ACTIVO — REACTOR_EN_ESPERA",
+      reactorClaimNftCta: "[ ◈ RECOGER_NFT_EN_MI_WALLET ]",
+      reactorNftSecuredHint: "NFT_UTILIDAD_EN_TU_WALLET — USÁ_DASHBOARD_O_FREIGHTER_PARA_FIJAR",
+      reactorClaimUnavailableHint:
+        "NFT_EN_CADENA_PERO_NO_RECOGIBLE_AQUÍ — EL_TITULAR_NO_ES_LA_CUSTODIA_DEL_EMISOR",
       systemLogs: "REGISTRO_SISTEMA",
       logsToggle: "Logs",
       logsClose: "Cerrar registro",
@@ -1159,7 +1261,7 @@ export const phaseCopy: Record<
       collectionLinkTitle: "Colección #{id}",
       faucetButton: "[ ⚡ SOLICITAR_PHASELQ ]",
       rewardsSectionTitle: "[ RECOMPENSAS_LIQ ]",
-      collectInfoPanelTitle: "COLECTAR // LIQUIDEZ + FREIGHTER",
+      collectInfoPanelTitle: "COLECTAR // LIQUIDEZ + NFT",
       reactorQuestsSectionTitle: "QUESTS_OPERADOR // CARRIL_REACTOR",
       rewardsHelpAria: "Ayuda: PHASELQ y recompensas",
       rewardsHelpClose: "Cerrar",
@@ -1171,12 +1273,29 @@ export const phaseCopy: Record<
       rewardsHelpQuestsBody:
         "Genesis es un fondo inicial único para wallets nuevas. La recarga diaria se reinicia cada 24 horas. Las quests son misiones de una sola vez (vincular wallet, crear colección, completar una liquidación). Las barras muestran el avance; Reclamar pide un mint firmado por el servidor cuando cumples los requisitos.",
       rewardsQuestProgress: "PROGRESO QUESTS",
+      rewardsNftInWalletTitle: "[ ACTIVAMENTE CUSTODIADO EN TU BILLETERA ]",
+      rewardsNftStellarExpertLink: "[ VER EN STELLAR EXPERT ]",
+      rewardsNftCollectPanelTitle: "COLECTAR · NFT DE UTILIDAD (SEP-20)",
+      rewardsNftCollectPanelBody:
+        "Token #{tokenId}: el NFT está en custodia del emisor clásico PHASELQ ({issuerShort}…). Colectar envía transfer(emisor → tu wallet) firmado por el servidor — no hace falta firmar en la wallet. Sirve con Albedo, Freighter, xBull, etc.",
+      rewardsNftNotIssuerCustodyBody:
+        "Token #{tokenId}: el owner on-chain no es el emisor PHASELQ; el colectar del servidor no aplica. Usá “añadir NFT manual” en tu wallet (dirección del contrato + Token ID) si la app lo permite.",
+      rewardsNftCollectButton: "COLECTAR",
+      rewardsNftCollectSending: "ENVIANDO…",
+      rewardsNftCollectVerifying: "[ VERIFICANDO_NFT_EN_LEDGER… ]",
+      rewardsNftCollectVerifyFailed: "[ COLECTAR · FALLO AL VERIFICAR LEDGER ]",
+      pedestalIssuerCustodyHint:
+        "El NFT de utilidad sigue en custodia del emisor. Usá COLECTAR en el panel derecho (transfer firmado por el servidor a tu wallet conectada).",
+      pedestalIssuerCustodyScrollLink: "Ir al panel COLECTAR ↓",
+      walletNftVisibilityTitle: “¿NO VES EL NFT EN TU WALLET?”,
+      walletNftVisibilityBody:
+        “Si tu historial de transacciones muestra un settlement exitoso (invoke settle → true), el protocolo ya minteó tu NFT en el ledger—esa es la prueba. Muchas wallets muestran transacciones Soroban en el historial pero no exhiben NFTs SEP-20 en la vista principal de balance. Esto no significa que el NFT se haya perdido.\n\n• Tu NFT de utilidad PHASE vive en testnet: verificado por owner_of = tu dirección en el contrato PHASE.\n• Tocá COPIAR · CONTRATO + ID abajo para pegar en “añadir NFT manualmente” de tu wallet (funciona con Freighter, Albedo, xBull, etc.).\n• **Dashboard PHASE → Bóveda** escanea RPC Soroban y lista todos los NFT PHASE de tu wallet (fuente de verdad).\n• **Stellar Expert** sirve para verificar owner_of, token_uri y transferencias on-chain.”,
       creatorCanMint: "CREADOR_MINT_HABILITADO",
       creatorMintRule: "El creador también puede mintear esta colección (1 NFT de utilidad por wallet por colección).",
       creatorAlreadyMinted: "El creador ya minteó esta colección con esta wallet.",
-      freighterManualAddTitle: "COLECCIONABLE_EN_FREIGHTER",
+      freighterManualAddTitle: "NFT_SOROBAN · AÑADIR_MANUAL (CUALQUIER_WALLET)",
       freighterManualAddBody:
-        "Si no aparece automático: Freighter -> Collectibles -> Add manually.",
+        "Si no aparece en la UI de tu wallet: buscá “añadir NFT / contrato Soroban” (según versión de Albedo) o Freighter → Collectibles → Add manually.",
       freighterManualAddTroubleshoot:
         "El flujo Collectibles de Freighter puede depender de su propio backend o de un indexador público — ajeno a esta app. Si Add manually falla, usá “Ping índice Freighter” abajo (self-transfer sin efecto, emite evento transfer estándar), esperá y reintentá. En PHASE, la lista autoritativa es la bóveda del dashboard (escaneo RPC Soroban) — no hace falta suscripción a Mercury para eso.",
       freighterIndexPingButton: "[ PING ÍNDICE FREIGHTER · AUTO-TRANSFER ]",
@@ -1187,12 +1306,12 @@ export const phaseCopy: Record<
         "Se ejecuta en nuestro servidor: name(), symbol(), owner_of, token_uri en Soroban y luego el GET del JSON. Freighter sigue usando su propio backend para auto-listar — esto solo confirma que el contrato y la URL encajan con el borrador SEP-0050.",
       freighterSep50CheckFailToast: "Falló la petición de comprobación SEP-50.",
       freighterOwnerOnChainAddBody:
-        "Ya sos el propietario on-chain del NFT en el contrato PHASE. Freighter no siempre lista coleccionables Soroban solos: abrí Collectibles → Add manually y pegá la dirección de colección + Token ID de abajo (misma red: testnet).",
+        "Ya sos dueño on-chain del NFT en el contrato PHASE. Albedo suele no mostrarlo aunque el ledger sí: usá COPIAR abajo y la bóveda del Dashboard. En Freighter: Collectibles → Add manually con el mismo C… + Token ID (testnet).",
       onChainMetaNftContractLabel: "CONTRATO_NFT_PHASE",
       onChainMetaPhaselqSacLabel: "PHASELQ_SAC (fungible)",
-      freighterCopyBundleButton: "[ COPIAR PARA FREIGHTER · CONTRATO + ID ]",
+      freighterCopyBundleButton: "[ COPIAR · CONTRATO C… + ID ]",
       freighterCopyBundleToast:
-        "Copiado en 2 líneas: (1) contrato C… del NFT PHASE para “Collection”, (2) Token ID numérico (sin #). Pegá en Freighter → Collectibles → Add manually.",
+        "Copiado en 2 líneas: (1) contrato C… del NFT PHASE, (2) Token ID numérico (sin #). Pegá en tu wallet (Albedo / Freighter / etc.) o guardalo para Lab.",
       artifactSecuredLedgerVault: "[ ARTEFACTO ASEGURADO EN LEDGER // VER EN BÓVEDA PHASE ]",
       artifactLedgerBalanceContract: "CONTRACT balance() · {count} NFT(s) de utilidad atribuidos a esta wallet",
       protocolStackLabel:
@@ -1204,9 +1323,11 @@ export const phaseCopy: Record<
       rewardsButtonTransmittingFunds: "[ TRANSMITIENDO_FONDOS... ]",
       rewardsTokenTicker: "LIQ",
       rewardsTrustlineRejectedToast:
-        "[ TRUSTLINE_REQUERIDA_PARA_RECIBIR ] Aprobá changeTrust en Freighter.",
+        "[ TRUSTLINE_REQUERIDA_PARA_RECIBIR ] Aprobá changeTrust en tu wallet.",
       rewardsTrustlineAccountMissing:
         "La cuenta no está en testnet o sin XLM. Añadí XLM de prueba (Friendbot) antes de reclamar PHASELQ.",
+      rewardsTrustlineAlbedoImplicitRequired:
+        "Albedo: primero concedé permiso de firma (barra inferior o tarjeta trustline en Forge) y volvé a reclamar.",
       biometricTrustGateClosed: "[ ERROR: BIOMETRIC_TRUST_GATE_CLOSED ]",
       phaseHostContractErrors: PHASE_HOST_CONTRACT_ERRORS_ES,
       phaseHostContractUnknown: PHASE_HOST_CONTRACT_UNKNOWN_ES,
@@ -1229,6 +1350,9 @@ export const phaseCopy: Record<
         mintConfirmedViewPedestal: "[ NFT_FASE_CONFIRMADO ] VER_PEDESTAL",
         lowEnergyWarning: "[ AVISO_ENERGÍA_BAJA: PROTOCOLO_BLOQUEADO ]",
         x402Initiating: "[ X402 ] INICIANDO_DESAFÍO_LIQUIDACIÓN…",
+        walletKitPickerForSettle:
+          "[ WALLET_KIT ] ABRIENDO_MODAL · ELEGÍ_WALLET_PARA_FIRMAR_Y_RECIBIR_NFT…",
+        walletKitPickerDismissed: "[ WALLET_KIT ] MODAL_CERRADO — SETTLEMENT_ABORTADO",
         receivingChallenge: "[ RECIBIENDO_DESAFÍO... ]",
         signingAuth: "[ FIRMANDO_ENTRADA_AUTH... ]",
         settlingPayment: "[ LIQUIDANDO_PAGO... ]",
@@ -1243,7 +1367,7 @@ export const phaseCopy: Record<
         genesisSupplyRequested: "[ SOLICITANDO_ENERGÍA_AL_NÚCLEO... ]",
         genesisTransferComplete: "[ GENESIS_SUPPLY_TRANSFER_OK ] REACTOR_CARGADO",
         classicTrustlineEstablishing: "[ PHASELQ_CLÁSICO ] VERIFICANDO_TRUSTLINE_PARA_RECOMPENSA...",
-        classicTrustlineFreighter: "[ FREIGHTER ] ESPERANDO_FIRMA_changeTrust...",
+        classicTrustlineFreighter: "[ WALLET ] ESPERANDO_FIRMA_changeTrust...",
         classicTrustlineConfirmed: "[ TRUSTLINE_OK ] LÍNEA_ACTIVO_CLÁSICA_LISTA",
         classicTrustlineRejected: "[ TRUSTLINE_DENEGADA ] ABORTO_OPERADOR",
         classicTrustlineAccountMissing: "[ CUENTA_INEXISTENTE ] FONDEAR_XLM_TESTNET_PRIMERO",

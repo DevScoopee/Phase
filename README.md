@@ -39,6 +39,13 @@ Open:
 - App: [http://localhost:3000](http://localhost:3000)
 - In-app docs: [http://localhost:3000/docs](http://localhost:3000/docs)
 
+## Powered by
+
+PHASE uses [**Mercury**](https://mercurydata.app) as its Soroban event indexer.
+Mercury's Classic API (`/events/by-contract`) provides fast NFT mint and transfer history without scanning the full RPC — making wallet queries and ownership derivation orders of magnitude faster than brute-force ledger iteration.
+
+Thanks to the Mercury team for building the best indexing layer on Stellar. 🪐
+
 ## Operational notes
 
 - Never commit secrets (`.env.local`, private keys, JWTs).

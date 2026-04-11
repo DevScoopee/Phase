@@ -1,8 +1,9 @@
 "use client"
 
+import { albedoImplicitTxAllowed, isAlbedoSelectedInKit } from "@/lib/albedo-intent-client"
 import { useCallback, useEffect, useState } from "react"
 import { createPortal } from "react-dom"
-import { signTransaction } from "@stellar/freighter-api"
+import { signTransaction } from "@/lib/stellar-wallet-kit"
 import { toast } from "sonner"
 import { useLang } from "@/components/lang-context"
 import { TokenIcon } from "@/components/token-icon"
@@ -18,6 +19,7 @@ import {
   getPublicClassicLiqIssuerG,
   isPhaseUnauthorizedError,
   NETWORK_PASSPHRASE,
+  stellarExpertTestnetContractUrl,
 } from "@/lib/phase-protocol"
 import { playTacticalUiClick } from "@/lib/tactical-ui-click"
 import { cn } from "@/lib/utils"
@@ -73,7 +75,7 @@ type Props = {
   onNarrativeLog?: (line: string) => void
   onRefreshBalance: () => void | Promise<void>
   /**
-   * Cámara: si el NFT está en custodia del emisor PHASELQ (G…), expone **Collect** → el servidor firma `transfer(issuer → usuario)`.
+   * Cámara / Forja: si el NFT está en custodia del emisor PHASELQ (G…), expone **Collect** → el servidor firma `transfer(issuer → usuario)` (sin `signTransaction` en cliente; sirve con Albedo u otras wallets).
    * Si `owner_of` ya es la wallet conectada, el bloque no se muestra.
    */
   freighterNftCollect?: { tokenId: number } | null
@@ -88,7 +90,7 @@ type Props = {
   omitMissionChain?: boolean
   /** Oculta cabecera de progreso + barra (la cámara pone título propio arriba). */
   omitHeader?: boolean
-  /** Oculta bloque Freighter COLLECT (vive con liquidez en columna derecha). */
+  /** Oculta bloque COLLECT NFT (vive con liquidez en columna derecha). */
   omitFreighterNftBlock?: boolean
 }
 
@@ -251,6 +253,11 @@ export function LiquidityFaucetControl({
     onNarrativeLog?.(L.classicTrustlineFreighter)
     setRewardFlowPhase("trustline")
     try {
+      if (isAlbedoSelectedInKit() && !(await albedoImplicitTxAllowed(address))) {
+        onNarrativeLog?.(chamber.rewardsTrustlineAlbedoImplicitRequired)
+        toast.error(chamber.rewardsTrustlineAlbedoImplicitRequired)
+        return false
+      }
       const trustTx = await buildClassicTrustlineTransactionXdr(address, asset)
       const signResult = await signTransaction(trustTx, {
         networkPassphrase: NETWORK_PASSPHRASE,
@@ -619,6 +626,12 @@ export function LiquidityFaucetControl({
   const showLiquidityLane = !omitLiquidityLane
   const showMissionChain = !omitMissionChain
   const issuerG = getPublicClassicLiqIssuerG()
+  const showViewerOwnsNft =
+    !omitFreighterNftBlock &&
+    Boolean(freighterNftCollect && address) &&
+    nftCollectEligibility?.status === "ready" &&
+    nftCollectEligibility.viewerIsOwner
+
   const showFreighterBlock =
     !omitFreighterNftBlock &&
     Boolean(freighterNftCollect && address) &&
@@ -708,7 +721,59 @@ export function LiquidityFaucetControl({
           </button>
         </div>
       )}
-      {showFreighterBlock && freighterNftCollect ? (
+      {freighterNftCollect && address && nftCollectEligibility?.status === "loading" ? (
+        <div
+          className={cn(
+            "mb-2 rounded border border-cyan-500/35 bg-cyan-950/25 px-2 py-2",
+            compact && "mb-1.5 py-1.5",
+          )}
+        >
+          <p className="text-[9px] font-semibold uppercase tracking-widest text-cyan-200/90">
+            {ch.rewardsNftCollectVerifying}
+          </p>
+        </div>
+      ) : freighterNftCollect && address && nftCollectEligibility?.status === "error" ? (
+        <div
+          className={cn(
+            "mb-2 rounded border border-red-500/40 bg-red-950/20 px-2 py-2",
+            compact && "mb-1.5 py-1.5",
+          )}
+        >
+          <p className="text-[9px] font-semibold uppercase tracking-widest text-red-200/95">
+            {ch.rewardsNftCollectVerifyFailed}
+          </p>
+          <p className="mt-1 text-[8px] leading-snug text-red-100/80">{nftCollectEligibility.message}</p>
+        </div>
+      ) : null}
+      {showViewerOwnsNft && freighterNftCollect ? (
+        <div
+          className={cn(
+            "mb-2 rounded border border-emerald-500/40 bg-emerald-950/20 px-2 py-2",
+            compact && "mb-1.5 py-1.5",
+          )}
+        >
+          <p className="text-[9px] font-semibold uppercase tracking-widest text-emerald-200/95">
+            {ch.rewardsNftInWalletTitle}
+          </p>
+          <p className="mt-1 text-[9px] leading-snug text-emerald-100/80">
+            {lang === "es"
+              ? `Token #${freighterNftCollect.tokenId} · contrato PHASE en testnet.`
+              : `Token #${freighterNftCollect.tokenId} · PHASE contract on testnet.`}
+          </p>
+          <a
+            href={stellarExpertTestnetContractUrl()}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => playTacticalUiClick()}
+            className="tactical-interactive-glitch mt-2 inline-flex border border-emerald-400/50 px-2 py-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-100 hover:border-emerald-300 hover:text-white"
+          >
+            {ch.rewardsNftStellarExpertLink}
+            <span className="ml-1 text-[0.65em] font-normal opacity-80" aria-hidden>
+              ↗
+            </span>
+          </a>
+        </div>
+      ) : showFreighterBlock && freighterNftCollect ? (
         <div
           className={cn(
             "mb-2 rounded border border-violet-400/35 bg-violet-950/20 px-2 py-2",
@@ -716,12 +781,12 @@ export function LiquidityFaucetControl({
           )}
         >
           <p className="text-[9px] font-semibold uppercase tracking-widest text-violet-200/90">
-            {lang === "es" ? "FREIGHTER · NFT (SEP-20)" : "FREIGHTER · NFT (SEP-20)"}
+            {ch.rewardsNftCollectPanelTitle}
           </p>
           <p className="mt-1 text-[9px] leading-snug text-violet-100/75">
-            {lang === "es"
-              ? `Token #${freighterNftCollect.tokenId}: el NFT está en custodia del emisor (${issuerG.slice(0, 6)}…). Collect envía transfer(issuer → tu wallet) firmado por el servidor.`
-              : `Token #${freighterNftCollect.tokenId}: NFT is held by the issuer (${issuerG.slice(0, 6)}…). Collect sends transfer(issuer → your wallet), signed by the server.`}
+            {ch.rewardsNftCollectPanelBody
+              .replace("{tokenId}", String(freighterNftCollect.tokenId))
+              .replace("{issuerShort}", issuerG.slice(0, 6))}
           </p>
           <button
             type="button"
@@ -729,11 +794,7 @@ export function LiquidityFaucetControl({
             onClick={() => void handleFreighterNftCollect()}
             className="tactical-interactive-glitch mt-2 w-full border border-violet-400/55 py-2 text-[10px] font-bold uppercase tracking-widest text-violet-100 hover:border-violet-300 disabled:opacity-50"
           >
-            {nftCollectBusy
-              ? lang === "es"
-                ? "ENVIANDO..."
-                : "SENDING..."
-              : "COLLECT"}
+            {nftCollectBusy ? ch.rewardsNftCollectSending : ch.rewardsNftCollectButton}
           </button>
         </div>
       ) : showCustodyHint && freighterNftCollect ? (
@@ -747,9 +808,7 @@ export function LiquidityFaucetControl({
             {lang === "es" ? "NFT · NO EN CUSTODIA DEL EMISOR" : "NFT · NOT IN ISSUER CUSTODY"}
           </p>
           <p className="mt-1 text-[9px] leading-snug text-amber-100/80">
-            {lang === "es"
-              ? `Token #${freighterNftCollect.tokenId}: el owner on-chain no es el emisor PHASELQ; el botón COLLECT no aplica. Usá el pedestal (Add manually en Freighter) con la dirección del contrato y el Token ID.`
-              : `Token #${freighterNftCollect.tokenId}: on-chain owner is not the PHASELQ issuer; COLLECT is not available. Use the pedestal “Add manually” fields (contract + Token ID) in Freighter Collectibles.`}
+            {ch.rewardsNftNotIssuerCustodyBody.replace("{tokenId}", String(freighterNftCollect.tokenId))}
           </p>
         </div>
       ) : null}

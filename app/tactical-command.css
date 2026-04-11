@@ -1119,3 +1119,153 @@
 .tactical-quest-flow--compact .tactical-quest-step {
   margin-bottom: 0.4rem;
 }
+
+/* ─── Forge: guía visual — anillos y rail de pasos ─── */
+.forge-field-ring {
+  position: relative;
+  border-radius: 2px;
+  padding: 0.65rem 0.75rem 0.85rem;
+  border: 1px solid rgba(34, 211, 238, 0.28);
+  background: linear-gradient(145deg, rgba(0, 255, 255, 0.045) 0%, transparent 55%);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 255, 255, 0.05),
+    0 0 20px rgba(0, 255, 255, 0.06);
+  transition:
+    border-color 0.35s ease,
+    box-shadow 0.35s ease,
+    opacity 0.35s ease;
+}
+
+.forge-field-ring--dim {
+  opacity: 0.72;
+  border-color: rgba(34, 211, 238, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(0, 255, 255, 0.03);
+}
+
+.forge-field-ring--active {
+  border-color: rgba(34, 211, 238, 0.55);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 255, 255, 0.1),
+    0 0 28px rgba(0, 255, 255, 0.14),
+    0 0 56px rgba(0, 255, 255, 0.06);
+  animation: forge-field-ring-pulse 2.6s ease-in-out infinite;
+}
+
+.forge-field-ring--active .tactical-frame {
+  border-color: rgba(34, 211, 238, 0.42) !important;
+}
+
+.forge-field-ring--active .tactical-frame:focus-within {
+  border-color: rgba(34, 211, 238, 0.65) !important;
+  box-shadow:
+    0 0 0 1px rgba(0, 255, 255, 0.12),
+    0 0 24px rgba(0, 255, 255, 0.12) !important;
+}
+
+@keyframes forge-field-ring-pulse {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 0 1px rgba(0, 255, 255, 0.08),
+      0 0 22px rgba(0, 255, 255, 0.12),
+      0 0 44px rgba(0, 255, 255, 0.05);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 1px rgba(0, 255, 255, 0.12),
+      0 0 32px rgba(0, 255, 255, 0.2),
+      0 0 64px rgba(0, 255, 255, 0.09);
+  }
+}
+
+.forge-ux-rail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid rgba(34, 211, 238, 0.22);
+  background: linear-gradient(90deg, rgba(0, 255, 255, 0.05), transparent 65%);
+  box-shadow: inset 0 0 20px rgba(0, 255, 255, 0.04);
+}
+
+.forge-ux-rail__sep {
+  color: rgba(34, 211, 238, 0.35);
+  font-size: 10px;
+  user-select: none;
+}
+
+.forge-ux-rail__step {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(113, 200, 205, 0.45);
+  transition: color 0.25s ease, text-shadow 0.25s ease;
+}
+
+@media (min-width: 640px) {
+  .forge-ux-rail__step {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+  }
+}
+
+.forge-ux-rail__step--done {
+  color: rgba(165, 243, 252, 0.72);
+  text-shadow: 0 0 12px rgba(0, 255, 255, 0.18);
+}
+
+.forge-ux-rail__step--current {
+  color: rgba(240, 253, 250, 0.95);
+  text-shadow:
+    0 0 14px rgba(0, 255, 255, 0.35),
+    0 0 28px rgba(0, 255, 255, 0.15);
+}
+
+.forge-ux-rail__step--processing {
+  animation: forge-ux-rail-step-blink 1.1s ease-in-out infinite;
+}
+
+@keyframes forge-ux-rail-step-blink {
+  0%,
+  100% {
+    opacity: 1;
+    color: rgba(165, 243, 252, 0.88);
+  }
+  50% {
+    opacity: 0.65;
+    color: rgba(0, 255, 255, 0.95);
+  }
+}
+
+.forge-cta-pulse:not(:disabled) {
+  animation: forge-cta-glow 2.2s ease-in-out infinite;
+}
+
+@keyframes forge-cta-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 18px rgba(0, 255, 255, 0.18),
+      inset 0 0 0 1px rgba(0, 255, 255, 0.08);
+  }
+  50% {
+    box-shadow:
+      0 0 32px rgba(0, 255, 255, 0.32),
+      0 0 52px rgba(0, 255, 255, 0.12),
+      inset 0 0 0 1px rgba(0, 255, 255, 0.14);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .forge-field-ring--active {
+    animation: none;
+  }
+  .forge-ux-rail__step--processing {
+    animation: none;
+  }
+  .forge-cta-pulse:not(:disabled) {
+    animation: none;
+  }
+}

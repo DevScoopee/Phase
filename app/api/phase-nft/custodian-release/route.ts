@@ -100,7 +100,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const xdr = await buildTransferPhaseNftTransaction(issuerG, recipient, Math.floor(tokenId))
+    const xdr = await buildTransferPhaseNftTransaction(issuerG, recipient, Math.floor(tokenId), { contractId: PHASE_PROTOCOL_CONTRACT })
     const tx = TransactionBuilder.fromXDR(xdr, NETWORK_PASSPHRASE)
     tx.sign(kp)
     const sendResult = await sendTransaction(tx.toXDR())

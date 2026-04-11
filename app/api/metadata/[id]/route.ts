@@ -41,10 +41,8 @@ export async function GET(
     )
   }
 
-  const { name, description, image } = payload
-
   return NextResponse.json(
-    { name, description, image },
+    payload,
     {
       headers: {
         "Content-Type": "application/json; charset=utf-8",

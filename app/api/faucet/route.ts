@@ -23,6 +23,7 @@ import {
 import {
   checkHasPhased,
   fetchCreatorCollectionId,
+  fetchTotalCollections,
   HORIZON_URL,
   NETWORK_PASSPHRASE,
   PHASER_FAUCET_MINT_STROOPS,
@@ -45,6 +46,8 @@ const FAUCET_POLL_INTERVAL_MS = 1000
 const FAUCET_MAX_POLLS_PER_REQUEST = 4
 const QUEST_REWARD_STROOPS = "30000000"
 const DAILY_REWARD_STROOPS = "20000000"
+/** `get_user_phase(wallet, cid)` por cid — acotado; evita depender solo del escaneo owner_of en los últimos N ids. */
+const QUEST_COLLECTION_PHASE_SCAN_CAP = 256
 
 /** Por debajo de esto, Soroban suele fallar (trap / ihf_trapped) por falta de XLM para fees y renta. */
 const MIN_SIGNER_NATIVE_XLM = 5
@@ -185,8 +188,9 @@ function isQuestReward(reward: RewardType): reward is QuestId {
 
 async function readQuestProgress(wallet: string | null): Promise<Record<QuestId, QuestProgress>> {
   const connectText = "Connect wallet is required."
-  const collectionText = "Create at least one collection on-chain first."
-  const settleText = "Complete at least one settlement (phase mint) first."
+  const collectionText =
+    "Forge a collection, or mint once in any collection (Chamber / EXECUTE_SETTLEMENT)."
+  const settleText = "Complete a Chamber settlement (signed phase mint on-chain)."
   if (!wallet) {
     return {
       quest_connect_wallet: { completed: false, progressPct: 0, requirementText: connectText },
@@ -196,34 +200,50 @@ async function readQuestProgress(wallet: string | null): Promise<Record<QuestId,
   }
 
   try {
-    const [creatorCollectionId, defaultPhase] = await Promise.all([
+    const [creatorCollectionId, defaultPhase, totalColsRaw] = await Promise.all([
       fetchCreatorCollectionId(wallet),
       checkHasPhased(wallet, 0),
+      fetchTotalCollections(),
     ])
-    const hasCollection = Boolean(creatorCollectionId && creatorCollectionId > 0)
+    const hasCreatorCollection = Boolean(creatorCollectionId && creatorCollectionId > 0)
 
-    let creatorPhase = { phased: false }
-    if (creatorCollectionId && creatorCollectionId > 0) {
-      creatorPhase = await checkHasPhased(wallet, creatorCollectionId)
+    let hasMintedPhase = Boolean(defaultPhase.phased)
+    if (!hasMintedPhase && hasCreatorCollection && creatorCollectionId != null) {
+      const ownCol = await checkHasPhased(wallet, creatorCollectionId)
+      hasMintedPhase = Boolean(ownCol.phased)
     }
-    const quickSettlementMatch = defaultPhase.phased || creatorPhase.phased
-    /** Acotado: el quest solo necesita “¿mint reciente?”; `get_user_phase` ya cubre el caso habitual. */
-    const QUEST_OWNER_SCAN_WINDOW = 200
-    const anyOwnedSettlement = quickSettlementMatch
-      ? true
-      : await userOwnsAnyPhaseToken(wallet, QUEST_OWNER_SCAN_WINDOW)
-    const hasSettlement = quickSettlementMatch || anyOwnedSettlement
+
+    const colCap = Math.min(Math.max(totalColsRaw, 0), QUEST_COLLECTION_PHASE_SCAN_CAP)
+    if (!hasMintedPhase && colCap > 0) {
+      const conc = 8
+      for (let start = 1; start <= colCap && !hasMintedPhase; start += conc) {
+        const batch: Promise<{ phased: boolean }>[] = []
+        for (let j = 0; j < conc && start + j <= colCap; j++) {
+          const cid = start + j
+          batch.push(checkHasPhased(wallet, cid))
+        }
+        const results = await Promise.all(batch)
+        if (results.some((r) => r.phased)) hasMintedPhase = true
+      }
+    }
+
+    /** Respaldo: NFT con id bajo no entra en la ventana “últimos N” de `userOwnsAnyPhaseToken`. */
+    const QUEST_OWNER_SCAN_WINDOW = 2000
+    const hasSettlement =
+      hasMintedPhase || (await userOwnsAnyPhaseToken(wallet, QUEST_OWNER_SCAN_WINDOW))
+
+    const hasCollectionEngagement = hasCreatorCollection || hasMintedPhase
 
     return {
       quest_connect_wallet: { completed: true, progressPct: 100, requirementText: connectText },
       quest_first_collection: {
-        completed: hasCollection,
-        progressPct: hasCollection ? 100 : 0,
+        completed: hasCollectionEngagement,
+        progressPct: hasCollectionEngagement ? 100 : hasCreatorCollection ? 50 : 0,
         requirementText: collectionText,
       },
       quest_first_settle: {
         completed: hasSettlement,
-        progressPct: hasSettlement ? 100 : hasCollection ? 40 : 0,
+        progressPct: hasSettlement ? 100 : hasCollectionEngagement ? 50 : 0,
         requirementText: settleText,
       },
     }

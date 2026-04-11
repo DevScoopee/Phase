@@ -29,7 +29,65 @@ type HorizonBalance = {
 }
 
 type HorizonAccountResponse = {
+  sequence?: string
   balances?: HorizonBalance[]
+}
+
+/** Cuerpo JSON de `GET /accounts/:id` en Horizon testnet (secuencia + balances). */
+export type TestnetHorizonAccountJson = HorizonAccountResponse
+
+export function nativeXlmBalanceFromHorizonAccount(data: TestnetHorizonAccountJson): number {
+  const native = (data.balances ?? []).find((b) => b.asset_type === "native")
+  const parsed = Number.parseFloat(native?.balance ?? "0")
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+/**
+ * Una sola lectura de cuenta antes de armar changeTrust + firmar (menos awaits → mejor para Albedo, xBull, etc.).
+ */
+export async function fetchTestnetHorizonAccountJson(walletAddress: string): Promise<TestnetHorizonAccountJson> {
+  if (!StrKey.isValidEd25519PublicKey(walletAddress)) {
+    throw new Error("Invalid wallet address.")
+  }
+  const res = await fetch(`${HORIZON_URL}/accounts/${encodeURIComponent(walletAddress)}`, {
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+  })
+  if (res.status === 404) {
+    throw new Error("Account not found on testnet. Fund with test XLM first.")
+  }
+  if (!res.ok) {
+    throw new Error(`Could not read account (${res.status}).`)
+  }
+  return (await res.json()) as TestnetHorizonAccountJson
+}
+
+/** Arma el XDR de changeTrust cuando ya tenés la secuencia (p. ej. tras un único fetch Horizon). */
+export function buildClassicTrustlineXdrFromSequence(
+  walletAddress: string,
+  asset: ClassicLiqAsset,
+  sequence: string,
+): string {
+  if (!StrKey.isValidEd25519PublicKey(walletAddress)) {
+    throw new Error("Invalid wallet address.")
+  }
+  const seq = sequence.trim()
+  if (!seq) throw new Error("Missing account sequence.")
+
+  const source = new Account(walletAddress, seq)
+  const tx = new TransactionBuilder(source, {
+    fee: BASE_FEE,
+    networkPassphrase: Networks.TESTNET,
+  })
+    .addOperation(
+      Operation.changeTrust({
+        asset: createClassicAsset(asset),
+      }),
+    )
+    .setTimeout(120)
+    .build()
+
+  return tx.toXDR()
 }
 
 /** Emisor clásico PHASELQ en testnet (Stellar Expert: PHASELQ-GD7V…). */
@@ -160,37 +218,10 @@ export async function buildClassicTrustlineTransactionXdr(
   walletAddress: string,
   asset: ClassicLiqAsset,
 ): Promise<string> {
-  if (!StrKey.isValidEd25519PublicKey(walletAddress)) {
-    throw new Error("Invalid wallet address.")
-  }
-  const sequenceRes = await fetch(`${HORIZON_URL}/accounts/${encodeURIComponent(walletAddress)}`, {
-    headers: { Accept: "application/json" },
-    cache: "no-store",
-  })
-  if (sequenceRes.status === 404) {
-    throw new Error("Account not found on testnet. Fund with test XLM first.")
-  }
-  if (!sequenceRes.ok) {
-    throw new Error(`Could not read sequence (${sequenceRes.status}).`)
-  }
-  const accountJson = (await sequenceRes.json()) as { sequence?: string }
+  const accountJson = await fetchTestnetHorizonAccountJson(walletAddress)
   const sequence = accountJson.sequence?.trim()
   if (!sequence) throw new Error("Missing account sequence.")
-
-  const source = new Account(walletAddress, sequence)
-  const tx = new TransactionBuilder(source, {
-    fee: BASE_FEE,
-    networkPassphrase: Networks.TESTNET,
-  })
-    .addOperation(
-      Operation.changeTrust({
-        asset: createClassicAsset(asset),
-      }),
-    )
-    .setTimeout(120)
-    .build()
-
-  return tx.toXDR()
+  return buildClassicTrustlineXdrFromSequence(walletAddress, asset, sequence)
 }
 
 export function parseSignedTxXdr(result: unknown): string | null {
