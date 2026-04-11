@@ -1,7 +1,7 @@
 #![no_std]
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Bytes, Env,
-    Map, String, Symbol,
+    Map, String, Symbol, Vec,
 };
 
 /// Errores del protocolo PHASE
@@ -21,6 +21,12 @@ pub enum PhaseError {
     NftNotFound = 11,
     NotNftOwner = 12,
     SelfTransfer = 13,
+    /// SEP-50: `approve` / `transfer_from` sin permiso de operador o allowance.
+    UnauthorizedApprover = 14,
+    NotApproved = 15,
+    InvalidApproval = 16,
+    /// Lista enumerable del dueño desincronizada (solo debería ocurrir con WASM antiguo sin `OwnerTokenList`).
+    InvalidOwnerTokenList = 17,
 }
 
 /// Configuración de una colección creada por un usuario (factory).
@@ -80,6 +86,19 @@ pub enum DataKey {
     ProtocolTreasury,
     /// Recuento de NFTs de utilidad por titular (SEP-41 / Freighter); mantenido en mint y transfer.
     Balance(Address),
+    /// SEP-50 `approve`: un solo `approved` por `token_id` (revocado al transferir).
+    NftApproval(u64),
+    /// SEP-50 `approve_for_all`: `operator` puede actuar hasta ledger (0 = revocado).
+    OperatorForAll(Address, Address),
+    /// Orden estable de `token_id` por titular (enumeración estilo ERC-721 `tokenOfOwnerByIndex`).
+    OwnerTokenList(Address),
+}
+
+/// SEP-50: permiso puntual para `transfer_from`.
+#[contracttype]
+pub struct NftSingleApproval {
+    pub approved: Address,
+    pub live_until_ledger: u32,
 }
 
 #[contracttype]
@@ -188,6 +207,53 @@ fn adjust_nft_balance_count(env: &Env, account: Address, delta: i128) {
     }
 }
 
+fn owner_tokens_push(env: &Env, owner: Address, token_id: u64) {
+    let key = DataKey::OwnerTokenList(owner.clone());
+    let mut v: Vec<u64> = match env.storage().persistent().get(&key) {
+        Some(x) => x,
+        None => Vec::new(env),
+    };
+    v.push_back(token_id);
+    env.storage().persistent().set(&key, &v);
+}
+
+fn owner_tokens_remove(env: &Env, owner: Address, token_id: u64) -> Result<(), PhaseError> {
+    let key = DataKey::OwnerTokenList(owner);
+    let mut v: Vec<u64> = env
+        .storage()
+        .persistent()
+        .get(&key)
+        .ok_or(PhaseError::InvalidOwnerTokenList)?;
+    let len = v.len();
+    if len == 0 {
+        return Err(PhaseError::InvalidOwnerTokenList);
+    }
+    let mut pos: u32 = 0;
+    let mut found: Option<u32> = None;
+    while pos < len {
+        if v.get(pos).ok_or(PhaseError::InvalidOwnerTokenList)? == token_id {
+            found = Some(pos);
+            break;
+        }
+        pos += 1;
+    }
+    let idx = found.ok_or(PhaseError::InvalidOwnerTokenList)?;
+    let last = len - 1;
+    if idx == last {
+        v.pop_back();
+    } else {
+        let last_tok = v.get(last).ok_or(PhaseError::InvalidOwnerTokenList)?;
+        v.set(idx, last_tok);
+        v.pop_back();
+    }
+    if v.is_empty() {
+        env.storage().persistent().remove(&key);
+    } else {
+        env.storage().persistent().set(&key, &v);
+    }
+    Ok(())
+}
+
 /// Convierte `Bytes` acumulados a `String` acotada (límite típico metadatos JSON).
 fn bytes_to_bounded_string(env: &Env, b: &Bytes, max: usize) -> String {
     let n = b.len() as usize;
@@ -266,19 +332,91 @@ fn build_token_image_raw_string(env: &Env, token_id: u64) -> String {
     }
 }
 
-/// Eventos alineados con OpenZeppelin / borrador SEP-50 para indexadores y wallets que lean por eventos.
-fn emit_indexer_mint(env: &Env, to: Address, token_id: u64) {
-    let Ok(tid) = u32::try_from(token_id) else {
-        return;
-    };
-    env.events().publish((symbol_short!("mint"), to), tid);
+/// Convierte `ipfs://<cid>` → `https://ipfs.io/ipfs/<cid>`.
+/// Deja URLs HTTPS y strings vacíos sin cambios.
+fn resolve_image_to_https(env: &Env, raw: &String) -> String {
+    const IPFS_PREFIX: &[u8] = b"ipfs://";
+    const HTTPS_GATEWAY: &[u8] = b"https://ipfs.io/ipfs/";
+
+    let n = raw.len() as usize;
+    if n == 0 {
+        return raw.clone();
+    }
+    let mut buf = [0u8; 512];
+    if n > buf.len() {
+        return raw.clone();
+    }
+    raw.copy_into_slice(&mut buf[..n]);
+
+    if n > IPFS_PREFIX.len() && &buf[..IPFS_PREFIX.len()] == IPFS_PREFIX {
+        let cid_bytes = &buf[IPFS_PREFIX.len()..n];
+        let mut out = Bytes::from_slice(env, HTTPS_GATEWAY);
+        out.extend_from_slice(cid_bytes);
+        let out_len = out.len() as usize;
+        let mut out_buf = [0u8; 512];
+        if out_len > out_buf.len() {
+            return raw.clone();
+        }
+        out.copy_into_slice(&mut out_buf[..out_len]);
+        String::from_bytes(env, &out_buf[..out_len])
+    } else {
+        raw.clone()
+    }
 }
 
+/// Eventos alineados con OpenZeppelin / borrador SEP-50 para indexadores y wallets que lean por eventos.
+/// SEP-50 mint event: topics=["mint", recipient], data=token_id (u64)
+fn emit_indexer_mint(env: &Env, to: Address, token_id: u64) {
+    env.events().publish((symbol_short!("mint"), to), token_id);
+}
+
+/// SEP-50 transfer event: topics=["transfer", from, to], data=token_id (u64)
 fn emit_indexer_transfer(env: &Env, from: Address, to: Address, token_id: u64) {
-    let Ok(tid) = u32::try_from(token_id) else {
-        return;
+    env.events().publish((symbol_short!("transfer"), from, to), token_id);
+}
+
+fn current_ledger(env: &Env) -> u32 {
+    env.ledger().sequence()
+}
+
+fn is_approval_live(live_until: u32, env: &Env) -> bool {
+    live_until > 0 && live_until >= current_ledger(env)
+}
+
+fn get_approved_valid(env: &Env, token_id: u64) -> Option<Address> {
+    let a: NftSingleApproval = env.storage().persistent().get(&DataKey::NftApproval(token_id))?;
+    if is_approval_live(a.live_until_ledger, env) {
+        Some(a.approved)
+    } else {
+        None
+    }
+}
+
+fn is_approved_for_all_valid(env: &Env, owner: Address, operator: Address) -> bool {
+    let until: u32 = match env
+        .storage()
+        .persistent()
+        .get(&DataKey::OperatorForAll(owner.clone(), operator.clone()))
+    {
+        Some(u) => u,
+        None => return false,
     };
-    env.events().publish((symbol_short!("transfer"), from, to), tid);
+    until > 0 && until >= current_ledger(env)
+}
+
+/// SEP-50 approve event: topics=["approve", owner, token_id], data=(approved, live_until_ledger)
+fn emit_sep_approve(env: &Env, owner: Address, token_id: u64, approved: Address, live_until: u32) {
+    env.events().publish(
+        (Symbol::new(env, "approve"), owner, token_id),
+        (approved, live_until),
+    );
+}
+
+fn emit_sep_approve_for_all(env: &Env, owner: Address, operator: Address, live_until: u32) {
+    env.events().publish(
+        (Symbol::new(env, "approve_for_all"), owner),
+        (operator, live_until),
+    );
 }
 
 #[contract]
@@ -472,6 +610,7 @@ impl PhaseProtocol {
 
         env.storage().persistent().set(&DataKey::PhaseCounter, &new_id);
         adjust_nft_balance_count(&env, user.clone(), 1);
+        owner_tokens_push(&env, user.clone(), new_id);
 
         env.events().publish(
             (Symbol::new(&env, "phase_initiated"), user.clone()),
@@ -608,6 +747,7 @@ impl PhaseProtocol {
                 .persistent()
                 .set(&DataKey::PhaseCounter, &new_id);
             adjust_nft_balance_count(&env, user.clone(), 1);
+            owner_tokens_push(&env, user.clone(), new_id);
 
             env.events().publish(
                 (Symbol::new(&env, "phase_nft_minted"), user.clone()),
@@ -617,6 +757,7 @@ impl PhaseProtocol {
                 (Symbol::new(&env, "phase_minted"), user.clone()),
                 (new_id, amount),
             );
+            emit_indexer_mint(&env, user.clone(), new_id);
         }
 
         env.events().publish(
@@ -775,21 +916,32 @@ impl PhaseProtocol {
         env.storage().persistent().get(&key).unwrap_or(0)
     }
 
-    /// SEP-0050 / Freighter: debe fallar (panic host) si el token no existe — no `Option` vacío.
-    pub fn owner_of(env: Env, token_id: u64) -> Address {
+    /// Enumeración por titular (ERC-721 `tokenOfOwnerByIndex`): `index` en `[0, balance(owner))`.
+    /// Orden estable por orden de incorporación a la lista del dueño (mint / recepción por transfer).
+    pub fn token_of_owner_by_index(env: Env, owner: Address, index: u32) -> Option<u64> {
+        let key = DataKey::OwnerTokenList(owner);
+        let v: Vec<u64> = env.storage().persistent().get(&key)?;
+        if index >= v.len() {
+            return None;
+        }
+        v.get(index)
+    }
+
+    /// SEP-0050 / Freighter: `token_id` como `u32` (tipo estándar que usan los clientes).
+    pub fn owner_of(env: Env, token_id: u32) -> Address {
         match env
             .storage()
             .persistent()
-            .get::<DataKey, Address>(&DataKey::TokenOwner(token_id))
+            .get::<DataKey, Address>(&DataKey::TokenOwner(token_id as u64))
         {
             Some(a) => a,
             None => panic!("Phase NFT: invalid token id"),
         }
     }
 
-    /// Algunos clientes invocan `owner_of` con `u32`; misma semántica que `owner_of(u64)`.
-    pub fn owner_of_u32(env: Env, token_id: u32) -> Address {
-        Self::owner_of(env, token_id as u64)
+    /// Alias `u64` para clientes que invocan con entero de 64 bits (backwards compat).
+    pub fn owner_of_u64(env: Env, token_id: u64) -> Address {
+        Self::owner_of(env, token_id as u32)
     }
 
     /// `token_id` → `collection_id` (0 = pool protocolo). Lectura para indexadores y `/api/metadata`.
@@ -824,10 +976,8 @@ impl PhaseProtocol {
         Self::transfer(env, from, to, token_id)
     }
 
-    /// Transfiere el NFT de utilidad PHASE a otra cuenta. El pago en PHASER_LIQ se acuerda P2P;
-    /// esta llamada solo mueve la propiedad on-chain (`TokenOwner` + `UserPhase`).
-    pub fn transfer_phase_nft(env: Env, from: Address, to: Address, token_id: u64) -> Result<(), PhaseError> {
-        from.require_auth();
+    /// Cuerpo común de transferencia de NFT (SEP-50: `transfer` / `transfer_from`); limpia `NftApproval`.
+    fn transfer_phase_nft_body(env: &Env, from: Address, to: Address, token_id: u64) -> Result<(), PhaseError> {
         if from == to {
             return Err(PhaseError::SelfTransfer);
         }
@@ -852,23 +1002,142 @@ impl PhaseProtocol {
         if state.token_id != token_id {
             return Err(PhaseError::NftNotFound);
         }
-        adjust_nft_balance_count(&env, from.clone(), -1);
-        adjust_nft_balance_count(&env, to.clone(), 1);
-        env
-            .storage()
+        owner_tokens_remove(env, from.clone(), token_id)?;
+        adjust_nft_balance_count(env, from.clone(), -1);
+        adjust_nft_balance_count(env, to.clone(), 1);
+        env.storage()
             .persistent()
             .remove(&DataKey::UserPhase(from.clone(), collection_id));
         env.storage().persistent().set(&DataKey::TokenOwner(token_id), &to);
-        env
-            .storage()
+        env.storage()
             .persistent()
             .set(&DataKey::UserPhase(to.clone(), collection_id), &state);
+        env.storage().persistent().remove(&DataKey::NftApproval(token_id));
+        owner_tokens_push(env, to.clone(), token_id);
+        Ok(())
+    }
+
+    /// Transfiere el NFT de utilidad PHASE a otra cuenta. El pago en PHASER_LIQ se acuerda P2P;
+    /// esta llamada solo mueve la propiedad on-chain (`TokenOwner` + `UserPhase`).
+    pub fn transfer_phase_nft(env: Env, from: Address, to: Address, token_id: u64) -> Result<(), PhaseError> {
+        from.require_auth();
+        Self::transfer_phase_nft_body(&env, from.clone(), to.clone(), token_id)?;
         env.events().publish(
             (Symbol::new(&env, "phase_nft_transferred"), from.clone()),
             (token_id, to.clone()),
         );
         emit_indexer_transfer(&env, from, to, token_id);
         Ok(())
+    }
+
+    /// SEP-50: tercero autorizado (`spender`) transfiere en nombre del dueño.
+    pub fn transfer_from(
+        env: Env,
+        spender: Address,
+        from: Address,
+        to: Address,
+        token_id: u64,
+    ) -> Result<(), PhaseError> {
+        spender.require_auth();
+        if from == to {
+            return Err(PhaseError::SelfTransfer);
+        }
+        let owner: Address = env
+            .storage()
+            .persistent()
+            .get(&DataKey::TokenOwner(token_id))
+            .ok_or(PhaseError::NftNotFound)?;
+        if owner != from {
+            return Err(PhaseError::NotNftOwner);
+        }
+        let allowed = spender == from
+            || get_approved_valid(&env, token_id).as_ref() == Some(&spender)
+            || is_approved_for_all_valid(&env, from.clone(), spender.clone());
+        if !allowed {
+            return Err(PhaseError::NotApproved);
+        }
+        Self::transfer_phase_nft_body(&env, from.clone(), to.clone(), token_id)?;
+        env.events().publish(
+            (Symbol::new(&env, "phase_nft_transferred"), from.clone()),
+            (token_id, to.clone()),
+        );
+        emit_indexer_transfer(&env, from, to, token_id);
+        Ok(())
+    }
+
+    /// SEP-50: permiso puntual para `transfer_from`.
+    pub fn approve(
+        env: Env,
+        approver: Address,
+        approved: Address,
+        token_id: u64,
+        live_until_ledger: u32,
+    ) -> Result<(), PhaseError> {
+        approver.require_auth();
+        let owner: Address = Self::owner_of(env.clone(), token_id as u32);
+        let can_approve = approver == owner || is_approved_for_all_valid(&env, owner.clone(), approver.clone());
+        if !can_approve {
+            return Err(PhaseError::UnauthorizedApprover);
+        }
+        if live_until_ledger != 0 && live_until_ledger < current_ledger(&env) {
+            return Err(PhaseError::InvalidApproval);
+        }
+        if live_until_ledger == 0 {
+            env.storage().persistent().remove(&DataKey::NftApproval(token_id));
+        } else {
+            env.storage().persistent().set(
+                &DataKey::NftApproval(token_id),
+                &NftSingleApproval {
+                    approved: approved.clone(),
+                    live_until_ledger,
+                },
+            );
+        }
+        emit_sep_approve(&env, owner, token_id, approved, live_until_ledger);
+        Ok(())
+    }
+
+    /// SEP-50: operador para todos los NFT del `owner`.
+    pub fn approve_for_all(
+        env: Env,
+        owner: Address,
+        operator: Address,
+        live_until_ledger: u32,
+    ) -> Result<(), PhaseError> {
+        owner.require_auth();
+        if live_until_ledger != 0 && live_until_ledger < current_ledger(&env) {
+            return Err(PhaseError::InvalidApproval);
+        }
+        if live_until_ledger == 0 {
+            env.storage()
+                .persistent()
+                .remove(&DataKey::OperatorForAll(owner.clone(), operator.clone()));
+        } else {
+            env.storage().persistent().set(
+                &DataKey::OperatorForAll(owner.clone(), operator.clone()),
+                &live_until_ledger,
+            );
+        }
+        emit_sep_approve_for_all(&env, owner.clone(), operator.clone(), live_until_ledger);
+        Ok(())
+    }
+
+    /// SEP-50: cuenta permitida para `token_id` (expirada ⇒ `None`).
+    pub fn get_approved(env: Env, token_id: u64) -> Option<Address> {
+        if env
+            .storage()
+            .persistent()
+            .get::<DataKey, Address>(&DataKey::TokenOwner(token_id))
+            .is_none()
+        {
+            panic!("Phase NFT: invalid token id");
+        }
+        get_approved_valid(&env, token_id)
+    }
+
+    /// SEP-50: `operator` puede gestionar todos los activos de `owner`.
+    pub fn is_approved_for_all(env: Env, owner: Address, operator: Address) -> bool {
+        is_approved_for_all_valid(&env, owner, operator)
     }
 
     pub fn total_supply(env: Env) -> u64 {
@@ -878,42 +1147,39 @@ impl PhaseProtocol {
             .unwrap_or(0)
     }
 
-    /// URI HTTPS del JSON de metadata (Freighter hace GET → `{ name, description, image }`).
-    /// On-chain usamos `u64` (tooling Soroban); ids que entran en u32 siguen siendo válidos.
-    /// SEP-0050: panic si el token no existe.
-    pub fn token_uri(env: Env, token_id: u64) -> String {
+    /// SEP-0050: URI HTTPS del JSON de metadata. `token_id` como `u32` (estándar Freighter).
+    pub fn token_uri(env: Env, token_id: u32) -> String {
         if env
             .storage()
             .persistent()
-            .get::<DataKey, Address>(&DataKey::TokenOwner(token_id))
+            .get::<DataKey, Address>(&DataKey::TokenOwner(token_id as u64))
             .is_none()
         {
             panic!("Phase NFT: invalid token id");
         }
-        build_metadata_token_uri(&env, token_id)
+        build_metadata_token_uri(&env, token_id as u64)
     }
 
-    /// Alias con `u32` por compatibilidad con clientes que invocan `token_uri` con entero de 32 bits.
-    pub fn token_uri_u32(env: Env, token_id: u32) -> String {
-        Self::token_uri(env, token_id as u64)
+    /// Alias `u64` para backwards compat.
+    pub fn token_uri_u64(env: Env, token_id: u64) -> String {
+        Self::token_uri(env, token_id as u32)
     }
 
-    /// Metadatos como `Map` (claves `name`, `description`, `image`) para simulación / exploradores.
-    /// Alineado con el JSON de `GET /api/metadata/{id}` salvo `image` vacío → el endpoint puede usar OG/site.
-    /// SEP-0050: panic si el token no existe.
-    pub fn token_metadata(env: Env, token_id: u64) -> Map<Symbol, String> {
+    /// SEP-0050: metadatos como `Map<Symbol, String>`. `image` resuelto a HTTPS (ipfs:// → gateway).
+    pub fn token_metadata(env: Env, token_id: u32) -> Map<Symbol, String> {
         if env
             .storage()
             .persistent()
-            .get::<DataKey, Address>(&DataKey::TokenOwner(token_id))
+            .get::<DataKey, Address>(&DataKey::TokenOwner(token_id as u64))
             .is_none()
         {
             panic!("Phase NFT: invalid token id");
         }
-        let name = build_token_display_name(&env, token_id);
-        let phase_level = Self::get_phase_level(env.clone(), token_id);
+        let name = build_token_display_name(&env, token_id as u64);
+        let phase_level = Self::get_phase_level(env.clone(), token_id as u64);
         let description = build_metadata_description_string(&env, phase_level);
-        let image = build_token_image_raw_string(&env, token_id);
+        let raw_image = build_token_image_raw_string(&env, token_id as u64);
+        let image = resolve_image_to_https(&env, &raw_image);
         let mut m = Map::new(&env);
         m.set(Symbol::new(&env, "name"), name);
         m.set(Symbol::new(&env, "description"), description);
@@ -921,8 +1187,9 @@ impl PhaseProtocol {
         m
     }
 
-    pub fn token_metadata_u32(env: Env, token_id: u32) -> Map<Symbol, String> {
-        Self::token_metadata(env, token_id as u64)
+    /// Alias `u64` para backwards compat.
+    pub fn token_metadata_u64(env: Env, token_id: u64) -> Map<Symbol, String> {
+        Self::token_metadata(env, token_id as u32)
     }
 
     pub fn get_energy_level_bp(env: Env, user: Address, collection_id: u64) -> Option<u32> {
