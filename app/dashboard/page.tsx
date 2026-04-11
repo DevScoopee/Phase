@@ -370,6 +370,9 @@ export default function DashboardPage() {
         </span>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <LangToggle variant="phosphor" />
+          <Link href="/explore" className={navLinkClass}>
+            {lang === "es" ? "Explorar" : "Explore"}
+          </Link>
           <Link href="/forge" className={navLinkClass}>
             {n.forge}
           </Link>

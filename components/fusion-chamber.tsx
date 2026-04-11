@@ -1327,6 +1327,9 @@ export function FusionChamber() {
         </span>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <LangToggle variant="phosphor" />
+          <Link href="/explore" className={chamberNavLink} onClick={() => playTacticalUiClick()}>
+            {lang === "es" ? "Explorar" : "Explore"}
+          </Link>
           <Link href="/dashboard" className={chamberNavLink} onClick={() => playTacticalUiClick()}>
             {ch.market}
           </Link>
