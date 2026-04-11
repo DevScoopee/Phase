@@ -170,48 +170,56 @@ export function LiquidityFaucetControl({
     let cancelled = false
     setNftCollectEligibility({ status: "loading" })
     ;(async () => {
+      const c = pickCopy(lang).chamber
+      const maxAttempts = 5
+      const delayMs = 550
       try {
-        const vr = await fetch("/api/phase-nft/verify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            tokenId: freighterNftCollect.tokenId,
-            walletAddress: address,
-          }),
-          cache: "no-store",
-        })
-        const vd = (await vr.json().catch(() => ({}))) as {
-          ok?: boolean
-          owner?: string
-          viewerIsOwner?: boolean
-          code?: string
-          detail?: string
-          error?: string
-        }
-        if (cancelled) return
-        if (!vr.ok) {
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          if (cancelled) return
+          if (attempt > 0) await new Promise((r) => setTimeout(r, delayMs))
+          const vr = await fetch("/api/phase-nft/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              tokenId: freighterNftCollect.tokenId,
+              walletAddress: address,
+            }),
+            cache: "no-store",
+          })
+          const vd = (await vr.json().catch(() => ({}))) as {
+            ok?: boolean
+            owner?: string
+            viewerIsOwner?: boolean
+            code?: string
+            detail?: string
+            error?: string
+          }
+          if (cancelled) return
+          if (vr.ok) {
+            const owner = typeof vd.owner === "string" ? vd.owner.trim() : ""
+            if (!owner) {
+              setNftCollectEligibility({
+                status: "error",
+                message: lang === "es" ? "Sin propietario on-chain." : "Missing on-chain owner.",
+              })
+              return
+            }
+            setNftCollectEligibility({
+              status: "ready",
+              viewerIsOwner: Boolean(vd.viewerIsOwner),
+              onChainOwner: owner,
+            })
+            return
+          }
+          const isNotMinted = vd.code === "NFT_NOT_MINTED"
+          if (isNotMinted && attempt + 1 < maxAttempts) continue
           const msg =
-            vd.code === "NFT_NOT_MINTED"
-              ? lang === "es"
-                ? "Token no encontrado en ledger."
-                : "Token not found on ledger."
+            isNotMinted
+              ? c.rewardsNftCollectVerifyNotMintedYet
               : vd.detail || vd.error || `HTTP ${vr.status}`
           setNftCollectEligibility({ status: "error", message: msg })
           return
         }
-        const owner = typeof vd.owner === "string" ? vd.owner.trim() : ""
-        if (!owner) {
-          setNftCollectEligibility({
-            status: "error",
-            message: lang === "es" ? "Sin propietario on-chain." : "Missing on-chain owner.",
-          })
-          return
-        }
-        setNftCollectEligibility({
-          status: "ready",
-          viewerIsOwner: Boolean(vd.viewerIsOwner),
-          onChainOwner: owner,
-        })
       } catch (e) {
         if (cancelled) return
         const msg = e instanceof Error ? e.message : String(e)

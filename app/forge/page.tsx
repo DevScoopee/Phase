@@ -32,6 +32,7 @@ import { composeImageWithPhaseForgeSeal } from "@/lib/forge-seal-image"
 import { isIpfsUploadConfigured, uploadToIPFS } from "@/lib/ipfs-upload"
 import { cn } from "@/lib/utils"
 import { playTacticalUiClick } from "@/lib/tactical-ui-click"
+import { IpfsDisplayImg } from "@/components/ipfs-display-img"
 import { LiquidityFaucetControl } from "@/components/liquidity-faucet-control"
 import { TacticalCornerSigil } from "@/components/tactical-corner-sigil"
 import {
@@ -43,7 +44,6 @@ import {
   fetchUserPhaseArtifact,
   getTokenBalance,
   getTransactionResult,
-  ipfsOrHttpsDisplayUrl,
   isCreatorAlreadyHasCollectionError,
   liqToStroops,
   sendTransaction,
@@ -243,6 +243,8 @@ export default function ForgePage() {
   const [agentState, setAgentState] = useState<AgentState>("IDLE")
   const [isMintingCollection, setIsMintingCollection] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** Si el error es “ya tenés colección”, guardamos el id para mostrar CTA a /chamber. */
+  const [forgeDuplicateChamberCtaId, setForgeDuplicateChamberCtaId] = useState<number | null>(null)
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [createdId, setCreatedId] = useState<number | null>(null)
   /** Token id del NFT PHASE (`get_user_phase`), no el id de colección — necesario para COLLECT en el panel lateral. */
@@ -271,6 +273,10 @@ export default function ForgePage() {
   const namePriceLocked = (forgeMode === "ORACLE" && agentFlowBusy) || isMintingCollection
 
   const tabSwitchLocked = agentFlowBusy || isMintingCollection
+
+  useEffect(() => {
+    if (!error) setForgeDuplicateChamberCtaId(null)
+  }, [error])
 
   useEffect(() => {
     if (!manualFile) {
@@ -380,11 +386,9 @@ export default function ForgePage() {
   const previewSrc = useMemo(() => {
     if (forgeMode === "MANUAL") {
       if (manualPreviewObjectUrl) return manualPreviewObjectUrl
-      const t = manualImageUrl.trim()
-      if (t) return ipfsOrHttpsDisplayUrl(t)
-      return ""
+      return manualImageUrl.trim()
     }
-    return agentImageUrl ? ipfsOrHttpsDisplayUrl(agentImageUrl) : ""
+    return agentImageUrl?.trim() ?? ""
   }, [forgeMode, manualPreviewObjectUrl, manualImageUrl, agentImageUrl])
 
   const previewLoreText = forgeMode === "MANUAL" ? manualLoreDraft.trim() : (lore ?? "")
@@ -441,21 +445,25 @@ export default function ForgePage() {
       const ff = pickCopy(lang).forge
       const addr = address ?? (await refresh())
       if (!addr) {
+        setForgeDuplicateChamberCtaId(null)
         setError(ff.errors.connectWallet)
         return
       }
       const wrongNet = await freighterTestnetMismatchLabel()
       if (wrongNet) {
+        setForgeDuplicateChamberCtaId(null)
         setError(ff.errors.freighterWrongNetwork.replace("{network}", wrongNet))
         return
       }
       const trimmedName = name.trim()
       if (trimmedName.length < 2) {
+        setForgeDuplicateChamberCtaId(null)
         setError(ff.errors.nameShort)
         return
       }
       const stroops = liqToStroops(priceLiq)
       if (stroops === "0") {
+        setForgeDuplicateChamberCtaId(null)
         setError(ff.errors.priceInvalid)
         return
       }
@@ -467,6 +475,7 @@ export default function ForgePage() {
           const path = `/chamber?collection=${existingId}`
           setShareUrl(`${window.location.origin}${path}`)
         }
+        setForgeDuplicateChamberCtaId(existingId)
         setError(ff.errors.creatorAlreadyHasCollection.replace("{id}", String(existingId)))
         return
       }
@@ -475,6 +484,7 @@ export default function ForgePage() {
       setTickerIdx(0)
 
       try {
+        setForgeDuplicateChamberCtaId(null)
         const txEnvelopeCreate = await buildCreateCollectionTransaction(addr, trimmedName, stroops, finalUri)
         const signCreate = await signTransaction(txEnvelopeCreate, {
           networkPassphrase: NETWORK_PASSPHRASE,
@@ -517,6 +527,7 @@ export default function ForgePage() {
               ? "La colección se creó, pero el auto-mint del NFT falló. Abrí Chamber para mintear manualmente."
               : "Collection created, but NFT auto-mint failed. Open Chamber to mint manually."
           const friendly = mapFusionChamberError(mintErr, ff.errors)
+          setForgeDuplicateChamberCtaId(null)
           setError(`${fallback} ${friendly}`)
         }
 
@@ -537,10 +548,12 @@ export default function ForgePage() {
               const path = `/chamber?collection=${id}`
               setShareUrl(`${window.location.origin}${path}`)
             }
+            setForgeDuplicateChamberCtaId(id)
             setError(ff.errors.creatorAlreadyHasCollection.replace("{id}", String(id)))
             return
           }
         }
+        setForgeDuplicateChamberCtaId(null)
         setError(mapFusionChamberError(e, ff.errors))
       } finally {
         setIsMintingCollection(false)
@@ -1186,6 +1199,17 @@ export default function ForgePage() {
           {error && (
             <div className="forge-error-banner relative z-[1] mt-2 shrink-0 px-2 py-2" role="alert">
               <p className="relative z-[1] text-center text-[10px] font-bold uppercase tracking-wider text-red-200">{error}</p>
+              {forgeDuplicateChamberCtaId != null && (
+                <div className="relative z-[1] mt-2 flex justify-center">
+                  <Link
+                    href={`/chamber?collection=${forgeDuplicateChamberCtaId}`}
+                    onClick={() => playTacticalUiClick()}
+                    className="inline-flex items-center border-2 border-violet-400/60 bg-violet-950/40 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-violet-100 hover:border-violet-300 hover:text-white"
+                  >
+                    {f.openChamberForExistingCollection.replace("{id}", String(forgeDuplicateChamberCtaId))}
+                  </Link>
+                </div>
+              )}
             </div>
           )}
 
@@ -1541,10 +1565,8 @@ export default function ForgePage() {
                   >
                     {previewSrc ? (
                       <div className="phase-artifact-preview-clean tactical-holo-wrap relative z-[3] flex h-full max-h-full w-full max-w-full flex-col items-center justify-center gap-2">
-                        {/* eslint-disable-next-line @next/next/no-img-element -- Pollinations / IPFS URLs */}
-                        <img
-                          src={previewSrc}
-                          alt=""
+                        <IpfsDisplayImg
+                          uri={previewSrc}
                           className={cn(
                             "art-retro-monitor__img tactical-holo-img relative z-[3] max-w-full object-contain",
                             showCollectionLivePanel
@@ -1552,7 +1574,6 @@ export default function ForgePage() {
                               : "max-h-[min(52vh,420px)]",
                           )}
                           loading="lazy"
-                          referrerPolicy="no-referrer"
                         />
                         {previewLoreText ? (
                           <div className="custom-scrollbar max-h-20 w-full max-w-lg overflow-y-auto border border-cyan-500/25 bg-black/50 px-2 py-1.5 text-left">

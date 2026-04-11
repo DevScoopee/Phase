@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { signTransaction } from "@/lib/stellar-wallet-kit"
 import { LangToggle } from "@/components/lang-toggle"
 import { useLang } from "@/components/lang-context"
+import { IpfsDisplayImg } from "@/components/ipfs-display-img"
 import { PhaseProtectedPreview } from "@/components/phase-protected-preview"
 import { TokenIcon } from "@/components/token-icon"
 import { useWallet } from "@/components/wallet-provider"
@@ -21,7 +22,6 @@ import {
   fetchTokenMetadataDisplay,
   fetchTokenUriString,
   getTransactionResult,
-  ipfsOrHttpsDisplayUrl,
   isValidClassicStellarAddress,
   liqToStroops,
   PHASER_LIQ_SYMBOL,
@@ -446,7 +446,7 @@ export default function DashboardPage() {
 
           <ul className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {items.map((c) => {
-              const img = c.imageUri?.trim() ? ipfsOrHttpsDisplayUrl(c.imageUri) : ""
+              const previewUri = c.imageUri?.trim() ?? ""
               const chamberHref = `/chamber?collection=${c.collectionId}`
               const chainVerified = address ? verifiedCollectionIds.has(c.collectionId) : false
               return (
@@ -455,9 +455,9 @@ export default function DashboardPage() {
                   className="flex flex-col border-4 border-double border-cyan-500/40 bg-black/50 shadow-[inset_0_1px_0_rgba(34,211,238,0.12)]"
                 >
                   <div className="border-b border-cyan-500/30">
-                    {img ? (
+                    {previewUri ? (
                       <PhaseProtectedPreview
-                        src={img}
+                        uri={previewUri}
                         chainVerified={chainVerified}
                         viewerAddress={address}
                         labels={previewLabels}
@@ -564,10 +564,8 @@ export default function DashboardPage() {
                     <li key={`${a.collectionId}-${a.tokenId}`} className="border-2 border-cyan-500/45 bg-black/55 p-2.5">
                       <div className="aspect-[4/3] overflow-hidden border border-cyan-500/35 bg-black/50">
                         {a.imageUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={ipfsOrHttpsDisplayUrl(a.imageUrl)}
-                            alt=""
+                          <IpfsDisplayImg
+                            uri={a.imageUrl}
                             className="h-full w-full object-contain"
                             loading="lazy"
                           />
@@ -643,10 +641,8 @@ export default function DashboardPage() {
                       >
                         <div className="aspect-[4/3] overflow-hidden border border-emerald-500/35 bg-black/50">
                           {v.image ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={ipfsOrHttpsDisplayUrl(v.image)}
-                              alt=""
+                            <IpfsDisplayImg
+                              uri={v.image}
                               className="h-full w-full object-contain"
                               loading="lazy"
                             />

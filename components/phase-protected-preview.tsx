@@ -1,5 +1,6 @@
 "use client"
 
+import { IpfsDisplayImg } from "@/components/ipfs-display-img"
 import { cn } from "@/lib/utils"
 import { viewerSignatureShort } from "@/lib/viewer-signature"
 
@@ -10,7 +11,8 @@ export type PhaseProtectedPreviewLabels = {
 }
 
 type Props = {
-  src: string
+  /** `ipfs://…` o HTTPS (p. ej. metadatos / gateway); reintenta gateways si uno falla. */
+  uri: string
   className?: string
   /** Dueño on-chain de la utilidad PHASE para esta colección (wallet conectada). */
   chainVerified: boolean
@@ -23,7 +25,7 @@ type Props = {
  * Mercado / listado: miniatura degradada + scanlines + PENDING_FUSION si no hay prueba on-chain.
  * Si `chainVerified`, muestra arte más nítido y sello de cadena (HD reservado al Reactor).
  */
-export function PhaseProtectedPreview({ src, className, chainVerified, viewerAddress, labels }: Props) {
+export function PhaseProtectedPreview({ uri, className, chainVerified, viewerAddress, labels }: Props) {
   const sig = viewerSignatureShort(viewerAddress)
 
   return (
@@ -33,10 +35,8 @@ export function PhaseProtectedPreview({ src, className, chainVerified, viewerAdd
         className,
       )}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt=""
+      <IpfsDisplayImg
+        uri={uri}
         className={cn(
           "relative z-0 max-h-full max-w-full object-contain p-2 transition-[filter] duration-300",
           chainVerified
@@ -44,7 +44,6 @@ export function PhaseProtectedPreview({ src, className, chainVerified, viewerAdd
             : "phase-protected-preview--lowres max-h-[120px] scale-[1.35] opacity-90 [image-rendering:crisp-edges]",
         )}
         loading="lazy"
-        referrerPolicy="no-referrer"
       />
 
       {!chainVerified && (

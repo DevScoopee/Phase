@@ -30,7 +30,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const wallet = typeof body.walletAddress === "string" ? body.walletAddress.trim() : ""
-  const owner = await fetchTokenOwnerAddress(PHASE_PROTOCOL_CONTRACT, Math.floor(tokenId))
+  const tid = Math.floor(tokenId)
+  /** Soroban RPC puede ir unos cientos de ms detrás del último ledger tras mint/settle. */
+  let owner: string | null = null
+  const backoffMs = [0, 400, 900, 1600]
+  for (const ms of backoffMs) {
+    if (ms > 0) await new Promise((r) => setTimeout(r, ms))
+    owner = await fetchTokenOwnerAddress(PHASE_PROTOCOL_CONTRACT, tid)
+    if (owner) break
+  }
 
   if (!owner) {
     return NextResponse.json(
@@ -40,7 +48,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         detail:
           "No on-chain owner for this token id. The NFT was not minted (e.g. mint tx failed) or the id does not exist on this contract.",
         contractId: PHASE_PROTOCOL_CONTRACT,
-        tokenId: Math.floor(tokenId),
+        tokenId: tid,
       },
       { status: 404 },
     )
@@ -53,6 +61,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     owner,
     viewerIsOwner,
     contractId: PHASE_PROTOCOL_CONTRACT,
-    tokenId: Math.floor(tokenId),
+    tokenId: tid,
   })
 }

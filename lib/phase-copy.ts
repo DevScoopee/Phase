@@ -248,6 +248,8 @@ export const phaseCopy: Record<
       copied: string
       openChamber: string
       collectionIdLabel: string
+      /** CTA bajo error “ya tenés colección” en Forge (`{id}` = número). */
+      openChamberForExistingCollection: string
       registerTitle: string
       tabOracle: string
       tabManual: string
@@ -442,6 +444,8 @@ export const phaseCopy: Record<
       rewardsNftCollectVerifying: string
       /** Título si verify falla; el detalle sale del estado (mensaje API). */
       rewardsNftCollectVerifyFailed: string
+      /** Tras reintentos: `owner_of` sigue vacío (mint aún no visible o id incorrecto). */
+      rewardsNftCollectVerifyNotMintedYet: string
       /** Pedestal: NFT aún en custodia del emisor; ancla al panel lateral COLLECT. */
       pedestalIssuerCustodyHint: string
       pedestalIssuerCustodyScrollLink: string
@@ -458,6 +462,22 @@ export const phaseCopy: Record<
       freighterIndexPingButton: string
       freighterIndexPingToastOk: string
       freighterIndexPingToastFail: string
+      /** Título del bloque violeta (misma familia que COLLECT en recompensas). */
+      freighterTransferPanelTitle: string
+      /** Un clic: lee la dirección G… del portapapeles y abre firma + envío on-chain. */
+      freighterTransferClipboardButton: string
+      /** Texto auxiliar bajo el botón (copiar destino al portapapeles antes). */
+      freighterTransferClipboardBlurb: string
+      /** Mientras la wallet firma o el RPC envía la tx. */
+      freighterTransferSigningLabel: string
+      /** `navigator.clipboard.readText` no disponible o permiso denegado. */
+      freighterTransferClipboardReadFailed: string
+      /** Portapapeles vacío al pulsar transferir. */
+      freighterTransferClipboardEmpty: string
+      freighterTransferToastOk: string
+      freighterTransferToastFail: string
+      freighterTransferInvalidRecipient: string
+      freighterTransferSameAddress: string
       /** Pedestal: comprobar name/symbol/owner_of/token_uri + JSON metadata vs SEP-0050 (Freighter). */
       freighterSep50CheckButton: string
       freighterSep50CheckIntro: string
@@ -630,6 +650,7 @@ export const phaseCopy: Record<
       copy: "Copy link",
       copied: "Copied",
       openChamber: "Open chamber",
+      openChamberForExistingCollection: "Open fusion chamber for collection #{id}",
       collectionIdLabel: "Collection ID",
       registerTitle: "PHASE FORGE — THE ORACLE",
       tabOracle: "[ ORACLE_PROTOCOL ]",
@@ -696,7 +717,8 @@ export const phaseCopy: Record<
         nameShort: "Collection name is too short (min. 2 characters).",
         priceInvalid: "Invalid PHASELQ price.",
         collectionIdRead: "Could not read collection_id on-chain.",
-        creatorAlreadyHasCollection: "This wallet already has a collection (#{id}). Open the chamber for that collection instead of creating a new one.",
+        creatorAlreadyHasCollection:
+          "This wallet already created a PHASE collection (#{id}). You cannot deploy a second one from the same wallet.",
         clipboard: "Could not copy to clipboard.",
         anomalyShort: "Anomaly description is too short (min. 4 characters).",
         agentRequest: "Oracle request failed.",
@@ -829,6 +851,8 @@ export const phaseCopy: Record<
       rewardsNftCollectSending: "SENDING…",
       rewardsNftCollectVerifying: "[ VERIFYING_NFT_ON_LEDGER… ]",
       rewardsNftCollectVerifyFailed: "[ COLLECT · LEDGER CHECK FAILED ]",
+      rewardsNftCollectVerifyNotMintedYet:
+        "This token is not visible on the PHASE contract yet. Open Chamber, press SYNC, wait for the pedestal to load, then tap COLLECT again.",
       pedestalIssuerCustodyHint:
         "Utility NFT is still in issuer custody. Use COLLECT in the right-hand panel (server-signed transfer to your connected wallet).",
       pedestalIssuerCustodyScrollLink: "Jump to COLLECT panel ↓",
@@ -842,10 +866,22 @@ export const phaseCopy: Record<
       freighterManualAddBody:
         "If it does not appear in your wallet UI: look for “add NFT / Soroban contract” (Albedo builds vary) or use Freighter Collectibles → Add manually.",
       freighterManualAddTroubleshoot:
-        "Freighter’s Collectibles flow may rely on its own backend or a public indexer — independent from this app. If Add manually fails, use “Ping Freighter index” below (no-op self-transfer, emits a standard transfer event), wait, then retry. In PHASE, your authoritative list is the dashboard vault (Soroban RPC scan) — no Mercury subscription required for that.",
-      freighterIndexPingButton: "[ PING FREIGHTER INDEX · SELF-TRANSFER ]",
+        "Freighter’s Collectibles flow may rely on its own backend or a public indexer — independent from this app. If Add manually fails, use Ping Freighter index below (no-op self-transfer, emits a standard transfer event), wait, then retry Add manually. To move the NFT to someone else, copy their Stellar G-address to the clipboard, then use the magenta ledger button (no typing in this panel). In PHASE, your authoritative list is the dashboard vault (Soroban RPC scan) — no Mercury subscription required for that.",
+      freighterIndexPingButton: "[ PING FREIGHTER INDEX ]",
       freighterIndexPingToastOk: "Index ping submitted. Wait 1–5 min, then Add Collectible in Freighter again.",
       freighterIndexPingToastFail: "Index ping failed. Check network or try again.",
+      freighterTransferPanelTitle: "COLLECTIBLE · TRANSFER (SIGN IN WALLET)",
+      freighterTransferClipboardButton: "TRANSFER NFT",
+      freighterTransferClipboardBlurb:
+        "Copy the recipient’s Stellar G-address to the clipboard, then tap TRANSFER NFT — your wallet signs the Soroban transfer (same flow style as COLLECT).",
+      freighterTransferSigningLabel: "SIGNING…",
+      freighterTransferClipboardReadFailed: "Could not read the clipboard. Allow paste permission or copy the G-address again.",
+      freighterTransferClipboardEmpty: "Clipboard is empty. Copy the recipient’s G-address first.",
+      freighterTransferToastOk: "NFT transfer submitted. Wait for ledger confirmation.",
+      freighterTransferToastFail: "NFT transfer failed. Check the address, network, and try again.",
+      freighterTransferInvalidRecipient: "Enter a valid Stellar public address (G…, 56 characters).",
+      freighterTransferSameAddress:
+        "Use Ping Freighter index for a self-transfer. Copy a different G-address to the clipboard to move the NFT.",
       freighterSep50CheckButton: "[ CHECK SEP-50 / FREIGHTER READINESS ]",
       freighterSep50CheckIntro:
         "Runs on our server: Soroban name(), symbol(), owner_of, token_uri, then fetches metadata JSON. Freighter still uses its own indexer for auto-list — this only proves the contract + URL match the SEP-0050 draft.",
@@ -1085,6 +1121,7 @@ export const phaseCopy: Record<
       copy: "Copiar enlace",
       copied: "Copiado",
       openChamber: "Abrir cámara",
+      openChamberForExistingCollection: "Abrir cámara de fusión · colección #{id}",
       collectionIdLabel: "ID de colección",
       registerTitle: "PHASE FORGE — THE ORACLE",
       tabOracle: "[ ORACLE_PROTOCOL ]",
@@ -1151,7 +1188,8 @@ export const phaseCopy: Record<
         nameShort: "Nombre de colección demasiado corto (mín. 2 caracteres).",
         priceInvalid: "Precio PHASELQ inválido.",
         collectionIdRead: "No se pudo leer collection_id on-chain.",
-        creatorAlreadyHasCollection: "Esta wallet ya tiene una colección (#{id}). Abre la cámara de esa colección en lugar de crear otra.",
+        creatorAlreadyHasCollection:
+          "Esta wallet ya desplegó una colección PHASE (#{id}). No podés desplegar una segunda desde la misma wallet.",
         clipboard: "No se pudo copiar al portapapeles.",
         anomalyShort: "La descripción de la anomalía es demasiado corta (mín. 4 caracteres).",
         agentRequest: "Falló la petición al Oráculo.",
@@ -1284,6 +1322,8 @@ export const phaseCopy: Record<
       rewardsNftCollectSending: "ENVIANDO…",
       rewardsNftCollectVerifying: "[ VERIFICANDO_NFT_EN_LEDGER… ]",
       rewardsNftCollectVerifyFailed: "[ COLECTAR · FALLO AL VERIFICAR LEDGER ]",
+      rewardsNftCollectVerifyNotMintedYet:
+        "Este token aún no aparece en el contrato PHASE. Abrí Chamber, pulsá SYNC, esperá al pedestal y volvé a COLECTAR.",
       pedestalIssuerCustodyHint:
         "El NFT de utilidad sigue en custodia del emisor. Usá COLECTAR en el panel derecho (transfer firmado por el servidor a tu wallet conectada).",
       pedestalIssuerCustodyScrollLink: "Ir al panel COLECTAR ↓",
@@ -1297,10 +1337,22 @@ export const phaseCopy: Record<
       freighterManualAddBody:
         "Si no aparece en la UI de tu wallet: buscá “añadir NFT / contrato Soroban” (según versión de Albedo) o Freighter → Collectibles → Add manually.",
       freighterManualAddTroubleshoot:
-        "El flujo Collectibles de Freighter puede depender de su propio backend o de un indexador público — ajeno a esta app. Si Add manually falla, usá “Ping índice Freighter” abajo (self-transfer sin efecto, emite evento transfer estándar), esperá y reintentá. En PHASE, la lista autoritativa es la bóveda del dashboard (escaneo RPC Soroban) — no hace falta suscripción a Mercury para eso.",
-      freighterIndexPingButton: "[ PING ÍNDICE FREIGHTER · AUTO-TRANSFER ]",
+        "El flujo Collectibles de Freighter puede depender de su propio backend o de un indexador público — ajeno a esta app. Si Add manually falla, usá Ping índice Freighter abajo (self-transfer sin efecto, emite evento transfer estándar), esperá y reintentá Add manually. Para mover el NFT a otra persona, copiá su dirección G de Stellar al portapapeles y usá el botón magenta de ledger (sin escribir en este panel). En PHASE, la lista autoritativa es la bóveda del dashboard (escaneo RPC Soroban) — no hace falta suscripción a Mercury para eso.",
+      freighterIndexPingButton: "[ PING ÍNDICE FREIGHTER ]",
       freighterIndexPingToastOk: "Ping al índice enviado. Esperá 1–5 min y volvé a Add Collectible en Freighter.",
       freighterIndexPingToastFail: "Falló el ping al índice. Revisá la red o reintentá.",
+      freighterTransferPanelTitle: "COLECTABLE · TRANSFERIR (FIRMAR EN WALLET)",
+      freighterTransferClipboardButton: "TRANSFERIR NFT",
+      freighterTransferClipboardBlurb:
+        "Copiá la dirección G del destinatario al portapapeles y tocá TRANSFERIR NFT — la wallet firma la transferencia Soroban (mismo estilo que COLECTAR).",
+      freighterTransferSigningLabel: "FIRMANDO…",
+      freighterTransferClipboardReadFailed: "No se pudo leer el portapapeles. Permití pegar o volvé a copiar la dirección G.",
+      freighterTransferClipboardEmpty: "El portapapeles está vacío. Copiá primero la dirección G del destinatario.",
+      freighterTransferToastOk: "Transferencia de NFT enviada. Esperá confirmación en el ledger.",
+      freighterTransferToastFail: "Falló la transferencia del NFT. Revisá la dirección, la red y reintentá.",
+      freighterTransferInvalidRecipient: "Ingresá una dirección pública Stellar válida (G…, 56 caracteres).",
+      freighterTransferSameAddress:
+        "Para self-transfer usá Ping índice Freighter. Copiá otra dirección G al portapapeles para mover el NFT.",
       freighterSep50CheckButton: "[ COMPROBAR SEP-50 / FREIGHTER ]",
       freighterSep50CheckIntro:
         "Se ejecuta en nuestro servidor: name(), symbol(), owner_of, token_uri en Soroban y luego el GET del JSON. Freighter sigue usando su propio backend para auto-listar — esto solo confirma que el contrato y la URL encajan con el borrador SEP-0050.",

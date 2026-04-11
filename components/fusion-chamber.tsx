@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation"
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react"
 import { signTransaction } from "@/lib/stellar-wallet-kit"
 import { toast } from "sonner"
+import { IpfsDisplayImg } from "@/components/ipfs-display-img"
 import { ArtistAliasControl } from "@/components/artist-alias-control"
 import { LangToggle } from "@/components/lang-toggle"
 import { useLang } from "@/components/lang-context"
@@ -47,8 +48,8 @@ import {
   getPublicClassicLiqIssuerG,
   getTokenBalance,
   getTransactionResult,
-  ipfsOrHttpsDisplayUrl,
   isAuthentic,
+  isValidClassicStellarAddress,
   isLowEnergy,
   isPhaseInsufficientBalanceError,
   isPhaseUnauthorizedError,
@@ -59,6 +60,17 @@ import {
   stroopsToLiqDisplay,
 } from "@/lib/phase-protocol"
 import { PhaseArtifactVisualizer, type ArtifactVerificationMode } from "@/components/phase-artifact-visualizer"
+
+/** Primer `G…` válido en el texto del portapapeles (una línea o varias). */
+function recipientGFromClipboardText(text: string, isValidG: (addr: string) => boolean): string {
+  const u = text.trim()
+  if (isValidG(u)) return u
+  for (const line of u.split("\n")) {
+    const t = line.trim()
+    if (isValidG(t)) return t
+  }
+  return ""
+}
 import { TacticalCornerSigil } from "@/components/tactical-corner-sigil"
 import { playTacticalUiClick } from "@/lib/tactical-ui-click"
 import { viewerSignatureShort } from "@/lib/viewer-signature"
@@ -105,9 +117,9 @@ function ChamberLogStream({
   )
 }
 
-function ChamberCatalogThumb({ collectionId, src }: { collectionId: number; src: string }) {
+function ChamberCatalogThumb({ collectionId, uri }: { collectionId: number; uri: string }) {
   const [broken, setBroken] = useState(false)
-  if (!src || broken) {
+  if (!uri.trim() || broken) {
     return (
       <span className="px-1 text-center text-[7px] font-bold uppercase leading-tight text-cyan-500/80">
         #{collectionId}
@@ -115,14 +127,11 @@ function ChamberCatalogThumb({ collectionId, src }: { collectionId: number; src:
     )
   }
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={src}
-      alt=""
+    <IpfsDisplayImg
+      uri={uri}
       className="h-full w-full object-cover"
       loading="lazy"
-      referrerPolicy="no-referrer"
-      onError={() => setBroken(true)}
+      onExhausted={() => setBroken(true)}
     />
   )
 }
@@ -216,6 +225,7 @@ export function FusionChamber() {
   const [tokenUriLookupDone, setTokenUriLookupDone] = useState(false)
   const [tokenUriExists, setTokenUriExists] = useState(false)
   const [freighterIndexPingBusy, setFreighterIndexPingBusy] = useState(false)
+  const [freighterTransferBusy, setFreighterTransferBusy] = useState(false)
   const [freighterSep50Busy, setFreighterSep50Busy] = useState(false)
   const [freighterSep50Report, setFreighterSep50Report] = useState<string | null>(null)
   const [collectionSupply, setCollectionSupply] = useState<{ minted: number; cap: number } | null>(null)
@@ -357,13 +367,6 @@ export function FusionChamber() {
     if (fromCol.length > 0) return fromCol
     return artifactImageFromUri?.trim() ?? ""
   }, [collectionInfo?.imageUri, artifactImageFromUri])
-
-  /** URL lista para `<img>` (gateway si es ipfs://). */
-  const collectionPreviewImgSrc = useMemo(() => {
-    const raw = collectionInfo?.imageUri?.trim() ?? ""
-    if (!raw) return ""
-    return ipfsOrHttpsDisplayUrl(raw)
-  }, [collectionInfo?.imageUri])
 
   const [communityCatalog, setCommunityCatalog] = useState<CollectionInfo[]>([])
   const [catalogLoadState, setCatalogLoadState] = useState<"idle" | "loading" | "done">("idle")
@@ -1201,6 +1204,76 @@ export function FusionChamber() {
     }
   }, [address, nftNumericTokenIdStr, freighterIndexPingBusy, lang])
 
+  const runNftTransferToRecipient = useCallback(
+    async (clipboardOrPastedText: string) => {
+      const c = pickCopy(lang).chamber
+      const g = address?.trim()
+      const toRaw = recipientGFromClipboardText(clipboardOrPastedText, isValidClassicStellarAddress)
+      if (!g || !nftNumericTokenIdStr || freighterTransferBusy) return
+      if (!toRaw) {
+        toast.error(c.freighterTransferInvalidRecipient)
+        return
+      }
+      let fromG = ""
+      let toG = ""
+      try {
+        fromG = extractBaseAddress(g).trim().toUpperCase()
+        toG = extractBaseAddress(toRaw).trim().toUpperCase()
+      } catch {
+        toast.error(c.freighterTransferInvalidRecipient)
+        return
+      }
+      if (fromG === toG) {
+        toast.error(c.freighterTransferSameAddress)
+        return
+      }
+      const tid = Math.floor(Number(nftNumericTokenIdStr))
+      if (!Number.isFinite(tid) || tid <= 0) return
+      setFreighterTransferBusy(true)
+      try {
+        const txEnvelope = await buildTransferPhaseNftTransaction(g, toRaw, tid)
+        const signResult = await signTransaction(txEnvelope, {
+          networkPassphrase: NETWORK_PASSPHRASE,
+          address: g,
+        })
+        if (signResult.error) {
+          throw new Error(signResult.error.message || "SIGN_FAIL")
+        }
+        const signedXdr =
+          (signResult as { signedTxXdr?: string }).signedTxXdr ||
+          (signResult as { signedTransaction?: string }).signedTransaction
+        if (!signedXdr) throw new Error("NO_SIGNED_XDR")
+        const sendResult = await sendTransaction(signedXdr)
+        await getTransactionResult(sendResult.hash as string)
+        toast.success(c.freighterTransferToastOk)
+        await refreshStatus().catch(() => {})
+      } catch (e) {
+        console.error(e)
+        toast.error(c.freighterTransferToastFail)
+      } finally {
+        setFreighterTransferBusy(false)
+      }
+    },
+    [address, nftNumericTokenIdStr, freighterTransferBusy, lang, refreshStatus],
+  )
+
+  const handleFreighterTransferFromClipboard = useCallback(async () => {
+    const c = pickCopy(lang).chamber
+    if (!address?.trim() || !nftNumericTokenIdStr || freighterTransferBusy) return
+    let raw = ""
+    try {
+      raw = await navigator.clipboard.readText()
+    } catch {
+      toast.error(c.freighterTransferClipboardReadFailed)
+      return
+    }
+    if (!raw.trim()) {
+      toast.error(c.freighterTransferClipboardEmpty)
+      return
+    }
+    await runNftTransferToRecipient(raw)
+  }, [address, nftNumericTokenIdStr, freighterTransferBusy, lang, runNftTransferToRecipient])
+
   const handleFreighterSep50Check = useCallback(async () => {
     const chCopy = pickCopy(lang).chamber
     if (!nftNumericTokenIdStr || freighterSep50Busy) return
@@ -1668,9 +1741,7 @@ export function FusionChamber() {
                       energyLevelBp={energyLevelBp ?? 10_000}
                       collectionTitle={artifactCollectionTitle}
                       collectionDisplayName={artifactPublicCollectionName}
-                      imageUrl={
-                        effectiveArtifactImage ? ipfsOrHttpsDisplayUrl(effectiveArtifactImage) : undefined
-                      }
+                      imageUrl={effectiveArtifactImage?.trim() ? effectiveArtifactImage.trim() : undefined}
                       labels={ch.artifact}
                       viewerAddress={address}
                       isOwner={isOwnerOnChain}
@@ -1800,8 +1871,8 @@ export function FusionChamber() {
                               ? "Aun si Freighter da error, ya puedes intentar Add manually con estos datos. Si falla, pulsa SYNC y reintenta en 30-90s."
                               : "Even if Freighter errors, you can already try Add manually using these values. If it fails, press SYNC and retry in 30-90s."
                             : lang === "es"
-                              ? "Freighter puede usar su propio backend al añadir coleccionables. Si falla, usá el botón naranja “Ping índice”, esperá y reintentá Add manually. Tu lista oficial en PHASE está en el dashboard (bóveda RPC)."
-                              : "Freighter may use its own backend when adding collectibles. If it fails, use the amber “Ping Freighter index” button, wait, then retry Add manually. Your authoritative PHASE list is the dashboard vault (RPC scan)."}
+                              ? "Freighter puede usar su propio backend al añadir coleccionables. Si falla, usá el botón naranja Ping índice (self-transfer); para enviar el NFT a otra persona copiá su G… al portapapeles y usá el botón magenta. Tu lista oficial en PHASE está en el dashboard (bóveda RPC)."
+                              : "Freighter may use its own backend when adding collectibles. If it fails, use the amber Ping index button (self-transfer); to send the NFT to someone else copy their G-address to the clipboard, then use the magenta button. Your authoritative PHASE list is the dashboard vault (RPC scan)."}
                         </p>
                       ) : (
                         <p className="mt-2.5 rounded border border-cyan-500/20 bg-black/25 px-2.5 py-2.5 text-[11px] leading-relaxed text-cyan-100/80">
@@ -1838,17 +1909,33 @@ export function FusionChamber() {
                           {ch.freighterCopyBundleButton}
                         </button>
                         {isOwnerOnChain ? (
-                          <button
-                            type="button"
-                            disabled={!nftNumericTokenIdStr || freighterIndexPingBusy}
-                            onClick={() => {
-                              playTacticalUiClick()
-                              void handleFreighterIndexPing()
-                            }}
-                            className="tactical-interactive-glitch w-full border border-amber-500/50 bg-amber-950/25 py-2 text-[10px] font-bold uppercase tracking-widest text-amber-100 hover:border-amber-300 disabled:opacity-45"
-                          >
-                            {freighterIndexPingBusy ? "…" : ch.freighterIndexPingButton}
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              disabled={!nftNumericTokenIdStr || freighterIndexPingBusy}
+                              onClick={() => {
+                                playTacticalUiClick()
+                                void handleFreighterIndexPing()
+                              }}
+                              className="tactical-interactive-glitch w-full border border-amber-500/50 bg-amber-950/25 py-2 text-[10px] font-bold uppercase tracking-widest text-amber-100 hover:border-amber-300 disabled:opacity-45"
+                            >
+                              {freighterIndexPingBusy ? "…" : ch.freighterIndexPingButton}
+                            </button>
+                            <div className="space-y-2 rounded border border-fuchsia-500/35 bg-fuchsia-950/15 px-2 py-2">
+                              <button
+                                type="button"
+                                disabled={!nftNumericTokenIdStr || freighterTransferBusy}
+                                onClick={() => {
+                                  playTacticalUiClick()
+                                  void handleFreighterTransferFromClipboard()
+                                }}
+                                className="tactical-interactive-glitch w-full border border-fuchsia-400/55 bg-fuchsia-950/30 py-2.5 text-[10px] font-bold uppercase tracking-widest text-fuchsia-100 hover:border-fuchsia-300 disabled:opacity-45"
+                              >
+                                {freighterTransferBusy ? ch.freighterTransferSigningLabel : ch.freighterTransferClipboardButton}
+                              </button>
+                              <p className="text-left text-[9px] leading-relaxed text-fuchsia-200/80">{ch.freighterTransferClipboardBlurb}</p>
+                            </div>
+                          </>
                         ) : null}
                         <div className="rounded border border-cyan-500/20 bg-black/35 px-2 py-1.5">
                           <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-300/85">
@@ -1936,7 +2023,7 @@ export function FusionChamber() {
                     energyLevelBp={0}
                     collectionTitle={artifactCollectionTitle}
                     collectionDisplayName={artifactPublicCollectionName}
-                    imageUrl={collectionPreviewImgSrc || undefined}
+                    imageUrl={collectionInfo?.imageUri?.trim() || undefined}
                     labels={ch.artifact}
                     viewerAddress={address}
                     supplyMinted={collectionSupply?.minted ?? null}
@@ -2180,7 +2267,7 @@ export function FusionChamber() {
                   .sort((a, b) => a.collectionId - b.collectionId)
                   .map((c) => {
                     const active = c.collectionId === collectionId
-                    const thumb = c.imageUri?.trim() ? ipfsOrHttpsDisplayUrl(c.imageUri) : ""
+                    const thumbUri = c.imageUri?.trim() ?? ""
                     return (
                       <Link
                         key={c.collectionId}
@@ -2198,8 +2285,8 @@ export function FusionChamber() {
                             "flex aspect-square w-full shrink-0 items-center justify-center overflow-hidden border-b border-foreground/15 bg-[oklch(0.08_0.02_220)]",
                           )}
                         >
-                          {thumb ? (
-                            <ChamberCatalogThumb collectionId={c.collectionId} src={thumb} />
+                          {thumbUri ? (
+                            <ChamberCatalogThumb collectionId={c.collectionId} uri={thumbUri} />
                           ) : (
                             <span className="px-1 text-center text-[7px] uppercase leading-tight text-muted-foreground/45">
                               #{c.collectionId}

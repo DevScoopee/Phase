@@ -3,7 +3,7 @@ import {
   fetchPhaseLevelForToken,
   fetchTokenCollectionIdForToken,
   fetchTokenOwnerAddress,
-  ipfsOrHttpsDisplayUrl,
+  extractIpfsGatewaySubpath,
 } from "@/lib/phase-protocol"
 
 export function publicPhaseSiteBaseUrl(): string {
@@ -24,7 +24,11 @@ function resolvePublicImageUri(raw: string, base: string): string {
   const t = raw.trim()
   if (!t) return defaultCollectionImage(base)
   if (t.startsWith("/")) return `${base}${t}`
-  return ipfsOrHttpsDisplayUrl(t)
+  // For IPFS URIs, proxy through our own server so Freighter (browser extension)
+  // can load the image without CORS issues and with gateway retry logic.
+  const ipfsPath = extractIpfsGatewaySubpath(t)
+  if (ipfsPath) return `${base}/api/ipfs/${ipfsPath}`
+  return t
 }
 
 export type PhaseTokenMetadataJson = {

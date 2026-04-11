@@ -1,10 +1,11 @@
 "use client"
 
 import type { ArtifactLabelsCopy } from "@/lib/phase-copy"
+import { ipfsHttpsGatewayUrls } from "@/lib/phase-protocol"
 import { viewerSignatureShort } from "@/lib/viewer-signature"
 import { cn } from "@/lib/utils"
 import { createPortal } from "react-dom"
-import { useCallback, useEffect, useId, useState } from "react"
+import { useCallback, useEffect, useId, useMemo, useState } from "react"
 
 export type ArtifactVerificationMode = "locked" | "verifying" | "verified"
 
@@ -223,10 +224,14 @@ export function PhaseArtifactVisualizer({
       : 1
   const supplyAlert = supplyCap != null && supplyCap > 0 && supplyMinted != null && supplyRemainingRatio < 0.1
 
-  const trimmedImg = imageUrl?.trim() ?? ""
-  const protectArt = Boolean(trimmedImg) && (!isVerified || authenticityPending || !isOwner)
+  const rawImgUri = imageUrl?.trim() ?? ""
+  const imgCandidates = useMemo(() => ipfsHttpsGatewayUrls(rawImgUri), [rawImgUri])
+  const [gwIdx, setGwIdx] = useState(0)
+  const activeDisplaySrc = imgCandidates[gwIdx] ?? ""
+
+  const protectArt = Boolean(rawImgUri) && (!isVerified || authenticityPending || !isOwner)
   const ownerUnlocked = isVerified && isOwner && !authenticityPending
-  const eligibleForDecrypt = ownerUnlocked && Boolean(trimmedImg)
+  const eligibleForDecrypt = ownerUnlocked && Boolean(rawImgUri)
 
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -238,14 +243,15 @@ export function PhaseArtifactVisualizer({
   const lightboxTitleId = useId()
 
   useEffect(() => {
+    setGwIdx(0)
     setMainImgFailed(false)
-  }, [trimmedImg])
+  }, [rawImgUri])
 
-  const shouldUseBakedWatermark = Boolean(trimmedImg) && protectArt && !ownerUnlocked
+  const shouldUseBakedWatermark = Boolean(rawImgUri) && protectArt && !ownerUnlocked
 
   useEffect(() => {
     let cancelled = false
-    if (!shouldUseBakedWatermark || !trimmedImg) {
+    if (!shouldUseBakedWatermark || !rawImgUri) {
       setWatermarkedImgSrc(null)
       setWatermarkBusy(false)
       return
@@ -253,20 +259,38 @@ export function PhaseArtifactVisualizer({
     setWatermarkBusy(true)
     setWatermarkedImgSrc(null)
     const watermarkText = authenticityPending ? "PHASE // OWNERSHIP_PENDING" : "PHASE // PREVIEW_ONLY"
-    void bakeWatermarkIntoImageDataUrl(trimmedImg, watermarkText)
-      .then((dataUrl) => {
-        if (!cancelled) setWatermarkedImgSrc(dataUrl)
-      })
-      .catch(() => {
-        if (!cancelled) setWatermarkedImgSrc(trimmedImg)
-      })
-      .finally(() => {
+    const cand = ipfsHttpsGatewayUrls(rawImgUri)
+    void (async () => {
+      try {
+        for (const u of cand) {
+          if (cancelled) return
+          try {
+            const res = await fetch(u)
+            if (!res.ok) continue
+            const blob = await res.blob()
+            const objectUrl = URL.createObjectURL(blob)
+            try {
+              const dataUrl = await bakeWatermarkIntoImageDataUrl(objectUrl, watermarkText)
+              if (!cancelled) setWatermarkedImgSrc(dataUrl)
+              return
+            } catch {
+              /* try next gateway */
+            } finally {
+              URL.revokeObjectURL(objectUrl)
+            }
+          } catch {
+            /* try next gateway */
+          }
+        }
+        if (!cancelled) setWatermarkedImgSrc(cand[0] ?? rawImgUri)
+      } finally {
         if (!cancelled) setWatermarkBusy(false)
-      })
+      }
+    })()
     return () => {
       cancelled = true
     }
-  }, [authenticityPending, shouldUseBakedWatermark, trimmedImg])
+  }, [authenticityPending, shouldUseBakedWatermark, rawImgUri])
 
   useEffect(() => {
     if (!eligibleForDecrypt) {
@@ -276,7 +300,7 @@ export function PhaseArtifactVisualizer({
     setDecrypting(true)
     const t = window.setTimeout(() => setDecrypting(false), 1500)
     return () => window.clearTimeout(t)
-  }, [eligibleForDecrypt, trimmedImg])
+  }, [eligibleForDecrypt, rawImgUri])
 
   useEffect(() => {
     setMounted(true)
@@ -318,12 +342,12 @@ export function PhaseArtifactVisualizer({
       : "border-orange-500/40 bg-orange-950/45 text-orange-200/90"
     : "border-orange-500/35 bg-orange-950/40 text-orange-200/90"
 
-  const showArtFirst = isRestricted && Boolean(trimmedImg)
-  const renderedImgSrc = shouldUseBakedWatermark ? watermarkedImgSrc : trimmedImg
+  const showArtFirst = isRestricted && Boolean(rawImgUri)
+  const renderedImgSrc = shouldUseBakedWatermark ? watermarkedImgSrc : activeDisplaySrc
 
-  const usePixelTreatment = Boolean(trimmedImg) && !isVerified
+  const usePixelTreatment = Boolean(rawImgUri) && !isVerified
   const useBlurOnArt =
-    Boolean(trimmedImg) && isVerified && (!isOwner || authenticityPending)
+    Boolean(rawImgUri) && isVerified && (!isOwner || authenticityPending)
 
   const holoBlock = (
     <div className="relative z-[2] w-full">
@@ -333,7 +357,7 @@ export function PhaseArtifactVisualizer({
           compact
             ? "max-w-[min(100%,28rem)] min-h-[190px] max-h-[300px] px-2 py-2 sm:min-h-[210px] sm:max-h-[320px] sm:px-3.5 sm:py-3"
             : "min-h-[min(48vw,260px)] max-h-[min(62svh,520px)] sm:min-h-[280px] sm:max-h-[min(58svh,540px)]",
-          !trimmedImg && "min-h-[72px] max-h-[120px]",
+          !rawImgUri && "min-h-[72px] max-h-[120px]",
           (isRestricted || protectArt || (eligibleForDecrypt && decrypting)) && "phase-artifact-monitor--locked",
           ownerUnlocked && "border-cyan-500/45",
           protectArt && !ownerUnlocked && "border-orange-500/35",
@@ -370,7 +394,10 @@ export function PhaseArtifactVisualizer({
                 )}
                 loading="lazy"
                 referrerPolicy="no-referrer"
-                onError={() => setMainImgFailed(true)}
+                onError={() => {
+                  if (gwIdx + 1 < imgCandidates.length) setGwIdx((i) => i + 1)
+                  else setMainImgFailed(true)
+                }}
               />
               {eligibleForDecrypt && decrypting && (
                 <div

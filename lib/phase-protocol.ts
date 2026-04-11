@@ -1480,15 +1480,69 @@ export function validateFinalContractImageUri(
   return base
 }
 
-/** Vista previa en `<img>`: convierte `ipfs://CID/...` a gateway HTTPS. */
-export function ipfsOrHttpsDisplayUrl(uri: string): string {
-  const t = uri.trim()
-  if (!t) return ""
-  if (/^ipfs:\/\//i.test(t)) {
-    const path = t.replace(/^ipfs:\/\//i, "").replace(/^\/+/, "")
-    return `https://ipfs.io/ipfs/${path}`
+const DEFAULT_IPFS_GATEWAY_BASES: readonly string[] = [
+  "https://dweb.link/ipfs",
+  "https://w3s.link/ipfs",
+  "https://ipfs.io/ipfs",
+]
+
+function normalizeOptionalGatewayBase(raw: string): string {
+  let t = raw.trim().replace(/\/+$/, "")
+  if (!t || !/^https?:\/\//i.test(t)) return ""
+  if (!/\/ipfs$/i.test(t)) t = `${t}/ipfs`
+  return t.replace(/\/+$/, "")
+}
+
+function ipfsGatewayBasesOrdered(): string[] {
+  const bases: string[] = []
+  const env =
+    typeof process !== "undefined" ? process.env.NEXT_PUBLIC_PHASE_IPFS_GATEWAY?.trim() : undefined
+  const primary = env ? normalizeOptionalGatewayBase(env) : ""
+  if (primary) bases.push(primary)
+  for (const b of DEFAULT_IPFS_GATEWAY_BASES) {
+    if (!bases.includes(b)) bases.push(b)
   }
-  return t
+  return bases
+}
+
+/**
+ * Subruta `CID/...` tras `ipfs://` o tras `/ipfs/` en una URL HTTPS de gateway.
+ * Sirve para rehidratar URLs cuando un gateway público falla en el navegador.
+ */
+export function extractIpfsGatewaySubpath(uri: string): string | null {
+  const t = uri.trim()
+  if (!t) return null
+  if (/^ipfs:\/\//i.test(t)) {
+    const rest = t.replace(/^ipfs:\/\//i, "").replace(/^\/+/, "")
+    return rest.length > 0 ? rest : null
+  }
+  const base = t.split("?")[0] ?? t
+  const at = base.toLowerCase().indexOf("/ipfs/")
+  if (at < 0) return null
+  const sub = base.slice(at + "/ipfs/".length)
+  return sub.length > 0 ? sub : null
+}
+
+/** Lista de URLs HTTPS para `<img src>` (reintento gateway si la primera cae). */
+export function ipfsHttpsGatewayUrls(uri: string): string[] {
+  const t = uri.trim()
+  if (!t) return []
+  const ipfsPath = extractIpfsGatewaySubpath(t)
+  if (ipfsPath) {
+    const out: string[] = []
+    for (const b of ipfsGatewayBasesOrdered()) {
+      const u = `${b}/${ipfsPath}`
+      if (!out.includes(u)) out.push(u)
+    }
+    return out
+  }
+  return [t]
+}
+
+/** Primera URL de `ipfsHttpsGatewayUrls` (compat con llamadas existentes). */
+export function ipfsOrHttpsDisplayUrl(uri: string): string {
+  const list = ipfsHttpsGatewayUrls(uri)
+  return list[0] ?? ""
 }
 
 export async function fetchTotalCollections(): Promise<number> {
