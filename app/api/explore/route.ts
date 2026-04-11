@@ -57,7 +57,13 @@ export async function GET(request: NextRequest) {
   const page = Math.max(1, parseInt(request.nextUrl.searchParams.get("page") ?? "1", 10))
   const perPage = Math.min(50, Math.max(1, parseInt(request.nextUrl.searchParams.get("perPage") ?? "24", 10)))
 
-  const total = await fetchPhaseProtocolTotalSupply(contractId)
+  const scanCap = Math.min(
+    500,
+    Math.max(1, parseInt(process.env.PHASE_EXPLORE_SCAN_CAP ?? "500", 10)),
+  )
+
+  const rawTotal = await fetchPhaseProtocolTotalSupply(contractId)
+  const total = Math.min(rawTotal, scanCap)
   if (total <= 0) {
     return NextResponse.json(
       { items: [] as ExploreItem[], total: 0, page, perPage },
@@ -65,11 +71,16 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  // Scan all token IDs concurrently to find those with an owner
+  // Scan all token IDs concurrently to find those with an owner.
+  // Each call is individually bounded by the RPC timeout inside fetchTokenOwnerAddress.
   const ids = Array.from({ length: total }, (_, i) => i + 1)
   const owners = await mapConcurrent(ids, 12, async (id) => {
-    const owner = await fetchTokenOwnerAddress(contractId, id)
-    return owner ? { id, owner } : null
+    try {
+      const owner = await fetchTokenOwnerAddress(contractId, id)
+      return owner ? { id, owner } : null
+    } catch {
+      return null
+    }
   })
   const found = owners.filter((x): x is { id: number; owner: string } => x !== null)
 

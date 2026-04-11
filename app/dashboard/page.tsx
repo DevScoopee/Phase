@@ -336,7 +336,7 @@ export default function DashboardPage() {
         (signResult as { signedTransaction?: string }).signedTransaction
       if (!signedXdr) throw new Error("NO_SIGNED_XDR")
       const sendResult = await sendTransaction(signedXdr)
-      await getTransactionResult(sendResult.hash as string)
+      if (sendResult.hash) await getTransactionResult(sendResult.hash as string)
       await load()
       await loadListings()
       await loadVault()

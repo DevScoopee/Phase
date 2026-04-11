@@ -278,6 +278,28 @@ export default function ForgePage() {
     if (!error) setForgeDuplicateChamberCtaId(null)
   }, [error])
 
+  // Pre-detect existing collection as soon as a wallet connects — avoids letting the
+  // user fill the whole form before hitting the CreatorAlreadyHasCollection contract error.
+  useEffect(() => {
+    const g = address?.trim()
+    setCreatedId(null)
+    setShareUrl(null)
+    setForgeDuplicateChamberCtaId(null)
+    if (!g) return
+    let cancelled = false
+    void fetchCreatorCollectionId(g).then((id) => {
+      if (cancelled || id == null) return
+      setCreatedId(id)
+      setForgeDuplicateChamberCtaId(id)
+      if (typeof window !== "undefined") {
+        setShareUrl(`${window.location.origin}/chamber?collection=${id}`)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [address])
+
   useEffect(() => {
     if (!manualFile) {
       setManualPreviewObjectUrl(null)
