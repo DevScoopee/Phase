@@ -10,8 +10,9 @@ export type DocsLinkItem = {
 export type DocsBlock =
   | { type: "p"; text: string }
   | { type: "ul"; items: string[] }
-  /** Lista de hipervínculos (internos si href empieza por /, externos en nueva pestaña). */
   | { type: "links"; intro?: string; items: DocsLinkItem[] }
+  | { type: "table"; headers: string[]; rows: string[][] }
+  | { type: "code"; text: string; label?: string }
 
 export type DocsSection = {
   id: string
@@ -26,205 +27,300 @@ export type ProjectDocsPage = {
   sections: DocsSection[]
 }
 
+const X402_FLOW_DIAGRAM = `
+  Browser (wallet)               Next.js Server              Stellar Testnet
+  ─────────────────              ──────────────              ───────────────
+        │                               │                           │
+        │  POST /api/forge-agent        │                           │
+        │  { prompt }                   │                           │
+        │ ─────────────────────────────▶│                           │
+        │                               │                           │
+        │◀── HTTP 402 ─────────────────│                           │
+        │    { amount, token, network } │                           │
+        │                               │                           │
+        │  User signs Soroban tx        │                           │
+        │  (PHASELQ transfer)           │                           │
+        │ ──────────────────────────────────────────────────────────▶
+        │                               │                    ledger confirms
+        │  POST /api/forge-agent        │                           │
+        │  { prompt, txHash }           │                           │
+        │ ─────────────────────────────▶│                           │
+        │                               │  verify tx on RPC ───────▶
+        │                               │◀── owner + amount ────────
+        │                               │                           │
+        │                               │  Gemini → lore            │
+        │                               │  Nano Banana → image      │
+        │                               │  Pinata → IPFS seal       │
+        │                               │  initiate_phase ──────────▶
+        │                               │◀── token_id ──────────────
+        │◀── artifact + token_id ──────│                           │
+`.trimStart()
+
+const NFT_LIFECYCLE_DIAGRAM = `
+  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
+  │ REGISTER │──▶│   PAY    │──▶│  VERIFY  │──▶│ GENERATE │──▶│   MINT   │
+  │collection│   │ PHASELQ  │   │  on-chain│   │ AI + IPFS│   │ on-chain │
+  └──────────┘   └──────────┘   └──────────┘   └──────────┘   └──────────┘
+   create_        user signs      server reads    Gemini +       initiate_
+   collection     Soroban tx      ledger proof    Pinata seal    phase
+   (Soroban)      in wallet       via RPC         to IPFS        (Soroban)
+`.trimStart()
+
+const INDEXING_DIAGRAM = `
+  wallet address
+       │
+       ├── Mercury JWT set?
+       │         │
+       │        YES ──▶  Mercury Classic REST
+       │         │       (contract events → ms resolution)
+       │         │
+       │        NO  ──▶  concurrent owner_of() RPC scan
+       │                 (bounded by PHASE_EXPLORE_SCAN_CAP)
+       │
+       └──▶ NFT list for Dashboard / Vault
+`.trimStart()
+
 const projectDocs: Record<LandingLang, ProjectDocsPage> = {
   es: {
     pageTitle: "Documentación PHASE",
     pageSubtitle:
-      "PHASE (P H A S E   P R O T O C O L) es una app web cyber-brutalista para crear colecciones on-chain, mercado, forja y cámara de fusión en Soroban testnet con PHASELQ y flujos x402. Incluye activos de marca, contratos de referencia y flujos detallados.",
+      "Cómo funciona PHASE Protocol: x402 como paywall on-chain, creación de NFTs en Soroban, flujo de pago atómico y recompensas en PHASELQ.",
     tocLabel: "Índice",
     sections: [
       {
         id: "overview",
-        title: "Qué es el proyecto",
+        title: "Qué es PHASE",
         blocks: [
           {
             type: "p",
-            text: "PHASE conecta tres piezas: una landing de presentación, un mercado donde se ven colecciones creadas por la comunidad, una forja donde el creador registra nombre, precio en PHASELQ e imagen del artefacto, y una cámara de fusión donde el usuario conecta Freighter, paga el precio de la colección y el contrato Soroban actualiza el estado y puede acuñar un NFT de utilidad tipo SEP-20 asociado a esa fase.",
+            text: "PHASE Protocol convierte la generación de IA en un paywall criptográfico. Cada NFT generado requiere un pago on-chain verificado antes de que el servidor corra el pipeline de IA. No hay suscripción, no hay API key de facturación, y no hay forma de recibir el output sin antes liquidar PHASELQ en la cadena.",
           },
           {
             type: "p",
-            text: "El flujo de pago en la UI sigue una narrativa tipo “settlement / x402”: primero aseguras liquidez en PHASELQ (balance on-chain), luego firmas la transacción que el protocolo construye. Todo corre sobre red de prueba; no es asesoría financiera ni producto de inversión.",
+            text: "El sistema tiene tres piezas: la Forja (crear colecciones + Oracle x402), la Cámara (settlement, visualización del artefacto, recompensas) y el Mercado (catálogo de colecciones, listados, vault por wallet).",
+          },
+          {
+            type: "table",
+            headers: ["Ruta", "Función principal"],
+            rows: [
+              ["/forge", "Registrar colección + Oracle x402-gated AI"],
+              ["/chamber", "Settlement, ver artefacto, colectar NFT, recompensas PHASELQ"],
+              ["/dashboard", "Mercado de colecciones, listados activos, vault por wallet"],
+              ["/explore", "Galería pública de NFTs acuñados (sin wallet)"],
+              ["/docs", "Esta página"],
+            ],
+          },
+        ],
+      },
+      {
+        id: "x402",
+        title: "x402: el paywall on-chain",
+        blocks: [
+          {
+            type: "p",
+            text: "HTTP 402 (\"Payment Required\") existe desde 1996 pero nunca tuvo un estándar para uso máquina. x402 le da significado concreto: el servidor responde 402 con un challenge de pago estructurado, el cliente liquida on-chain, y el servidor verifica la prueba de ledger antes de liberar el recurso.",
           },
           {
             type: "p",
-            text: "Estado actual x402 en este repo: `app/api/x402` opera como endpoint compatible de demostración (challenge 402 + verificador local). Para producción, se recomienda conectar un facilitator x402 real según la guía oficial.",
+            text: "En PHASE, x402 es el gate de acceso al Oracle de IA. El servidor nunca corre el pipeline especulativamente — el hash de la transacción Stellar es el recibo de pago.",
+          },
+          {
+            type: "code",
+            label: "Flujo x402 completo",
+            text: X402_FLOW_DIAGRAM,
+          },
+          {
+            type: "table",
+            headers: ["Paso", "Endpoint", "Quién actúa", "Qué ocurre"],
+            rows: [
+              ["1. Challenge", "POST /api/forge-agent", "Cliente", "Servidor responde HTTP 402 con amount, token, network"],
+              ["2. Pago", "Soroban RPC", "Usuario (wallet)", "Firma transfer PHASELQ → protocolo; obtiene txHash"],
+              ["3. Verificación", "POST /api/forge-agent", "Servidor", "Lee tx en RPC, decodifica invocación, valida monto y pagador"],
+              ["4. Generación", "APIs externas", "Servidor", "Gemini (lore) + Nano Banana / Pollinations (imagen)"],
+              ["5. Sellado", "Pinata IPFS", "Servidor", "Sube metadata JSON, obtiene CID permanente"],
+              ["6. Mint", "Soroban contract", "Servidor", "Llama initiate_phase, registra token_id y owner"],
+            ],
+          },
+        ],
+      },
+      {
+        id: "nft-flow",
+        title: "Creación de NFTs: ciclo completo",
+        blocks: [
+          {
+            type: "code",
+            label: "Ciclo de vida del artefacto",
+            text: NFT_LIFECYCLE_DIAGRAM,
           },
           {
             type: "p",
-            text: "Rutas principales de esta app:",
+            text: "El token sigue la interfaz SEP-50 draft en Soroban. Todos los parámetros token_id son u32 — requerido para compatibilidad con Freighter SEP-50.",
           },
+          {
+            type: "table",
+            headers: ["Función", "Firma", "Descripción"],
+            rows: [
+              ["owner_of", "(token_id: u32) → Address", "Propietario actual del token"],
+              ["token_uri", "(token_id: u32) → String", "URI de metadata IPFS"],
+              ["token_metadata", "(token_id: u32) → Map", "Atributos on-chain del artefacto"],
+              ["get_creator_collection_id", "(creator: Address) → u32", "ID de colección del creador"],
+              ["get_user_phase", "(wallet: Address, cid: u32) → u32", "Token ID acuñado para esa wallet en esa colección"],
+              ["create_collection", "(creator, price, uri)", "Registra colección — una por wallet, enforced on-chain"],
+              ["initiate_phase", "(collection_id, minter, uri)", "Acuña el NFT con la URI IPFS sellada"],
+            ],
+          },
+        ],
+      },
+      {
+        id: "token",
+        title: "PHASELQ: el token de pago",
+        blocks: [
+          {
+            type: "p",
+            text: "PHASELQ es un asset Clásico de Stellar con un Stellar Asset Contract (SAC) desplegado. Esto lo hace compatible con SEP-41 (llamable desde Soroban como transfer/mint/balance) y también visible en Horizon como asset clásico con trustlines.",
+          },
+          {
+            type: "table",
+            headers: ["Propiedad", "Valor"],
+            rows: [
+              ["Símbolo", "PHASELQ"],
+              ["Decimales", "7 (stroops)"],
+              ["Estándar", "SEP-41 (Stellar Asset Contract)"],
+              ["Visibilidad", "Soroban + Horizon (asset clásico)"],
+              ["Trustline", "Requerida para recibir PHASELQ en la wallet"],
+              ["Red", "Stellar testnet"],
+            ],
+          },
+          {
+            type: "p",
+            text: "El SAC es el token que x402 usa como medio de pago. Cuando el usuario firma la transacción de pago, llama a transfer() en el contrato SAC de PHASELQ vía Soroban.",
+          },
+        ],
+      },
+      {
+        id: "rewards",
+        title: "Recompensas PHASELQ",
+        blocks: [
+          {
+            type: "p",
+            text: "El endpoint /api/faucet distribuye PHASELQ para onboarding y uso recurrente. La elegibilidad de las quests se verifica contra el ledger — el servidor no confía en su propio store para determinar si un quest está completo.",
+          },
+          {
+            type: "table",
+            headers: ["Recompensa", "Monto", "Condición", "Renovable"],
+            rows: [
+              ["genesis", "10 PHASELQ", "Primera conexión de wallet", "No (única vez)"],
+              ["daily", "2 PHASELQ", "Ventana de 24 horas", "Sí, cada 24h"],
+              ["quest_connect_wallet", "3 PHASELQ", "Wallet conectada", "No (única vez)"],
+              ["quest_first_collection", "3 PHASELQ", "Forjó colección o acuñó en alguna", "No (única vez)"],
+              ["quest_first_settle", "3 PHASELQ", "Settlement on-chain completado", "No (única vez)"],
+            ],
+          },
+        ],
+      },
+      {
+        id: "indexing",
+        title: "Indexación de NFTs",
+        blocks: [
+          {
+            type: "p",
+            text: "Soroban no expone una query nativa de \"tokens que posee una dirección\". PHASE resuelve esto con dos estrategias:",
+          },
+          {
+            type: "code",
+            label: "Estrategia de indexación",
+            text: INDEXING_DIAGRAM,
+          },
+          {
+            type: "table",
+            headers: ["Estrategia", "Velocidad", "Dependencia", "Activación"],
+            rows: [
+              ["Mercury Classic", "Milisegundos", "Mercury REST + JWT", "MERCURY_JWT en .env"],
+              ["RPC scan (fallback)", "Segundos", "Soroban RPC público", "Automático sin Mercury"],
+            ],
+          },
+        ],
+      },
+      {
+        id: "api",
+        title: "Superficie de API",
+        blocks: [
+          {
+            type: "table",
+            headers: ["Ruta", "Método", "Propósito"],
+            rows: [
+              ["/api/forge-agent", "POST", "Oracle x402: challenge 402 o generar + acuñar si hay pago"],
+              ["/api/x402", "GET / POST", "Challenge 402 + facilitator local"],
+              ["/api/x402/verify", "POST", "Verificar pago contra challenge"],
+              ["/api/x402/settle", "POST", "Liquidar pago vía facilitator"],
+              ["/api/faucet", "GET / POST", "Estado de recompensas + distribución de PHASELQ"],
+              ["/api/classic-liq", "GET / POST", "Estado trustline + bootstrap del asset clásico"],
+              ["/api/classic-liq/trustline", "POST", "Enviar XDR de changeTrust firmado por el usuario"],
+              ["/api/explore", "GET", "Galería paginada de NFTs (público)"],
+              ["/api/wallet/phase-nfts", "GET", "NFTs por wallet (Mercury o RPC scan)"],
+              ["/api/phase-nft/verify", "POST", "Verificar ownership on-chain con backoff"],
+              ["/api/phase-nft/custodian-release", "POST", "Transfer custodia → wallet (firmado por servidor)"],
+              ["/api/soroban-rpc", "POST", "Proxy RPC con URLs de fallback"],
+              ["/api/nft-listings", "GET / POST", "Listados de mercado (JSON store)"],
+            ],
+          },
+        ],
+      },
+      {
+        id: "security",
+        title: "Modelo de seguridad",
+        blocks: [
+          {
+            type: "p",
+            text: "El servidor nunca tiene las claves del usuario. Toda firma ocurre en la wallet del cliente. El contrato Soroban es la fuente de verdad — ownership, colecciones y estado de settlement siempre se leen desde el ledger, no desde el store del servidor.",
+          },
+          {
+            type: "table",
+            headers: ["Qué tiene el servidor", "Para qué"],
+            rows: [
+              ["ADMIN_SECRET_KEY / FAUCET_DISTRIBUTOR_SECRET_KEY", "Pagar recompensas del faucet (mint o transfer)"],
+              ["PINATA_JWT", "Subir metadata a IPFS"],
+              ["GOOGLE_AI_STUDIO_API_KEY", "Llamadas a Gemini"],
+              ["CLASSIC_LIQ_ISSUER_SECRET (opcional)", "Bootstrap del asset clásico PHASELQ"],
+            ],
+          },
+          {
+            type: "p",
+            text: "La verificación x402 decodifica la transacción Soroban real — valida los argumentos de la invocación, la dirección del pagador y el monto contra los parámetros del challenge. El servidor no acepta output de IA basado en afirmaciones del cliente.",
+          },
+        ],
+      },
+      {
+        id: "links",
+        title: "Referencias y estándares",
+        blocks: [
           {
             type: "links",
             items: [
               {
-                label: "Inicio (landing)",
-                href: "/",
-                description: "Hero, señales del protocolo, módulos y acceso a conectar wallet.",
+                label: "x402 en Stellar (guía oficial)",
+                href: "https://developers.stellar.org/docs/build/agentic-payments/x402",
+                description: "Flujo x402 canónico en Stellar, wallets compatibles y facilitators.",
               },
               {
-                label: "Mercado",
-                href: "/dashboard",
-                description: "Catálogo de colecciones, precios en PHASELQ y acceso a la cámara por colección.",
+                label: "x402-stellar (npm)",
+                href: "https://www.npmjs.com/package/x402-stellar",
+                description: "Paquete oficial para construir flujos x402 en apps sobre Stellar.",
               },
               {
-                label: "Forja",
-                href: "/forge",
-                description: "Crear colección: nombre, precio, imagen (URL, archivo o lienzo) y despliegue vía wallet.",
+                label: "SEP-50 (NFT en Soroban)",
+                href: "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0050.md",
+                description: "Borrador del estándar de coleccionables/NFT en Stellar Soroban.",
               },
               {
-                label: "Cámara de fusión",
-                href: "/chamber",
-                description: "Monitor de wallet, precio de mint, settlement y visualización del artefacto / estado de fase.",
+                label: "SEP-41 (token interface)",
+                href: "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0041.md",
+                description: "Interfaz estándar de tokens fungibles en Soroban.",
               },
               {
-                label: "Documentación",
-                href: "/docs",
-                description: "Esta página.",
-              },
-            ],
-          },
-        ],
-      },
-      {
-        id: "brand-assets",
-        title: "Activos de marca y archivos estáticos",
-        blocks: [
-          {
-            type: "p",
-            text: "Los archivos viven en la carpeta public/ del repo y se sirven desde la raíz del sitio. En producción, las URLs absolutas para redes sociales usan metadataBase y NEXT_PUBLIC_SITE_URL en app/layout.tsx (Open Graph y Twitter).",
-          },
-          {
-            type: "links",
-            intro: "Rutas públicas (sustituye el origen por tu dominio desplegado, p. ej. https://tu-dominio.com):",
-            items: [
-              {
-                label: "/og-phase.png",
-                href: "/og-phase.png",
-                description:
-                  "Imagen OG / Twitter Card (preview al compartir). Alt sugerido: figura PHASE / energía líquida en Stellar.",
-              },
-              {
-                label: "/icon-sphere.png",
-                href: "/icon-sphere.png",
-                description: "Favicon y Apple touch icon — esfera reactor / artefacto (alto contraste).",
-              },
-              {
-                label: "/phaser-liq-token.png",
-                href: "/phaser-liq-token.png",
-                description: "Icono del token PHASELQ en la UI y en `stellar.toml` (bloque CURRENCIES) para exploradores.",
-              },
-              {
-                label: "/.well-known/stellar.toml",
-                href: "/.well-known/stellar.toml",
-                description: "Metadatos SEP-0001 del proyecto; también se genera una ruta dinámica en la app cuando aplica.",
-              },
-            ],
-          },
-        ],
-      },
-      {
-        id: "on-chain-contracts",
-        title: "Contratos on-chain (testnet)",
-        blocks: [
-          {
-            type: "p",
-            text: "Red: Soroban testnet. Passphrase: Test SDF Network ; September 2015. RPC Soroban: https://soroban-testnet.stellar.org. Horizon: https://horizon-testnet.stellar.org. Los IDs por defecto están en lib/phase-contract-defaults.ts (vía lib/phase-protocol.ts); puedes sobrescribirlos con NEXT_PUBLIC_PHASE_PROTOCOL_ID, NEXT_PUBLIC_TOKEN_CONTRACT_ID (y equivalentes sin prefijo para servidor).",
-          },
-          {
-            type: "ul",
-            items: [
-              "PHASE Protocol (núcleo): colecciones, initiate_phase, NFT de utilidad alineado a SEP-20 en metadatos, settlement x402 en cadena según despliegue.",
-              "PHASELQ (token Soroban): liquidez de prueba, 7 decimales, nombre típico «Phase Liquidity Token», símbolo PHASELQ; usado para precios de mint y transferencias en el flujo de fase.",
-            ],
-          },
-          {
-            type: "links",
-            intro: "Explorador Stellar Expert (testnet) — referencia por defecto del repo:",
-            items: [
-              {
-                label: "Contrato PHASE Protocol",
-                href: "https://stellar.expert/explorer/testnet/contract/CDXZ2HWPSAU3DKACNGTTY3WM6FKN5LPNGMAYFW4KBF74P42RK6SFDRGP",
-                description: "ID por defecto CDXZ2…FDRGP (ver env si redesplegaste).",
-              },
-              {
-                label: "PHASELQ (Stellar Expert)",
-                href: "https://stellar.expert/explorer/testnet/asset/PHASELQ-GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS",
-                description: "ID por defecto CDOAX…RLFD — SAC testnet (ver env si usas otro token).",
-              },
-            ],
-          },
-        ],
-      },
-      {
-        id: "architecture",
-        title: "Cómo funciona (detallado)",
-        blocks: [
-          {
-            type: "p",
-            text: "Forja (/forge): el creador conecta Freighter, define nombre de colección, precio en PHASELQ y una imagen (URL https o ipfs, archivo con sellado PHASE, o lienzo del estudio). La app construye y firma create_collection; obtienes un collection_id para compartir.",
-          },
-          {
-            type: "p",
-            text: "Mercado (/dashboard): lee metadatos y precios desde el contrato o la API de la app; cada tarjeta enlaza a /chamber?collection=ID. La colección 0 es el pool por defecto del protocolo.",
-          },
-          {
-            type: "p",
-            text: "Cámara (/chamber): monitor de wallet, saldo PHASELQ, precio x402 de la colección y estado de fase (has_phased, NFT utilitario). El usuario puede solicitar genesis supply si la política del contrato lo permite, ejecutar settlement (flujo x402 + transacción Soroban) y ver el artefacto con verificación de titularidad cuando la UI lo resuelve on-chain.",
-          },
-          {
-            type: "p",
-            text: "API x402 (demo / compatibilidad): rutas bajo app/api/x402 — challenge 402, supported, verify, settle. Sirven para pruebas locales y alineación con la guía de Agentic Payments; en producción conviene un facilitator x402 real.",
-          },
-          {
-            type: "p",
-            text: "Recompensas testnet: GET/POST /api/faucet — genesis, recarga diaria y misiones; requiere ADMIN_SECRET_KEY en servidor para firmar mints. Documentación operativa: docs/PHASER_LIQ_REWARDS_TERMINAL_DOC.md.",
-          },
-          {
-            type: "p",
-            text: "Asset clásico (opcional): variables CLASSIC_LIQ_* y NEXT_PUBLIC_CLASSIC_* permiten mostrar PHASELQ como asset clásico en Freighter (trustline / bootstrap) además del contrato Soroban.",
-          },
-        ],
-      },
-      {
-        id: "concepts",
-        title: "Conceptos y piezas",
-        blocks: [
-          {
-            type: "ul",
-            items: [
-              "Colección: registro on-chain con nombre, treasury/creador, precio de mint en PHASELQ y URI de imagen para metadatos.",
-              "Pool protocolo (colección 0): mint base del ecosistema; otras colecciones son creadas desde la Forja.",
-              "PHASELQ: token de liquidez en testnet usado para mostrar precios y ejecutar pagos en el contrato.",
-              "Artefacto / NFT de utilidad: tras el settlement, el contrato puede reflejar estado sólido y metadatos enlazados (https o ipfs://).",
-              "API x402 del proyecto: `/api/x402` (challenge), `/api/x402/supported`, `/api/x402/verify`, `/api/x402/settle` para compatibilidad y pruebas locales.",
-            ],
-          },
-        ],
-      },
-      {
-        id: "stack",
-        title: "Stack técnico",
-        blocks: [
-          {
-            type: "ul",
-            items: [
-              "Frontend: Next.js (App Router), React, Tailwind; UI táctica en Forja/Cámara/Mercado.",
-              "Contrato: PHASE Protocol desplegado en Soroban (testnet); direcciones y passphrase vienen de variables de entorno.",
-              "Wallet: extensión Freighter para firmar; la app usa la API oficial de Freighter.",
-              "Subida de imagen por servidor (opcional): si está activa, Paint/Subir en Forja puede publicar el archivo sellado.",
-            ],
-          },
-          {
-            type: "p",
-            text: "Referencias del ecosistema Stellar (abren en nueva pestaña):",
-          },
-          {
-            type: "links",
-            items: [
-              {
-                label: "Stellar — Documentación para desarrolladores",
-                href: "https://developers.stellar.org/",
-                description: "Hub principal: redes, transacciones, Horizon y herramientas.",
+                label: "Stellar Asset Contract",
+                href: "https://developers.stellar.org/docs/tokens/stellar-asset-contract",
+                description: "Cómo Stellar modela assets clásicos como contratos Soroban (SAC).",
               },
               {
                 label: "Soroban — Smart contracts",
@@ -232,146 +328,9 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
                 description: "Contratos inteligentes en Stellar: Rust, WASM, entorno de pruebas.",
               },
               {
-                label: "Stellar Asset Contract (tokens)",
-                href: "https://developers.stellar.org/docs/tokens/stellar-asset-contract",
-                description: "Cómo Stellar modela activos y tokens en Soroban.",
-              },
-              {
-                label: "Freighter — Guía para desarrolladores",
-                href: "https://developers.stellar.org/docs/tools/developer-tools/freighter-wallet",
-                description: "Integración de la wallet en aplicaciones web.",
-              },
-              {
-                label: "Freighter (sitio del producto)",
-                href: "https://www.freighter.app/",
-                description: "Instalación de la extensión.",
-              },
-            ],
-          },
-        ],
-      },
-      {
-        id: "flows",
-        title: "Flujos paso a paso",
-        blocks: [
-          {
-            type: "p",
-            text: "Creador: instala Freighter → abre Forja → conecta wallet → define colección y arte → despliega. Obtendrás un ID de colección; comparte /chamber?collection=ID para que otros minten ahí.",
-          },
-          {
-            type: "p",
-            text: "Participante: entra al Mercado o usa el enlace → abre la Cámara con la colección correcta → conecta la misma red (testnet) → revisa saldo PHASELQ; si hay faucet/recompensas en la UI, úsalos según las reglas mostradas → pulsa la acción de settlement cuando el saldo cubra el precio.",
-          },
-          {
-            type: "links",
-            intro: "Accesos directos:",
-            items: [
-              { label: "Abrir Forja", href: "/forge" },
-              { label: "Abrir Mercado", href: "/dashboard" },
-              { label: "Abrir Cámara (pool por defecto)", href: "/chamber" },
-            ],
-          },
-        ],
-      },
-      {
-        id: "token",
-        title: "PHASELQ y exploradores",
-        blocks: [
-          {
-            type: "p",
-            text: "Los importes en pantalla se expresan en PHASELQ; la conversión a stroops y las llamadas al contrato token las hace el cliente. Símbolo PHASELQ, 7 decimales, nombre on-chain habitual «Phase Liquidity Token». En la Cámara, TOKEN_EXPERT enlaza al asset PHASELQ en Stellar Expert.",
-          },
-          {
-            type: "links",
-            intro: "Contratos de referencia (testnet) y explorador:",
-            items: [
-              {
-                label: "PHASELQ (asset)",
-                href: "https://stellar.expert/explorer/testnet/asset/PHASELQ-GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS",
-                description: "ID por defecto del repo; comprobar env si cambiaste TOKEN_CONTRACT_ID.",
-              },
-              {
-                label: "PHASE Protocol (contrato)",
-                href: "https://stellar.expert/explorer/testnet/contract/CDXZ2HWPSAU3DKACNGTTY3WM6FKN5LPNGMAYFW4KBF74P42RK6SFDRGP",
-                description: "Núcleo del protocolo; comprobar env si redesplegaste.",
-              },
-              {
-                label: "Stellar Expert — Testnet",
-                href: "https://stellar.expert/explorer/testnet",
-                description: "Busca cuentas, contratos y transacciones.",
-              },
-            ],
-          },
-        ],
-      },
-      {
-        id: "trust",
-        title: "Previews y confianza",
-        blocks: [
-          {
-            type: "p",
-            text: "Las miniaturas del mercado y los textos son orientativos. Lo que importa es el estado devuelto por el contrato y lo que ves en la Cámara con tu dirección conectada (balance, fase, titularidad cuando la UI lo verifica).",
-          },
-        ],
-      },
-      {
-        id: "links",
-        title: "Más enlaces y lecturas",
-        blocks: [
-          {
-            type: "p",
-            text: "Enlaces útiles fuera de esta app (documentación oficial, explorador y estándares). Todos abren en una pestaña nueva.",
-          },
-          {
-            type: "links",
-            items: [
-              {
-                label: "developers.stellar.org",
-                href: "https://developers.stellar.org/",
-                description: "Documentación oficial de Stellar para desarrolladores.",
-              },
-              {
-                label: "Soroban — Introducción a smart contracts",
-                href: "https://developers.stellar.org/docs/build/smart-contracts/getting-started",
-                description: "Primeros pasos con contratos en la red Stellar.",
-              },
-              {
                 label: "Stellar Expert (testnet)",
                 href: "https://stellar.expert/explorer/testnet",
-                description: "Explorador de bloques y contratos; aquí suelen apuntar los enlaces TOKEN_EXPERT de la Cámara.",
-              },
-              {
-                label: "x402 en Stellar (docs oficiales)",
-                href: "https://developers.stellar.org/docs/build/agentic-payments/x402",
-                description:
-                  "Guía oficial de flujo x402 en Stellar, wallets compatibles y facilitators (`/verify`, `/settle`, `/supported`).",
-              },
-              {
-                label: "x402-stellar (npm)",
-                href: "https://www.npmjs.com/package/x402-stellar",
-                description: "Paquete oficial para construir/integrar flujos x402 en apps y servicios sobre Stellar.",
-              },
-              {
-                label: "Declare your node (Tier 1 / SEP-0020 validator declaration)",
-                href: "https://developers.stellar.org/docs/validators/tier-1-orgs#declare-your-node",
-                description:
-                  "Contexto de auto-declaración de nodos validadores y publicación de metadata en `stellar.toml`.",
-              },
-              {
-                label: "SEP-0020 (self-verification de nodos validadores)",
-                href: "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0020.md",
-                description:
-                  "Especificación activa para vincular identidad de operadores y metadata de validadores vía cuentas Stellar + `stellar.toml`.",
-              },
-              {
-                label: "SEP-0050 (NFT / collectibles en Soroban)",
-                href: "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0050.md",
-                description: "Borrador del estándar de coleccionables/NFT en Stellar Soroban.",
-              },
-              {
-                label: "IPFS",
-                href: "https://ipfs.tech/",
-                description: "Contexto sobre ipfs:// cuando la forja o los metadatos usan gateways IPFS.",
+                description: "Explorador de bloques, contratos y transacciones.",
               },
             ],
           },
@@ -382,200 +341,243 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
   en: {
     pageTitle: "PHASE Documentation",
     pageSubtitle:
-      "PHASE (P H A S E   P R O T O C O L) is a cyber-brutalist web app for on-chain collections, market, forge, and fusion chamber on Soroban testnet with PHASELQ and x402-style settlement. Covers brand assets, default contracts, and detailed flows.",
+      "How PHASE Protocol works: x402 as an on-chain paywall, NFT creation on Soroban, atomic payment flow, and PHASELQ rewards.",
     tocLabel: "Contents",
     sections: [
       {
         id: "overview",
-        title: "What this project is",
+        title: "What PHASE is",
         blocks: [
           {
             type: "p",
-            text: "PHASE ties together a marketing landing, a market for community collections, a forge where creators set name, PHASELQ price, and artwork, and a fusion chamber where users connect Freighter, pay the collection price, and the Soroban contract updates phase state and can mint a SEP-20-style utility NFT tied to that phase.",
+            text: "PHASE Protocol turns AI generation into a cryptographic paywall. Every generated NFT requires a verified on-chain payment before the server runs the AI pipeline. There is no subscription, no API key billing, and no way to receive the output without first settling PHASELQ on the ledger.",
           },
           {
             type: "p",
-            text: "The payment UX follows a settlement-style flow: you hold PHASELQ on-chain, then sign the transaction the protocol builds. Everything runs on testnet—this is not financial advice or an investment product.",
+            text: "The system has three pieces: the Forge (create collections + x402 Oracle), the Chamber (settlement, artifact viewer, rewards), and the Dashboard (collection market, listings, per-wallet vault).",
+          },
+          {
+            type: "table",
+            headers: ["Route", "Primary function"],
+            rows: [
+              ["/forge", "Register collection + x402-gated AI Oracle"],
+              ["/chamber", "Settlement, view artifact, collect NFT, PHASELQ rewards"],
+              ["/dashboard", "Collection market, active listings, per-wallet vault"],
+              ["/explore", "Public gallery of all minted NFTs (no wallet needed)"],
+              ["/docs", "This page"],
+            ],
+          },
+        ],
+      },
+      {
+        id: "x402",
+        title: "x402: the on-chain paywall",
+        blocks: [
+          {
+            type: "p",
+            text: "HTTP 402 (\"Payment Required\") has existed since 1996 but never had a machine-readable standard. x402 gives it concrete meaning: the server responds 402 with a structured payment challenge, the client settles on-chain, and the server verifies the ledger proof before releasing the resource.",
           },
           {
             type: "p",
-            text: "Current x402 status in this repository: `app/api/x402` is a compatibility/demo endpoint (402 challenge + local verifier). For production use, connect a real x402 facilitator as documented in the official guide.",
+            text: "In PHASE, x402 is the access gate to the AI Oracle. The server never runs the pipeline speculatively — the Stellar transaction hash is the payment receipt.",
+          },
+          {
+            type: "code",
+            label: "Complete x402 flow",
+            text: X402_FLOW_DIAGRAM,
+          },
+          {
+            type: "table",
+            headers: ["Step", "Endpoint", "Actor", "What happens"],
+            rows: [
+              ["1. Challenge", "POST /api/forge-agent", "Client", "Server returns HTTP 402 with amount, token, network"],
+              ["2. Payment", "Soroban RPC", "User (wallet)", "Signs PHASELQ transfer → protocol; gets txHash"],
+              ["3. Verification", "POST /api/forge-agent", "Server", "Reads tx on RPC, decodes invocation, validates amount and payer"],
+              ["4. Generation", "External APIs", "Server", "Gemini (lore) + Nano Banana / Pollinations (image)"],
+              ["5. Seal", "Pinata IPFS", "Server", "Uploads metadata JSON, gets permanent CID"],
+              ["6. Mint", "Soroban contract", "Server", "Calls initiate_phase, records token_id and owner"],
+            ],
+          },
+        ],
+      },
+      {
+        id: "nft-flow",
+        title: "NFT creation: full lifecycle",
+        blocks: [
+          {
+            type: "code",
+            label: "Artifact lifecycle",
+            text: NFT_LIFECYCLE_DIAGRAM,
           },
           {
             type: "p",
-            text: "Main routes in this app:",
+            text: "The token implements the SEP-50 draft NFT interface on Soroban. All token_id parameters are u32 — required for Freighter SEP-50 compatibility.",
           },
+          {
+            type: "table",
+            headers: ["Function", "Signature", "Description"],
+            rows: [
+              ["owner_of", "(token_id: u32) → Address", "Current owner of the token"],
+              ["token_uri", "(token_id: u32) → String", "IPFS metadata URI"],
+              ["token_metadata", "(token_id: u32) → Map", "On-chain artifact attributes"],
+              ["get_creator_collection_id", "(creator: Address) → u32", "Creator's collection ID"],
+              ["get_user_phase", "(wallet: Address, cid: u32) → u32", "Token ID minted for that wallet in that collection"],
+              ["create_collection", "(creator, price, uri)", "Registers collection — one per wallet, enforced on-chain"],
+              ["initiate_phase", "(collection_id, minter, uri)", "Mints the NFT with the sealed IPFS URI"],
+            ],
+          },
+        ],
+      },
+      {
+        id: "token",
+        title: "PHASELQ: the payment token",
+        blocks: [
+          {
+            type: "p",
+            text: "PHASELQ is a Stellar Classic asset with a deployed Stellar Asset Contract (SAC). This makes it SEP-41 compatible (callable from Soroban as transfer/mint/balance) and also visible on Horizon as a classic asset with trustlines.",
+          },
+          {
+            type: "table",
+            headers: ["Property", "Value"],
+            rows: [
+              ["Symbol", "PHASELQ"],
+              ["Decimals", "7 (stroops)"],
+              ["Standard", "SEP-41 (Stellar Asset Contract)"],
+              ["Visibility", "Soroban + Horizon (classic asset)"],
+              ["Trustline", "Required to receive PHASELQ in a wallet"],
+              ["Network", "Stellar testnet"],
+            ],
+          },
+          {
+            type: "p",
+            text: "The SAC is the token x402 uses as the payment medium. When the user signs the payment transaction, they are calling transfer() on the PHASELQ SAC contract via Soroban.",
+          },
+        ],
+      },
+      {
+        id: "rewards",
+        title: "PHASELQ rewards",
+        blocks: [
+          {
+            type: "p",
+            text: "The /api/faucet endpoint distributes PHASELQ for onboarding and recurring use. Quest eligibility is verified against the ledger — the server does not trust its own store to determine if a quest is complete.",
+          },
+          {
+            type: "table",
+            headers: ["Reward", "Amount", "Condition", "Renewable"],
+            rows: [
+              ["genesis", "10 PHASELQ", "First wallet connection", "No (once)"],
+              ["daily", "2 PHASELQ", "24-hour window", "Yes, every 24h"],
+              ["quest_connect_wallet", "3 PHASELQ", "Wallet connected", "No (once)"],
+              ["quest_first_collection", "3 PHASELQ", "Forged a collection or minted in any", "No (once)"],
+              ["quest_first_settle", "3 PHASELQ", "On-chain settlement completed", "No (once)"],
+            ],
+          },
+        ],
+      },
+      {
+        id: "indexing",
+        title: "NFT indexing",
+        blocks: [
+          {
+            type: "p",
+            text: "Soroban does not expose a native query for \"tokens owned by address\". PHASE resolves this with two strategies:",
+          },
+          {
+            type: "code",
+            label: "Indexing strategy",
+            text: INDEXING_DIAGRAM,
+          },
+          {
+            type: "table",
+            headers: ["Strategy", "Speed", "Dependency", "Activation"],
+            rows: [
+              ["Mercury Classic", "Milliseconds", "Mercury REST + JWT", "Set MERCURY_JWT in .env"],
+              ["RPC scan (fallback)", "Seconds", "Public Soroban RPC", "Automatic without Mercury"],
+            ],
+          },
+        ],
+      },
+      {
+        id: "api",
+        title: "API surface",
+        blocks: [
+          {
+            type: "table",
+            headers: ["Route", "Method", "Purpose"],
+            rows: [
+              ["/api/forge-agent", "POST", "x402 Oracle: return 402 challenge or generate + mint if payment included"],
+              ["/api/x402", "GET / POST", "402 challenge + local facilitator"],
+              ["/api/x402/verify", "POST", "Verify payment against challenge"],
+              ["/api/x402/settle", "POST", "Settle payment via facilitator"],
+              ["/api/faucet", "GET / POST", "Reward status + PHASELQ distribution"],
+              ["/api/classic-liq", "GET / POST", "Trustline status + classic asset bootstrap"],
+              ["/api/classic-liq/trustline", "POST", "Submit user-signed changeTrust XDR"],
+              ["/api/explore", "GET", "Paginated public NFT gallery"],
+              ["/api/wallet/phase-nfts", "GET", "NFTs by wallet (Mercury or RPC scan)"],
+              ["/api/phase-nft/verify", "POST", "On-chain ownership check with backoff"],
+              ["/api/phase-nft/custodian-release", "POST", "Transfer custody → wallet (server-signed)"],
+              ["/api/soroban-rpc", "POST", "Proxied RPC with fallback URLs"],
+              ["/api/nft-listings", "GET / POST", "Market listings (JSON store)"],
+            ],
+          },
+        ],
+      },
+      {
+        id: "security",
+        title: "Security model",
+        blocks: [
+          {
+            type: "p",
+            text: "The server never holds user keys. All signing happens in the client's wallet. The Soroban contract is the source of truth — ownership, collections, and settlement state are always read from the ledger, not from the server's store.",
+          },
+          {
+            type: "table",
+            headers: ["What the server holds", "Why"],
+            rows: [
+              ["ADMIN_SECRET_KEY / FAUCET_DISTRIBUTOR_SECRET_KEY", "Pay faucet rewards (mint or transfer)"],
+              ["PINATA_JWT", "Upload metadata to IPFS"],
+              ["GOOGLE_AI_STUDIO_API_KEY", "Gemini calls"],
+              ["CLASSIC_LIQ_ISSUER_SECRET (optional)", "Classic PHASELQ asset bootstrap"],
+            ],
+          },
+          {
+            type: "p",
+            text: "x402 verification decodes the actual Soroban transaction — it validates the invocation arguments, payer address, and amount against the challenge parameters. The server does not release AI output based on client assertions.",
+          },
+        ],
+      },
+      {
+        id: "links",
+        title: "References and standards",
+        blocks: [
           {
             type: "links",
             items: [
               {
-                label: "Home (landing)",
-                href: "/",
-                description: "Hero, protocol signals, modules, and wallet connect entry points.",
+                label: "x402 on Stellar (official guide)",
+                href: "https://developers.stellar.org/docs/build/agentic-payments/x402",
+                description: "Canonical x402 flow on Stellar, compatible wallets, and facilitator options.",
               },
               {
-                label: "Market",
-                href: "/dashboard",
-                description: "Collection catalog, PHASELQ prices, and links into the chamber per collection.",
+                label: "x402-stellar (npm)",
+                href: "https://www.npmjs.com/package/x402-stellar",
+                description: "Official package for x402 payment flows on Stellar.",
               },
               {
-                label: "Forge",
-                href: "/forge",
-                description: "Create a collection: name, price, image (URL, file, or canvas) and deploy via wallet.",
+                label: "SEP-50 (NFT on Soroban)",
+                href: "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0050.md",
+                description: "Draft standard for NFT/collectible interfaces in Stellar Soroban.",
               },
               {
-                label: "Fusion chamber",
-                href: "/chamber",
-                description: "Wallet monitor, mint price, settlement, and artifact / phase visualization.",
+                label: "SEP-41 (token interface)",
+                href: "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0041.md",
+                description: "Standard interface for fungible tokens on Soroban.",
               },
               {
-                label: "Documentation",
-                href: "/docs",
-                description: "This page.",
-              },
-            ],
-          },
-        ],
-      },
-      {
-        id: "brand-assets",
-        title: "Brand assets and static files",
-        blocks: [
-          {
-            type: "p",
-            text: "Files live under the public/ folder in the repo and are served from the site root. In production, social previews resolve absolute URLs via metadataBase and NEXT_PUBLIC_SITE_URL in app/layout.tsx (Open Graph and Twitter).",
-          },
-          {
-            type: "links",
-            intro: "Public paths (replace origin with your deployed domain, e.g. https://your-domain.com):",
-            items: [
-              {
-                label: "/og-phase.png",
-                href: "/og-phase.png",
-                description: "Open Graph / Twitter Card image. Suggested alt: PHASE hooded figure / liquid energy on Stellar.",
-              },
-              {
-                label: "/icon-sphere.png",
-                href: "/icon-sphere.png",
-                description: "Favicon and Apple touch icon — stippled reactor / artifact sphere.",
-              },
-              {
-                label: "/phaser-liq-token.png",
-                href: "/phaser-liq-token.png",
-                description: "PHASELQ token icon in the UI and in `stellar.toml` (CURRENCIES) for explorers.",
-              },
-              {
-                label: "/.well-known/stellar.toml",
-                href: "/.well-known/stellar.toml",
-                description: "SEP-0001 project metadata; a dynamic route may also serve stellar.toml when configured.",
-              },
-            ],
-          },
-        ],
-      },
-      {
-        id: "on-chain-contracts",
-        title: "On-chain contracts (testnet)",
-        blocks: [
-          {
-            type: "p",
-            text: "Network: Soroban testnet. Passphrase: Test SDF Network ; September 2015. Soroban RPC: https://soroban-testnet.stellar.org. Horizon: https://horizon-testnet.stellar.org. Default IDs are defined in lib/phase-contract-defaults.ts (via lib/phase-protocol.ts); override with NEXT_PUBLIC_PHASE_PROTOCOL_ID, NEXT_PUBLIC_TOKEN_CONTRACT_ID (and server-side equivalents without the prefix).",
-          },
-          {
-            type: "ul",
-            items: [
-              "PHASE Protocol (core): collections, initiate_phase, SEP-20-aligned utility NFT metadata, on-chain x402 settlement per deployment.",
-              "PHASELQ (Soroban token): testnet liquidity token, 7 decimals, typically named “Phase Liquidity Token”, symbol PHASELQ; used for mint pricing and phase transfers.",
-            ],
-          },
-          {
-            type: "links",
-            intro: "Stellar Expert (testnet) — default repository reference IDs:",
-            items: [
-              {
-                label: "PHASE Protocol contract",
-                href: "https://stellar.expert/explorer/testnet/contract/CDXZ2HWPSAU3DKACNGTTY3WM6FKN5LPNGMAYFW4KBF74P42RK6SFDRGP",
-                description: "Default ID CDXZ2…FDRGP (check env if you redeployed).",
-              },
-              {
-                label: "PHASELQ (Stellar Expert)",
-                href: "https://stellar.expert/explorer/testnet/asset/PHASELQ-GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS",
-                description: "Default ID CDOAX…RLFD — testnet SAC (check env if you use another token).",
-              },
-            ],
-          },
-        ],
-      },
-      {
-        id: "architecture",
-        title: "How it works (detailed)",
-        blocks: [
-          {
-            type: "p",
-            text: "Forge (/forge): creator connects Freighter, sets collection name, PHASELQ price, and artwork (https or ipfs URL, sealed file upload when the server allows, or studio canvas). The app builds and signs create_collection; you receive a collection_id to share.",
-          },
-          {
-            type: "p",
-            text: "Market (/dashboard): surfaces collection metadata and prices from the contract / app APIs; each card links to /chamber?collection=ID. Collection 0 is the protocol default pool.",
-          },
-          {
-            type: "p",
-            text: "Chamber (/chamber): wallet monitor, PHASELQ balance, collection x402 mint price, and phase state (has_phased, utility NFT). Users may request genesis supply when contract policy allows, run settlement (x402 flow + Soroban transaction), and view the artifact with ownership checks when the UI resolves on-chain state.",
-          },
-          {
-            type: "p",
-            text: "x402 API (demo / compatibility): routes under app/api/x402 — 402 challenge, supported, verify, settle. Intended for local testing and alignment with Agentic Payments docs; production should use a real x402 facilitator.",
-          },
-          {
-            type: "p",
-            text: "Testnet rewards: GET/POST /api/faucet — genesis, daily recharge, and quests; requires ADMIN_SECRET_KEY on the server to sign mints. Operator notes: docs/PHASER_LIQ_REWARDS_TERMINAL_DOC.md.",
-          },
-          {
-            type: "p",
-            text: "Classic asset (optional): CLASSIC_LIQ_* and NEXT_PUBLIC_CLASSIC_* let Freighter show a classic trustline asset alongside the Soroban PHASELQ contract.",
-          },
-        ],
-      },
-      {
-        id: "concepts",
-        title: "Concepts and moving parts",
-        blocks: [
-          {
-            type: "ul",
-            items: [
-              "Collection: on-chain record with name, creator/treasury, PHASELQ mint price, and image URI for metadata.",
-              "Protocol pool (collection 0): baseline mint path; other collections are created from the Forge.",
-              "PHASELQ: testnet liquidity token used for quoted prices and contract payments.",
-              "Artifact / utility NFT: after settlement, the contract can reflect solid state and metadata (https or ipfs://).",
-              "Project x402 API: `/api/x402` (challenge), `/api/x402/supported`, `/api/x402/verify`, `/api/x402/settle` for local compatibility/testing.",
-            ],
-          },
-        ],
-      },
-      {
-        id: "stack",
-        title: "Technical stack",
-        blocks: [
-          {
-            type: "ul",
-            items: [
-              "Frontend: Next.js (App Router), React, Tailwind; tactical UI on Forge/Chamber/Market.",
-              "Contract: PHASE Protocol on Soroban testnet; contract IDs and passphrase come from environment variables.",
-              "Wallet: Freighter browser extension for signing; the app uses the official Freighter API.",
-              "Optional server-side image upload: when enabled, Paint/Upload in Forge can publish the sealed file.",
-            ],
-          },
-          {
-            type: "p",
-            text: "Stellar ecosystem references (open in a new tab):",
-          },
-          {
-            type: "links",
-            items: [
-              {
-                label: "Stellar — Developer documentation",
-                href: "https://developers.stellar.org/",
-                description: "Main hub: networks, transactions, Horizon, and tooling.",
+                label: "Stellar Asset Contract",
+                href: "https://developers.stellar.org/docs/tokens/stellar-asset-contract",
+                description: "How Stellar represents classic assets as Soroban contracts (SAC).",
               },
               {
                 label: "Soroban — Smart contracts",
@@ -583,146 +585,9 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
                 description: "Smart contracts on Stellar: Rust, WASM, testing workflow.",
               },
               {
-                label: "Stellar Asset Contract (tokens)",
-                href: "https://developers.stellar.org/docs/tokens/stellar-asset-contract",
-                description: "How Stellar represents assets and tokens on Soroban.",
-              },
-              {
-                label: "Freighter — Developer guide",
-                href: "https://developers.stellar.org/docs/tools/developer-tools/freighter-wallet",
-                description: "Embedding Freighter in web apps.",
-              },
-              {
-                label: "Freighter (product site)",
-                href: "https://www.freighter.app/",
-                description: "Install the extension.",
-              },
-            ],
-          },
-        ],
-      },
-      {
-        id: "flows",
-        title: "Step-by-step flows",
-        blocks: [
-          {
-            type: "p",
-            text: "Creator: install Freighter → open Forge → connect wallet → define collection and art → deploy. You get a collection ID; share /chamber?collection=ID so others mint there.",
-          },
-          {
-            type: "p",
-            text: "Participant: open Market or follow a link → Chamber with the right collection → connect on the same network (testnet) → check PHASELQ balance; use faucet/rewards in the UI if shown → run settlement when balance covers the price.",
-          },
-          {
-            type: "links",
-            intro: "Quick links:",
-            items: [
-              { label: "Open Forge", href: "/forge" },
-              { label: "Open Market", href: "/dashboard" },
-              { label: "Open Chamber (default pool)", href: "/chamber" },
-            ],
-          },
-        ],
-      },
-      {
-        id: "token",
-        title: "PHASELQ and explorers",
-        blocks: [
-          {
-            type: "p",
-            text: "Amounts are shown in PHASELQ; the client converts to stroops and calls the token contract. Symbol PHASELQ, 7 decimals, typical on-chain name “Phase Liquidity Token”. In the Chamber, TOKEN_EXPERT links to the PHASELQ asset on Stellar Expert.",
-          },
-          {
-            type: "links",
-            intro: "Default testnet contracts and explorer:",
-            items: [
-              {
-                label: "PHASELQ (Stellar Expert)",
-                href: "https://stellar.expert/explorer/testnet/asset/PHASELQ-GAXRPE5JXPY7RJONMCEWFXELVWDW3CSA7H6LAGYKTOYLFQQDJ5DT4GNS",
-                description: "Repository default ID; verify env if you changed TOKEN_CONTRACT_ID.",
-              },
-              {
-                label: "PHASE Protocol contract",
-                href: "https://stellar.expert/explorer/testnet/contract/CDXZ2HWPSAU3DKACNGTTY3WM6FKN5LPNGMAYFW4KBF74P42RK6SFDRGP",
-                description: "Core protocol; verify env if you redeployed.",
-              },
-              {
-                label: "Stellar Expert — Testnet",
-                href: "https://stellar.expert/explorer/testnet",
-                description: "Search accounts, contracts, and transactions.",
-              },
-            ],
-          },
-        ],
-      },
-      {
-        id: "trust",
-        title: "Previews and trust",
-        blocks: [
-          {
-            type: "p",
-            text: "Market thumbnails and copy are informational. The source of truth is contract state and what you see in the Chamber with your connected address (balance, phase, ownership checks when the UI shows them).",
-          },
-        ],
-      },
-      {
-        id: "links",
-        title: "More links and reading",
-        blocks: [
-          {
-            type: "p",
-            text: "Hand-picked external documentation, explorer, and standards. All open in a new tab.",
-          },
-          {
-            type: "links",
-            items: [
-              {
-                label: "developers.stellar.org",
-                href: "https://developers.stellar.org/",
-                description: "Official Stellar developer documentation.",
-              },
-              {
-                label: "Soroban — Smart contracts getting started",
-                href: "https://developers.stellar.org/docs/build/smart-contracts/getting-started",
-                description: "First steps writing contracts on Stellar.",
-              },
-              {
                 label: "Stellar Expert (testnet)",
                 href: "https://stellar.expert/explorer/testnet",
-                description: "Block explorer; Chamber TOKEN_EXPERT links usually point here.",
-              },
-              {
-                label: "x402 on Stellar (official docs)",
-                href: "https://developers.stellar.org/docs/build/agentic-payments/x402",
-                description:
-                  "Canonical x402 guide for Stellar: compatible wallets, facilitator options, and integration references.",
-              },
-              {
-                label: "x402-stellar (npm)",
-                href: "https://www.npmjs.com/package/x402-stellar",
-                description: "Official package to integrate x402 payment flows on Stellar-enabled apps and APIs.",
-              },
-              {
-                label: "Declare your node (Tier 1 / SEP-0020 validator declaration)",
-                href: "https://developers.stellar.org/docs/validators/tier-1-orgs#declare-your-node",
-                description:
-                  "Validator declaration context and why `stellar.toml` metadata matters for discoverability.",
-              },
-              {
-                label: "SEP-0020 (validator self-verification)",
-                href: "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0020.md",
-                description:
-                  "Active SEP for linking validator operator identity and metadata via Stellar accounts and `stellar.toml`.",
-              },
-              {
-                label: "SEP-0050 (NFT / collectibles on Soroban)",
-                href: "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0050.md",
-                description: "Draft proposal for NFT/collectible interfaces in Stellar Soroban.",
-              },
-              {
-                label: "IPFS",
-                href: "https://ipfs.tech/",
-                description: "Background on ipfs:// when forge or metadata uses IPFS gateways.",
+                description: "Block explorer for accounts, contracts, and transactions.",
               },
             ],
           },

@@ -1,92 +1,207 @@
 # PHASE Protocol
 
-**PHASE** is a community NFT protocol on **Stellar testnet** — built on Soroban smart contracts, powered by x402 payments, and surfaced through a Next.js terminal-aesthetic web app.
+**AI artifact minting gated by on-chain payment — built on Stellar Soroban with x402.**
 
-Artists forge collections, the Oracle AI generates on-chain art, and every participant earns a utility NFT on the Stellar ledger.
+PHASE is a decentralized application where every AI-generated NFT requires a verified on-chain payment before it exists. There is no subscription, no custodial API key billing, and no way to receive the AI output without first settling PHASELQ on-chain. The payment is the key.
 
 ---
 
-## How it works
+## Why x402
+
+HTTP 402 ("Payment Required") has been reserved since 1996 but never standardized for machine use. The x402 protocol gives it a concrete meaning: a server responds `402` with a structured payment challenge, the client settles on-chain, and the server verifies the ledger proof before releasing the resource.
+
+PHASE uses x402 as the access gate to its AI Oracle. The sequence:
 
 ```
-Artist describes anomaly → Oracle (AI) generates image → x402 payment (PHASELQ)
-→ Soroban mint → NFT issued to wallet → Community explores on /explore
+Client                          Server                        Stellar Testnet
+  │                               │                                │
+  ├── POST /api/forge-agent ──────▶│                                │
+  │                               │◀── 402 + payment challenge ────│
+  │                               │    { amount, token, network }  │
+  │                               │                                │
+  │◀── 402 Payment Required ──────┤                                │
+  │    (challenge embedded)       │                                │
+  │                               │                                │
+  ├── User signs Stellar tx ──────────────────────────────────────▶│
+  │   (PHASELQ transfer)          │                            ledger confirms
+  │                               │                                │
+  ├── POST /api/forge-agent ──────▶│                                │
+  │   { settlementTxHash }        ├── verify hash on RPC ─────────▶│
+  │                               │◀── owner confirmed ────────────┤
+  │                               │                                │
+  │                               ├── Gemini lore generation       │
+  │                               ├── Image generation (Nano Banana / Pollinations)
+  │                               ├── Seal metadata → IPFS (Pinata)
+  │                               ├── create_collection on Soroban ▶│
+  │                               ├── initiate_phase on Soroban ───▶│
+  │◀── artifact URLs + token_id ──┤                                │
 ```
 
-1. **Forge** — A creator registers a collection (`create_collection`) with a name, PHASELQ price, and image URI. The Oracle pipeline generates art via AI and pins it to IPFS.
-2. **Settle** — A participant pays the collection price in PHASELQ via the x402 protocol. The server calls `initiate_phase` on the Soroban contract, minting the utility NFT.
-3. **Collect** — The NFT lives in issuer custody post-mint. The participant hits Collect and the server signs a transfer to their connected wallet — no wallet signature required from the user.
-4. **Explore** — `/explore` shows every NFT minted on the protocol, watermarked, with collection and holder info.
-5. **Trade** — The Dashboard lists collections and lets holders transfer or list their NFTs peer-to-peer.
+The server never issues the AI output speculatively. The Soroban ledger proof is the payment receipt.
+
+---
+
+## NFT Creation Flow
+
+### 1. Collection registration
+
+Before minting, a creator registers a collection on the PHASE Soroban contract (`create_collection`). One wallet, one collection — enforced at the contract level. The collection stores a price in PHASELQ stroops, the creator's address, and the metadata URI.
+
+### 2. x402 payment challenge
+
+`POST /api/forge-agent` with a prompt (and no payment header) returns:
+
+```json
+HTTP 402
+{
+  "protocol": "x402",
+  "network": "stellar:testnet",
+  "amount": 50000000,
+  "token": "C...",
+  "facilitator": "https://.../api/x402"
+}
+```
+
+The client is expected to sign a Stellar Soroban transaction that transfers the required PHASELQ amount from the user's wallet to the protocol.
+
+### 3. Settlement
+
+The user signs the transaction via Stellar Wallets Kit (Freighter, Albedo, xBull, or any SEP-7 compatible wallet). The signed XDR is submitted to the Soroban RPC. The resulting transaction hash is the settlement proof.
+
+### 4. Oracle unlock
+
+The second `POST /api/forge-agent` includes `settlementTxHash`. The server:
+
+1. Calls `x402-stellar`'s `useFacilitator` to verify the on-chain payment against the challenge
+2. Decodes the Soroban event log to confirm the payer address and amount
+3. Calls Google Gemini to generate artifact lore based on the user prompt
+4. Calls Nano Banana API (or falls back to Pollinations) to generate the artifact image
+5. Pins the metadata JSON to IPFS via Pinata
+6. Calls `initiate_phase` on the PHASE Soroban contract to mint the NFT with the IPFS URI
+
+### 5. NFT on-chain
+
+The minted token follows SEP-50 draft patterns:
+
+- `owner_of(token_id: u32)` → owner address
+- `token_uri(token_id: u32)` → IPFS metadata URI
+- `token_metadata(token_id: u32)` → on-chain attribute map
+
+Metadata JSON is SEP-20-compatible and readable by wallets and explorers.
 
 ---
 
 ## Architecture
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | Next.js 14 (App Router), TypeScript, Tailwind CSS |
-| Wallet | [Stellar Wallets Kit](https://github.com/creit-tech/StellarWalletsKit) — Freighter, Albedo, xBull |
-| Smart contracts | Soroban (Rust) on Stellar testnet |
-| Payment protocol | [x402](https://x402.org) — HTTP 402 Payment Required |
-| NFT standard | SEP-50 draft (`token_uri`, `token_metadata`, `owner_of`) |
-| Token indexing | [Mercury Classic](https://mercurydata.app) |
-| IPFS | Pinata (pinning) + multi-gateway server-side proxy |
-| API | Next.js route handlers — all server-side secrets stay server-side |
+```
+app/
+  api/
+    forge-agent/     ← x402 AI Oracle (challenge + verify + mint)
+    x402/            ← challenge endpoint, facilitator verify, settle
+    phase-nft/       ← NFT verify and custodian-release
+    wallet/          ← NFT index per wallet (Mercury or RPC fallback)
+    faucet/          ← PHASELQ reward distribution (genesis, daily, quests)
+    explore/         ← Paginated community NFT gallery
+    classic-liq/     ← Classic Horizon asset trustline bootstrap
+    soroban-rpc/     ← Proxied RPC with fallback URLs
+  forge/             ← Collection creation + Oracle UI
+  chamber/           ← Settlement viewer, NFT collect, reward terminal
+  dashboard/         ← Collection market, listings, vault
+  explore/           ← Community NFT gallery
 
-### Mercury
+lib/
+  phase-protocol.ts  ← Soroban contract calls, constants, RPC helpers
+  classic-liq.ts     ← Classic asset trustline utilities
+  mercury-classic.ts ← Mercury indexer integration (optional)
+  phase-copy.ts      ← i18n dictionary (EN/ES)
+  stellar.ts         ← Horizon helpers, trustline checks
 
-PHASE uses **Mercury Classic** as its token indexing layer. When a wallet queries its NFT holdings, Mercury's `GET /events/by-contract` API returns the full mint and transfer event history for the PHASE Soroban contract — resolving ownership in milliseconds without iterating every token ID via raw Soroban RPC.
+contracts/
+  phase-protocol/    ← Soroban Rust NFT + settlement contract
+```
 
-Mercury is integrated in `lib/mercury-classic.ts`. When `MERCURY_JWT` and `MERCURY_INSTANCE_URL` are set, all `/api/wallet/phase-nfts` queries go through Mercury. Without those env vars, the app falls back to a concurrent Soroban RPC scan (slower but fully functional).
+### Indexing strategy
 
----
+Wallet UIs frequently lag on Soroban NFT indexing. PHASE handles this with two modes:
 
-## Deployed contracts (testnet)
+**Mercury Classic (when `MERCURY_JWT` is set):** queries contract events and ledger entries via Mercury's REST API. Resolves ownership in milliseconds.
 
-| Contract | Description |
-|----------|-------------|
-| PHASE Protocol | Core NFT logic — `create_collection`, `initiate_phase`, `settle`, `owner_of`, `token_uri` |
-| PHASELQ SAC | Stellar Asset Contract wrapping the classic PHASELQ token |
+**RPC fallback:** concurrent `owner_of` scans across token IDs. Slower but fully decentralized — no external indexer dependency.
 
-Contract IDs are stored in environment variables — see `.env.local.example`.
+### Soroban RPC resilience
 
----
-
-## Key pages
-
-| Route | Description |
-|-------|-------------|
-| `/` | Landing — protocol overview |
-| `/forge` | Create a collection + Oracle AI pipeline |
-| `/chamber` | Mint (x402 settle) + artifact viewer + Collect CTA |
-| `/dashboard` | Community collection catalog + holder vault |
-| `/explore` | Browse all minted NFTs (watermarked community gallery) |
-
----
-
-## Environment variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `NEXT_PUBLIC_PHASE_CONTRACT_ID` | Yes | PHASE Protocol Soroban contract address |
-| `NEXT_PUBLIC_TOKEN_ADDRESS` | Yes | PHASELQ SAC contract address |
-| `NEXT_PUBLIC_SITE_URL` | Yes (Vercel) | Public base URL (e.g. `https://www.phasee.xyz`) |
-| `PHASE_ISSUER_SECRET` | Yes | Classic PHASELQ issuer secret — server-only, never exposed |
-| `PINATA_JWT` | Yes | Pinata API JWT for IPFS uploads |
-| `MERCURY_JWT` | Optional | Mercury Classic JWT — enables fast NFT indexing |
-| `MERCURY_INSTANCE_URL` | Optional | Mercury instance base URL |
-| `NEXT_PUBLIC_PHASE_IPFS_GATEWAY` | Optional | Override IPFS gateway base (default: `dweb.link`) |
-| `NEXT_PUBLIC_OG_IMAGE_URL` | Optional | Override OG/fallback NFT image URL |
+`/api/soroban-rpc` proxies all Soroban simulation calls through a primary RPC URL with fallback URLs (`STELLAR_RPC_FALLBACK_URLS`). Public testnet RPC has congestion windows; the proxy absorbs 503s transparently.
 
 ---
 
-## Network
+## Contracts
 
-- **Soroban RPC:** `https://soroban-testnet.stellar.org`
-- **Horizon:** `https://horizon-testnet.stellar.org`
-- **Network passphrase:** `Test SDF Network ; September 2015`
+The PHASE protocol contract lives under `contracts/phase-protocol/`. It is a Rust/Soroban WASM contract that implements:
+
+| Function | Description |
+|---|---|
+| `create_collection(creator, price, uri)` | Registers a collection. One per creator address. |
+| `initiate_phase(collection_id, minter, uri)` | Mints an NFT after settlement verification. |
+| `owner_of(token_id)` | Returns the current owner of a token. |
+| `token_uri(token_id)` | Returns the IPFS metadata URI. |
+| `token_metadata(token_id)` | Returns the on-chain attribute map. |
+| `get_creator_collection_id(creator)` | Returns the collection ID for a given creator. |
+| `get_user_phase(wallet, collection_id)` | Returns the phase token ID minted for a wallet in a collection. |
+
+The fungible token (PHASELQ) is a Stellar Asset Contract (SAC) derived from a Classic asset, making it SEP-41 compatible and accessible via Horizon as well as Soroban.
 
 ---
 
-*PHASE runs on Stellar testnet. Never commit secrets or private keys.*
+## Tech Stack
+
+| Area | Technology |
+|---|---|
+| App framework | Next.js (App Router), React 19, TypeScript |
+| Styling | Tailwind CSS |
+| Chain | Stellar testnet, Soroban WASM contracts (Rust) |
+| Payments | x402-stellar, HTTP 402 challenge/verify |
+| AI | Google Gemini (lore), Nano Banana API / Pollinations (image) |
+| Wallet | @creit.tech/stellar-wallets-kit (Freighter, Albedo, xBull) |
+| Indexing | Mercury Classic REST (optional), Soroban RPC fallback |
+| Storage | Pinata IPFS, multi-gateway display |
+| Stellar SDK | @stellar/stellar-sdk |
+
+---
+
+## Environment
+
+The app reads all contract addresses from environment variables — nothing is hardcoded.
+
+| Variable | Role |
+|---|---|
+| `NEXT_PUBLIC_PHASE_PROTOCOL_ID` | PHASE NFT/settlement Soroban contract (C…) |
+| `NEXT_PUBLIC_PHASER_TOKEN_ID` | PHASELQ SAC contract (C…) |
+| `PINATA_JWT` | Server-side IPFS uploads |
+| `GOOGLE_AI_STUDIO_API_KEY` | Gemini lore + image generation |
+| `MERCURY_JWT` | Optional — fast NFT indexing via Mercury Classic |
+| `STELLAR_RPC_URL` | Primary Soroban RPC endpoint |
+| `STELLAR_RPC_FALLBACK_URLS` | Comma-separated fallback RPC URLs |
+| `ADMIN_SECRET_KEY` | Faucet issuer keypair (mint mode) |
+| `FAUCET_DISTRIBUTOR_SECRET_KEY` | Faucet distributor keypair (transfer mode) |
+
+See `.env.local.example` for the full annotated list.
+
+---
+
+## Running locally
+
+```bash
+npm install
+cp .env.local.example .env.local
+# Fill in contract IDs and API keys
+npm run dev
+```
+
+Contracts are already deployed on Stellar testnet. You do not need to redeploy to run the app — only set the existing contract IDs in your `.env.local`.
+
+**Network:** `Test SDF Network ; September 2015`
+**Default RPC:** `https://soroban-testnet.stellar.org`
+
+---
+
+*PHASE Protocol — pay to forge, prove on-chain.*

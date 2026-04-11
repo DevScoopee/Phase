@@ -473,6 +473,41 @@ export function FusionChamber() {
     }
   }, [refresh, collectionId])
 
+  useEffect(() => {
+    if (!address?.trim()) {
+      setTokenBalance("0")
+      setWalletLiqTotal("0")
+      setHasPhased(null)
+      setPhaseId(null)
+      setEnergyLevelBp(null)
+      setOnChainTokenOwner(null)
+      setTokenOwnerLookupDone(false)
+      setArtifactImageFromUri(null)
+      setTokenUriLookupDone(true)
+      setTokenUriExists(false)
+      setPhaseLedgerNftCount(null)
+      setPhaseLedgerNftCountDone(false)
+      setMintingArtifact(false)
+      setClaimToWalletBusy(false)
+      setX402Tx("idle")
+      return
+    }
+    setHasPhased(null)
+    setPhaseId(null)
+    setOnChainTokenOwner(null)
+    setTokenOwnerLookupDone(false)
+    setArtifactImageFromUri(null)
+    setTokenUriLookupDone(false)
+    setTokenUriExists(false)
+    setEnergyLevelBp(null)
+    setMintingArtifact(false)
+    setClaimToWalletBusy(false)
+    setX402Tx("idle")
+    void refreshStatus().catch(() => {})
+    // refreshStatus is stable for a given collectionId; we only need to re-sync when the connected G-address changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally omit refreshStatus to avoid re-running on collection-only changes
+  }, [address])
+
   const refreshClassicStatus = useCallback(async () => {
     if (!classicAsset) {
       setClassicEnabled(false)

@@ -109,6 +109,48 @@ export default function DocsPage() {
                       </div>
                     )
                   }
+                  if (block.type === "table") {
+                    return (
+                      <div key={idx} className="overflow-x-auto rounded-lg border border-cyan-500/20 bg-black/30">
+                        <table className="w-full text-left">
+                          <thead>
+                            <tr className="border-b border-cyan-500/25 bg-cyan-950/30">
+                              {block.headers.map((h) => (
+                                <th key={h} className="px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-cyan-400/90 whitespace-nowrap">
+                                  {h}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {block.rows.map((row, ri) => (
+                              <tr key={ri} className="border-b border-cyan-500/10 transition-colors hover:bg-cyan-950/10">
+                                {row.map((cell, ci) => (
+                                  <td key={ci} className="px-4 py-2 font-mono text-[11px] text-foreground/85 align-top">
+                                    {cell}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )
+                  }
+                  if (block.type === "code") {
+                    return (
+                      <div key={idx}>
+                        {block.label ? (
+                          <p className="mb-2 text-[9px] font-bold uppercase tracking-[0.28em] text-cyan-500/70">
+                            {block.label}
+                          </p>
+                        ) : null}
+                        <pre className="overflow-x-auto rounded-lg border border-cyan-500/20 bg-black/60 p-4 text-[10px] leading-relaxed text-cyan-200/85 shadow-[inset_0_1px_0_rgba(34,211,238,0.06)]">
+                          {block.text}
+                        </pre>
+                      </div>
+                    )
+                  }
                   return (
                     <ul key={idx} className="list-none space-y-3 border-l-2 border-cyan-500/30 pl-4">
                       {block.items.map((item) => (
