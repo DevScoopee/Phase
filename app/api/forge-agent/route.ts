@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from "@google/generative-ai"
 import { NextRequest, NextResponse } from "next/server"
+import { getWorldForCollection } from "@/lib/narrative-world-store"
 import {
   Address,
   extractBaseAddress,
@@ -78,6 +79,7 @@ type ForgeAgentBody = {
   settlementTxHash?: string
   payerAddress?: string
   imageStyleMode?: ForgeImageStyleMode | string
+  collection_id?: number
 }
 
 type LegacyChallenge = {
@@ -753,6 +755,7 @@ async function runForgeAgentCore(
   userPrompt: string,
   styleMode: ForgeImageStyleMode,
   nanobananaCallBackUrl: string,
+  worldPrompt?: string,
 ): Promise<ForgeAgentSuccessResponse> {
   const trimmed = userPrompt.trim()
   if (!trimmed) {
@@ -766,10 +769,11 @@ async function runForgeAgentCore(
   const genAI = new GoogleGenerativeAI(apiKey)
   const candidates = geminiModelCandidates()
 
+  const worldContext = worldPrompt ? `Contexto del mundo narrativo: ${worldPrompt}\n\n` : ""
   const systemInstruction =
     styleMode === "cyber"
-      ? `Eres el Arquitecto del Protocolo PHASE. Escribe una descripción de máximo 2 oraciones técnicas, oscuras, ciberpunk y enigmáticas sobre el siguiente artefacto forjado por el usuario: ${trimmed}`
-      : `Eres el Arquitecto del Protocolo PHASE. Escribe una descripción breve (máximo 2 oraciones) alineada a la idea exacta del usuario, sin imponer estética cyber por defecto: ${trimmed}`
+      ? `${worldContext}Eres el Arquitecto del Protocolo PHASE. Escribe una descripción de máximo 2 oraciones técnicas, oscuras, ciberpunk y enigmáticas sobre el siguiente artefacto forjado por el usuario: ${trimmed}`
+      : `${worldContext}Eres el Arquitecto del Protocolo PHASE. Escribe una descripción breve (máximo 2 oraciones) alineada a la idea exacta del usuario, sin imponer estética cyber por defecto: ${trimmed}`
 
   type GeminiGenerateResult = Awaited<
     ReturnType<ReturnType<GoogleGenerativeAI["getGenerativeModel"]>["generateContent"]>
@@ -939,7 +943,19 @@ export async function POST(request: NextRequest): Promise<NextResponse<ForgeAgen
       process.env.NANOBANANA_CALLBACK_URL?.trim() ||
       `${request.nextUrl.origin}/api/webhooks/nanobanana`
     const styleMode = normalizeForgeImageStyleMode(body.imageStyleMode)
-    const payload = await runForgeAgentCore(body.prompt, styleMode, nanobananaCallBackUrl)
+
+    let worldPrompt: string | undefined
+    const collectionId = body.collection_id
+    if (typeof collectionId === "number" && collectionId > 0) {
+      try {
+        const world = await getWorldForCollection(collectionId)
+        if (world?.world_prompt) worldPrompt = world.world_prompt
+      } catch (e) {
+        console.warn("[forge-agent] Could not read world prompt for collection", collectionId, e)
+      }
+    }
+
+    const payload = await runForgeAgentCore(body.prompt, styleMode, nanobananaCallBackUrl, worldPrompt)
     return NextResponse.json(payload)
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
