@@ -6,6 +6,7 @@ import {
 } from "@/lib/phase-protocol"
 import { buildPhaseTokenMetadataJson } from "@/lib/phase-nft-metadata-build"
 import { extractBaseAddress } from "@stellar/stellar-sdk"
+import { getAllWorldCollections } from "@/lib/narrative-world-store"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -26,6 +27,7 @@ export type ExploreItem = {
   image: string
   collectionId: number | null
   ownerTruncated: string
+  worldName?: string
 }
 
 function truncateAddress(addr: string): string {
@@ -88,17 +90,26 @@ export async function GET(request: NextRequest) {
   const totalFound = found.length
   const slice = found.slice((page - 1) * perPage, page * perPage)
 
+  // Read world sidecar once — O(1) per request, not per item.
+  const worldCollections = await getAllWorldCollections().catch(() => ({} as Record<string, { world_name: string }>))
+
   // Build metadata for this page only
   const items = await mapConcurrent(slice, 6, async ({ id, owner }) => {
     const meta = await buildPhaseTokenMetadataJson(contractId, id)
     let ownerBase = owner
     try { ownerBase = extractBaseAddress(owner) } catch { /* keep raw */ }
+    const collectionId = meta?.collectionId ?? null
+    const worldName =
+      collectionId != null
+        ? (worldCollections[String(collectionId)]?.world_name ?? undefined)
+        : undefined
     return {
       tokenId: id,
       name: meta?.name ?? `Phase Artifact #${id}`,
       image: meta?.image ?? "",
-      collectionId: meta?.collectionId ?? null,
+      collectionId,
       ownerTruncated: truncateAddress(ownerBase),
+      worldName,
     } satisfies ExploreItem
   })
 

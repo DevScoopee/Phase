@@ -32,6 +32,7 @@ export default function ExplorePage() {
   const [data, setData] = useState<ExploreResponse | null>(null)
   const [loadState, setLoadState] = useState<"idle" | "loading" | "error">("idle")
   const [page, setPage] = useState(1)
+  const [worldOnly, setWorldOnly] = useState(false)
   const perPage = 24
 
   const load = useCallback(async (p: number) => {
@@ -52,8 +53,11 @@ export default function ExplorePage() {
   }, [load, page])
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / perPage)) : 1
-
   const isEs = lang === "es"
+
+  const visibleItems = worldOnly
+    ? (data?.items ?? []).filter((item) => Boolean(item.worldName))
+    : (data?.items ?? [])
 
   return (
     <div className="min-h-screen bg-background font-mono text-foreground">
@@ -99,6 +103,21 @@ export default function ExplorePage() {
                 {isEs ? `PÁGINA ${page} / ${totalPages}` : `PAGE ${page} / ${totalPages}`}
               </p>
             )}
+
+            {/* World filter */}
+            <div className="mt-3">
+              <label className="flex cursor-pointer items-center gap-2 select-none">
+                <input
+                  type="checkbox"
+                  checked={worldOnly}
+                  onChange={(e) => setWorldOnly(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-cyan-400"
+                />
+                <span className="text-[10px] uppercase tracking-widest text-cyan-400">
+                  {isEs ? "Solo mundos narrativos" : "Narrative worlds only"}
+                </span>
+              </label>
+            </div>
           </div>
 
           {loadState === "loading" && (
@@ -116,16 +135,16 @@ export default function ExplorePage() {
             </p>
           )}
 
-          {loadState === "idle" && data && data.items.length === 0 && (
+          {loadState === "idle" && data && visibleItems.length === 0 && (
             <p className="py-10 text-center font-mono text-[10px] uppercase tracking-widest text-cyan-500/60">
               {isEs ? "NO_SE_DETECTAN_ARTEFACTOS" : "NO_ARTIFACTS_DETECTED"}
             </p>
           )}
 
-          {loadState === "idle" && data && data.items.length > 0 && (
+          {loadState === "idle" && data && visibleItems.length > 0 && (
             <>
               <ul className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-                {data.items.map((item) => (
+                {visibleItems.map((item) => (
                   <li
                     key={item.tokenId}
                     className="flex flex-col border-2 border-cyan-500/35 bg-black/55 shadow-[inset_0_1px_0_rgba(34,211,238,0.08)]"
@@ -145,6 +164,11 @@ export default function ExplorePage() {
                       <p className="tactical-phosphor text-[9px] font-bold uppercase tracking-wider text-cyan-400">
                         SERIAL_ID #{item.tokenId}
                       </p>
+                      {item.worldName && (
+                        <span className="inline-block border border-cyan-400/40 bg-cyan-950/50 px-1.5 py-0.5 text-[8px] uppercase tracking-widest text-cyan-400">
+                          {item.worldName}
+                        </span>
+                      )}
                       <p className="text-[9px] text-cyan-300/70">
                         {isEs ? "Titular" : "Holder"}{" "}
                         <span className="font-mono text-cyan-200/80">{item.ownerTruncated}</span>
