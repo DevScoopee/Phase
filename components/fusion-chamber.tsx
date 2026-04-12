@@ -260,6 +260,10 @@ export function FusionChamber() {
   const [classicStatus, setClassicStatus] = useState<ClassicLiqWalletStatus | null>(null)
   const [classicBusy, setClassicBusy] = useState(false)
 
+  const [worldData, setWorldData] = useState<{ world_name: string; world_prompt: string } | null>(null)
+  const [narrativeData, setNarrativeData] = useState<string | null>(null)
+  const [narrativeLoading, setNarrativeLoading] = useState(false)
+
   const effectivePriceStroops = useMemo(() => {
     if (collectionId > 0 && collectionInfo?.price) return collectionInfo.price
     return REQUIRED_AMOUNT
@@ -382,6 +386,88 @@ export function FusionChamber() {
       cancelled = true
     }
   }, [hasPhased, phaseId])
+
+  // Fetch world config + narrative when a token inside a world-enabled collection loads.
+  useEffect(() => {
+    const cid = collectionId
+    const tid = phaseId
+    if (!cid || cid <= 0 || !tid || tid <= 0) {
+      setWorldData(null)
+      setNarrativeData(null)
+      return
+    }
+    let cancelled = false
+
+    async function loadWorldNarrative() {
+      // 1. Fetch world config
+      let world: { world_name: string; world_prompt: string } | null = null
+      try {
+        const res = await fetch(`/api/world/${cid}`, { cache: "no-store" })
+        if (res.ok) {
+          const json = (await res.json()) as { world: typeof world }
+          world = json.world
+        }
+      } catch {
+        /* no world — silent */
+      }
+      if (cancelled) return
+      setWorldData(world)
+      if (!world) return
+
+      // 2. Check for existing narrative
+      let existing: string | null = null
+      try {
+        const res = await fetch(`/api/world/narrative/${tid}`, { cache: "no-store" })
+        if (res.ok) {
+          const json = (await res.json()) as { narrative: { narrative: string } | null }
+          existing = json.narrative?.narrative ?? null
+        }
+      } catch {
+        /* silent */
+      }
+      if (cancelled) return
+      if (existing) {
+        setNarrativeData(existing)
+        return
+      }
+
+      // 3. Lazy-generate narrative on first chamber load for this token
+      setNarrativeLoading(true)
+      try {
+        // Fetch lore from metadata API (description field)
+        let loreText = ""
+        try {
+          const metaRes = await fetch(`/api/metadata/${tid}`, { cache: "no-store" })
+          if (metaRes.ok) {
+            const meta = (await metaRes.json()) as { description?: string }
+            loreText = meta.description?.trim() ?? ""
+          }
+        } catch {
+          /* lore optional */
+        }
+        if (cancelled) return
+
+        const narRes = await fetch("/api/narrator", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token_id: tid, collection_id: cid, lore: loreText }),
+        })
+        if (narRes.ok) {
+          const json = (await narRes.json()) as { narrative?: string }
+          if (!cancelled && json.narrative) setNarrativeData(json.narrative)
+        }
+      } catch {
+        /* narrator offline — no narrative shown */
+      } finally {
+        if (!cancelled) setNarrativeLoading(false)
+      }
+    }
+
+    void loadWorldNarrative()
+    return () => {
+      cancelled = true
+    }
+  }, [collectionId, phaseId])
 
   const effectiveArtifactImage = useMemo(() => {
     const fromCol = collectionInfo?.imageUri?.trim() ?? ""
@@ -1835,7 +1921,7 @@ export function FusionChamber() {
                 </div>
               ) : phased && phaseId != null && address ? (
                 <div className="grid w-full max-h-full min-h-0 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:items-stretch lg:gap-5">
-                  <div className="ch-chamber-split-preview relative flex min-h-0 min-w-0 flex-col overflow-y-auto overflow-x-hidden rounded-xl sm:mx-auto sm:aspect-square sm:w-full sm:max-w-[min(22rem,calc(100vw-2rem))] lg:max-w-[22rem]">
+                  <div className="ch-chamber-split-preview relative flex min-h-0 min-w-0 w-full max-w-full flex-col overflow-y-auto overflow-x-hidden rounded-xl lg:max-w-none">
                     <div
                       className="pointer-events-none absolute inset-0 z-[1] rounded-xl opacity-[0.34] [background:repeating-linear-gradient(0deg,transparent,transparent_3px,rgba(0,0,0,0.12)_3px,rgba(0,0,0,0.12)_4px)]"
                       aria-hidden
@@ -1849,51 +1935,122 @@ export function FusionChamber() {
                           {ch.chamberColumnPreview}
                         </span>
                       </div>
-                      <div className="flex min-h-0 w-full min-w-0 flex-1 items-stretch justify-stretch overflow-y-auto p-2.5 sm:p-3">
-                        <PhaseArtifactVisualizer
-                          mode="verified"
-                          contractId={CONTRACT_ID}
-                          ownerTruncated={
-                            onChainTokenOwner ? truncateAddress(onChainTokenOwner) : truncateAddress(address)
-                          }
-                          serial={phaseId}
-                          energyLevelBp={energyLevelBp ?? 10_000}
-                          collectionTitle={artifactCollectionTitle}
-                          collectionDisplayName={artifactPublicCollectionName}
-                          imageUrl={effectiveArtifactImage?.trim() ? effectiveArtifactImage.trim() : undefined}
-                          labels={ch.artifact}
-                          viewerAddress={address}
-                          isOwner={isOwnerOnChain}
-                          authenticityPending={authenticityPending}
-                          supplyMinted={collectionSupply?.minted ?? null}
-                          supplyCap={collectionSupply?.cap ?? null}
-                          compact
-                          showPublicMetaPanel={false}
-                          showPrivateMetaPanel={false}
-                          chamberPresentation={isOwnerOnChain || issuerCustodyForCollect}
-                          chamberFrameless={isOwnerOnChain || issuerCustodyForCollect}
-                          chamberCollectMode={issuerCustodyForCollect}
-                          onCollectNft={
-                            issuerCustodyForCollect
-                              ? () =>
-                                  void (
-                                    (address?.trim()
-                                      ? handleClaimNftToWallet()
-                                      : handleCollectWithWalletKit()
-                                    ).catch(() => {})
-                                  )
-                              : undefined
-                          }
-                          collectNftBusy={claimToWalletBusy}
-                          collectLabel={ch.chamberPreviewCollectCta}
-                          collectBusyLabel={ch.rewardsNftCollectSending}
-                          suppressExpandLabel={Boolean(phased && phaseId != null && address)}
-                          dockCopyTokenId={nftNumericTokenIdStr}
-                          className="w-full max-w-lg lg:max-w-[min(100%,22rem)]"
-                          onAccessPrivateMetadata={
-                            isOwnerOnChain ? () => void handleAccessPrivateMetadata().catch(() => {}) : undefined
-                          }
-                        />
+                      <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col gap-2.5 overflow-y-auto p-2.5 sm:flex-row sm:items-stretch sm:gap-3 sm:p-3">
+                        <div className="shrink-0 space-y-2.5 rounded-lg border border-cyan-500/35 bg-black/70 px-2.5 py-2.5 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.08)] sm:px-3 sm:py-3 lg:max-w-[13rem] lg:shrink-0">
+                          <div>
+                            <p className="text-[12px] font-medium leading-snug text-zinc-100 sm:text-[13px]">
+                              {artifactPublicCollectionName}
+                            </p>
+                            <p className="mt-0.5 font-mono text-[10px] tracking-wide text-zinc-500">
+                              #{Math.max(0, Math.floor(phaseId))}
+                            </p>
+                          </div>
+                          <div className="border-b border-cyan-500/20 pb-2.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-mono text-[8px] uppercase tracking-wider text-zinc-500 sm:text-[9px]">
+                                {ch.artifact.chamberPreviewCollectionAddress}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  playTacticalUiClick()
+                                  void copyFreighterCollectibleField(
+                                    ch.artifact.chamberPreviewCollectionAddress,
+                                    CONTRACT_ID,
+                                  ).catch(() => {})
+                                }}
+                                className="shrink-0 rounded-sm px-2 py-0.5 font-mono text-[8px] font-semibold uppercase tracking-wider text-cyan-400/90 transition-colors hover:text-cyan-200 sm:text-[9px]"
+                              >
+                                {ch.artifact.chamberPreviewCopy}
+                              </button>
+                            </div>
+                            <p className="mt-1 break-all font-mono text-[9px] leading-relaxed text-zinc-100 sm:text-[10px]">
+                              {CONTRACT_ID}
+                            </p>
+                          </div>
+                          <div>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-mono text-[8px] uppercase tracking-wider text-zinc-500 sm:text-[9px]">
+                                {ch.artifact.chamberPreviewTokenId}
+                              </span>
+                              <button
+                                type="button"
+                                disabled={!nftNumericTokenIdStr}
+                                onClick={() => {
+                                  playTacticalUiClick()
+                                  void copyFreighterCollectibleField(
+                                    ch.artifact.chamberPreviewTokenId,
+                                    nftNumericTokenIdStr,
+                                  ).catch(() => {})
+                                }}
+                                className="shrink-0 rounded-sm px-2 py-0.5 font-mono text-[8px] font-semibold uppercase tracking-wider text-cyan-400/90 transition-colors hover:text-cyan-200 disabled:opacity-40 sm:text-[9px]"
+                              >
+                                {ch.artifact.chamberPreviewCopy}
+                              </button>
+                            </div>
+                            <p className="mt-1 font-mono text-[9px] tabular-nums tracking-wide text-zinc-100 sm:text-[10px]">
+                              #{nftNumericTokenIdStr || String(Math.max(0, Math.floor(phaseId)))}
+                            </p>
+                          </div>
+                          {issuerCustodyForCollect ? (
+                            <button
+                              type="button"
+                              disabled={claimToWalletBusy}
+                              onClick={() =>
+                                void (
+                                  (address?.trim()
+                                    ? handleClaimNftToWallet()
+                                    : handleCollectWithWalletKit()
+                                  ).catch(() => {})
+                                )
+                              }
+                              className="tactical-interactive-glitch w-full border border-violet-500/55 bg-violet-950/35 py-2 text-[9px] font-bold uppercase tracking-widest text-violet-100 shadow-[inset_0_0_0_1px_rgba(167,139,250,0.12)] transition-colors hover:border-violet-400 hover:bg-violet-900/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
+                            >
+                              {claimToWalletBusy ? ch.rewardsNftCollectSending : ch.chamberPreviewCollectCta}
+                            </button>
+                          ) : null}
+                          <a
+                            href={stellarExpertTestnetContractUrl(CONTRACT_ID)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() => playTacticalUiClick()}
+                            className="block text-center font-mono text-[9px] uppercase tracking-widest text-violet-400/90 underline-offset-2 transition hover:text-violet-200 sm:text-left"
+                          >
+                            {ch.stellarExpert}
+                          </a>
+                        </div>
+                        <div className="flex min-h-0 min-w-0 flex-1 items-start justify-center overflow-hidden pt-0.5">
+                          <PhaseArtifactVisualizer
+                            mode="verified"
+                            contractId={CONTRACT_ID}
+                            ownerTruncated={
+                              onChainTokenOwner ? truncateAddress(onChainTokenOwner) : truncateAddress(address)
+                            }
+                            serial={phaseId}
+                            energyLevelBp={energyLevelBp ?? 10_000}
+                            collectionTitle={artifactCollectionTitle}
+                            collectionDisplayName={artifactPublicCollectionName}
+                            imageUrl={effectiveArtifactImage?.trim() ? effectiveArtifactImage.trim() : undefined}
+                            labels={ch.artifact}
+                            viewerAddress={address}
+                            isOwner={isOwnerOnChain}
+                            authenticityPending={authenticityPending}
+                            supplyMinted={collectionSupply?.minted ?? null}
+                            supplyCap={collectionSupply?.cap ?? null}
+                            compact
+                            showPublicMetaPanel={false}
+                            showPrivateMetaPanel={false}
+                            chamberPresentation={isOwnerOnChain || issuerCustodyForCollect}
+                            chamberFrameless={isOwnerOnChain || issuerCustodyForCollect}
+                            chamberMetaPanelExternal
+                            suppressExpandLabel={Boolean(phased && phaseId != null && address)}
+                            dockCopyTokenId={nftNumericTokenIdStr}
+                            className="h-full w-full min-h-[12rem] min-w-0 max-w-none flex-1"
+                            onAccessPrivateMetadata={
+                              isOwnerOnChain ? () => void handleAccessPrivateMetadata().catch(() => {}) : undefined
+                            }
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1957,6 +2114,25 @@ export function FusionChamber() {
                         </button>
                       </div>
                     ) : null}
+
+                    {/* ── Narrative World connection ── */}
+                    {worldData && (
+                      <div className="shrink-0 border border-cyan-400/20 bg-cyan-950/15 p-3">
+                        <p className="mb-1.5 font-mono text-[9px] uppercase tracking-widest text-cyan-500">
+                          {`[ MUNDO: ${worldData.world_name} ]`}
+                        </p>
+                        {narrativeLoading ? (
+                          <p className="animate-pulse font-mono text-[10px] italic text-cyan-400/50">
+                            [ NARRADOR: generando conexión... ]
+                          </p>
+                        ) : narrativeData ? (
+                          <p className="text-[11px] leading-relaxed text-cyan-200/80 italic">
+                            {narrativeData}
+                          </p>
+                        ) : null}
+                      </div>
+                    )}
+
                     <details className="overflow-hidden rounded-lg border border-violet-500/40 bg-black/70 shadow-[0_0_22px_rgba(139,92,246,0.12)] [&[open]]:border-violet-400/55 [&[open]]:shadow-[0_0_28px_rgba(167,139,250,0.16)] [&_summary::-webkit-details-marker]:hidden">
                       <summary className="cursor-pointer list-none border-b border-violet-500/20 bg-violet-950/10 px-3 py-2.5 text-center font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-100 transition hover:bg-violet-950/25 hover:text-white sm:px-4 sm:py-3 lg:text-left">
                         {ch.chamberTechnicalDetails}
@@ -1972,18 +2148,6 @@ export function FusionChamber() {
                       </h3>
                       <dl className="divide-y divide-zinc-800/80">
                         <div className="space-y-1 py-2.5 first:pt-0">
-                          <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{lang === "es" ? "Colección" : "Collection"}</dt>
-                          <dd className="break-words text-left text-[11px] font-medium leading-snug text-zinc-100 sm:text-[12px]">
-                            {artifactPublicCollectionName}
-                          </dd>
-                        </div>
-                        <div className="space-y-1 py-2.5">
-                          <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{ch.onChainMetaNftContractLabel}</dt>
-                          <dd className="hyphens-auto break-all font-mono text-[9px] leading-relaxed text-zinc-200 sm:text-[10px]" title={CONTRACT_ID}>
-                            {CONTRACT_ID}
-                          </dd>
-                        </div>
-                        <div className="space-y-1 py-2.5">
                           <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{ch.onChainMetaPhaselqSacLabel}</dt>
                           <dd className="hyphens-auto break-all font-mono text-[9px] leading-relaxed text-zinc-300 sm:text-[10px]" title={TOKEN_ADDRESS}>
                             {TOKEN_ADDRESS}
@@ -2005,10 +2169,6 @@ export function FusionChamber() {
                           <div className="flex items-baseline justify-between gap-3">
                             <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{ch.artifact.metadataStandard}</dt>
                             <dd className="font-mono text-[12px] text-zinc-200">SEP-20</dd>
-                          </div>
-                          <div className="flex items-baseline justify-between gap-3">
-                            <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{ch.artifact.secretId}</dt>
-                            <dd className="font-mono text-[12px] text-zinc-200">#{Math.max(0, Math.floor(phaseId))}</dd>
                           </div>
                           <div className="flex flex-wrap items-baseline justify-between gap-3">
                             <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{ch.artifact.powerLevel}</dt>
@@ -2117,43 +2277,6 @@ export function FusionChamber() {
                             </button>
                           ) : null}
 
-                          <div className="space-y-4 rounded-md bg-zinc-900/50 p-3">
-                            <div>
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="text-[9px] uppercase tracking-wider text-zinc-500">
-                                  {lang === "es" ? "Contrato (colección)" : "Collection contract"}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    playTacticalUiClick()
-                                    void copyFreighterCollectibleField("Collection Address", CONTRACT_ID).catch(() => {})
-                                  }}
-                                  className="shrink-0 rounded-sm px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-violet-400 hover:text-violet-200"
-                                >
-                                  {lang === "es" ? "Copiar" : "Copy"}
-                                </button>
-                              </div>
-                              <p className="mt-1.5 break-all font-mono text-[10px] leading-relaxed text-zinc-300">{CONTRACT_ID}</p>
-                            </div>
-                            <div className="border-t border-zinc-800/80 pt-3">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="text-[9px] uppercase tracking-wider text-zinc-500">Token ID</span>
-                                <button
-                                  type="button"
-                                  disabled={!nftNumericTokenIdStr}
-                                  onClick={() => {
-                                    playTacticalUiClick()
-                                    void copyFreighterCollectibleField("Token ID", nftNumericTokenIdStr).catch(() => {})
-                                  }}
-                                  className="shrink-0 rounded-sm px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-violet-400 hover:text-violet-200 disabled:opacity-40"
-                                >
-                                  {lang === "es" ? "Copiar" : "Copy"}
-                                </button>
-                              </div>
-                              <p className="mt-1.5 font-mono text-[12px] text-zinc-200">{nftNumericTokenIdStr || "—"}</p>
-                            </div>
-                          </div>
                         </div>
                       </div>
                     ) : null}
