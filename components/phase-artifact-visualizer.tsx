@@ -160,6 +160,8 @@ type Props = {
   collectNftBusy?: boolean
   collectLabel?: string
   collectBusyLabel?: string
+  /** Cámara: el padre muestra caption + copias; aquí solo el bloque de imagen (holo). */
+  chamberMetaPanelExternal?: boolean
 }
 
 function truncateContractMid(id: string) {
@@ -204,6 +206,7 @@ export function PhaseArtifactVisualizer({
   collectNftBusy = false,
   collectLabel,
   collectBusyLabel,
+  chamberMetaPanelExternal = false,
 }: Props) {
   void ownerTruncated
 
@@ -398,7 +401,12 @@ export function PhaseArtifactVisualizer({
     Boolean(rawImgUri) && isVerified && (!isOwner || authenticityPending)
 
   const holoBlock = (
-    <div className="relative z-[2] w-full">
+    <div
+      className={cn(
+        "relative z-[2] w-full",
+        chamberDockFrameless && "flex min-h-0 flex-1 flex-col",
+      )}
+    >
       <div
         className={cn(
           "art-retro-monitor relative mx-auto flex w-full max-w-[min(100%,32rem)] items-center justify-center px-2 py-4 sm:px-4 sm:py-5",
@@ -406,7 +414,7 @@ export function PhaseArtifactVisualizer({
             ? "max-w-[min(100%,28rem)] min-h-[190px] max-h-[300px] px-2 py-2 sm:min-h-[210px] sm:max-h-[320px] sm:px-3.5 sm:py-3"
             : "min-h-[min(48vw,260px)] max-h-[min(62svh,520px)] sm:min-h-[280px] sm:max-h-[min(58svh,540px)]",
           chamberDockFrameless &&
-            "!mx-0 !max-h-[min(38svh,300px)] !min-h-[min(22svh,200px)] !max-w-none !w-full rounded-lg !border-cyan-500/40 !bg-transparent !px-2 !py-3 shadow-[inset_0_0_48px_rgba(34,211,238,0.07),0_0_20px_rgba(34,211,238,0.08)] sm:!min-h-[min(26svh,220px)] sm:!max-h-[min(40svh,320px)] sm:!px-3 sm:!py-3.5",
+            "!mx-0 !flex !h-full !max-h-[min(58svh,440px)] !min-h-[min(28svh,220px)] !max-w-none !w-full !flex-1 !items-start !justify-center !rounded-lg !border-cyan-500/40 !bg-transparent !px-0.5 !py-0.5 shadow-[inset_0_0_48px_rgba(34,211,238,0.07),0_0_20px_rgba(34,211,238,0.08)] sm:!min-h-[min(34svh,260px)] sm:!max-h-[min(62svh,480px)] sm:!px-1 sm:!py-1",
           chamberMinimal &&
             !chamberDockFrameless &&
             "!max-h-[min(42svh,340px)] !min-h-[min(28svh,220px)] rounded-xl !border-zinc-600/40 !bg-transparent !py-4 shadow-[inset_0_0_0_1px_rgba(63,63,70,0.35)] sm:!min-h-[min(30svh,240px)]",
@@ -425,6 +433,7 @@ export function PhaseArtifactVisualizer({
             onClick={() => setLightboxOpen(true)}
             className={cn(
               "group relative z-[2] mx-auto flex max-h-full w-full cursor-zoom-in flex-col items-center gap-2 border-0 bg-transparent p-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-black",
+              chamberDockFrameless && "min-h-0 max-h-full w-full !max-w-none flex-1 items-stretch gap-0 self-stretch",
               protectArt && !isVerifying
                 ? "focus-visible:ring-violet-400/70"
                 : "focus-visible:ring-cyan-400/70",
@@ -434,6 +443,8 @@ export function PhaseArtifactVisualizer({
             <div
               className={cn(
                 "phase-artifact-preview-clean tactical-holo-wrap relative w-full max-w-full justify-center overflow-hidden rounded-sm",
+                chamberDockFrameless &&
+                  "aspect-square w-full max-w-full max-h-[min(72vw,28rem)] shrink-0 [&_img]:h-full [&_img]:min-h-0 [&_img]:!object-cover",
                 protectArt && (isVerifying ? "phase-artifact-holo-verifying" : "phase-artifact-holo-locked"),
               )}
             >
@@ -442,9 +453,11 @@ export function PhaseArtifactVisualizer({
                 src={renderedImgSrc}
                 alt=""
                 className={cn(
-                  compact
-                    ? "art-retro-monitor__img tactical-holo-img phase-artifact-img-lowres h-[166px] w-[166px] object-contain transition-[filter] duration-500 sm:h-[184px] sm:w-[184px]"
-                    : "art-retro-monitor__img tactical-holo-img max-h-[min(54svh,480px)] w-auto max-w-full object-contain transition-[filter] duration-500 sm:max-h-[min(52svh,500px)]",
+                  compact && chamberDockFrameless
+                    ? "art-retro-monitor__img tactical-holo-img phase-artifact-img-lowres !mx-auto block h-full min-h-0 w-full max-w-full object-cover object-center transition-[filter] duration-500"
+                    : compact
+                      ? "art-retro-monitor__img tactical-holo-img phase-artifact-img-lowres h-[166px] w-[166px] object-contain transition-[filter] duration-500 sm:h-[184px] sm:w-[184px]"
+                      : "art-retro-monitor__img tactical-holo-img max-h-[min(54svh,480px)] w-auto max-w-full object-contain transition-[filter] duration-500 sm:max-h-[min(52svh,500px)]",
                   usePixelTreatment && "phase-artifact-img-pixel",
                   useBlurOnArt && "blur-[6px] sm:blur-[5px]",
                   eligibleForDecrypt && !decrypting && "blur-0",
@@ -867,7 +880,7 @@ export function PhaseArtifactVisualizer({
     <div
       className={cn(
         chamberDockFrameless
-          ? "relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-visible rounded-lg border-0 bg-transparent p-0 shadow-none"
+          ? "relative flex min-h-0 h-full w-full min-w-0 flex-1 flex-col justify-start overflow-visible rounded-lg border-0 bg-transparent p-0 pt-0.5 shadow-none"
           : chamberMinimal
             ? "relative overflow-visible rounded-xl border border-violet-500/20 bg-transparent px-3 py-4 sm:px-4 sm:py-5"
             : "tactical-frame relative overflow-hidden rounded-sm border-2 px-3 py-3 sm:px-4",
@@ -888,8 +901,12 @@ export function PhaseArtifactVisualizer({
       ) : stripBannerForChamber ? (
         <>
           {holoBlock}
-          {chamberCaptionEl}
-          {footerOwnerActions}
+          {!chamberMetaPanelExternal ? (
+            <>
+              {chamberCaptionEl}
+              {footerOwnerActions}
+            </>
+          ) : null}
         </>
       ) : (
         <>

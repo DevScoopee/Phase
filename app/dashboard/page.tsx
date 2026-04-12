@@ -9,6 +9,7 @@ import { useLang } from "@/components/lang-context"
 import { IpfsDisplayImg } from "@/components/ipfs-display-img"
 import { PhaseProtectedPreview } from "@/components/phase-protected-preview"
 import { TokenIcon } from "@/components/token-icon"
+import { ArtistAliasControl } from "@/components/artist-alias-control"
 import { useWallet } from "@/components/wallet-provider"
 import { pickCopy } from "@/lib/phase-copy"
 import { cn } from "@/lib/utils"
@@ -463,11 +464,20 @@ export default function DashboardPage() {
           {activeTab === "GLOBAL_MARKET" && (
             <>
               <div className="mb-6 border-l-4 border-violet-500 bg-violet-950/30 p-4">
-                <p className="text-[10px] leading-relaxed text-violet-200">{d.shieldBlurb}</p>
-                <div className="mt-3 max-w-xs">
-                  <Link href="/forge" className={primaryCardBtn}>
-                    {lang === "es" ? "Crear tu NFT → Forja" : "Create your NFT → Forge"}
-                  </Link>
+                <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] leading-relaxed text-violet-200">{d.shieldBlurb}</p>
+                    <div className="mt-3 max-w-xs">
+                      <Link href="/forge" className={primaryCardBtn}>
+                        {lang === "es" ? "Crear tu NFT → Forja" : "Create your NFT → Forge"}
+                      </Link>
+                    </div>
+                  </div>
+                  {address ? (
+                    <div className="shrink-0 rounded border border-violet-500/35 bg-black/25 p-3 lg:max-w-[17rem] lg:border-l lg:border-t-0 lg:border-violet-500/30 lg:pl-5">
+                      <ArtistAliasControl compact />
+                    </div>
+                  ) : null}
                 </div>
               </div>
 

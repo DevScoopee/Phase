@@ -6,6 +6,8 @@ A technical walkthrough of the payment, minting, and ownership model.
 
 ## The core idea
 
+![PHASE protocol phases](assets/diagram-phases.png)
+
 PHASE enforces a simple rule: **no payment, no artifact**.
 
 Every AI-generated NFT in PHASE is the direct result of a verified on-chain payment. The server never runs the AI pipeline speculatively. It never stores a prompt and generates later. The moment the user submits a prompt, the server responds with a payment demand. Only after the Stellar ledger confirms the transaction does the server run Gemini, generate the image, seal the metadata to IPFS, and mint the token on Soroban.
@@ -45,6 +47,8 @@ The SAC is what x402 uses as the payment token. When the user signs the payment 
 ---
 
 ## The forge flow, step by step
+
+![Forge flow sequence](assets/diagram-forge-flow.png)
 
 ### Step 1 — Connect wallet
 
@@ -136,7 +140,8 @@ PHASE tokens implement the SEP-50 draft NFT interface on Soroban:
 | `owner_of` | `(token_id: u32) → Address` | Returns current owner |
 | `token_uri` | `(token_id: u32) → String` | Returns IPFS metadata URI |
 | `token_metadata` | `(token_id: u32) → Map<String, String>` | Returns on-chain attributes |
-| `get_creator_collection_id` | `(creator: Address) → u32` | Returns creator's collection ID |
+| `get_creator_collection_ids` | `(creator: Address) → Vec<u64>` | Returns all collection IDs for creator |
+| `get_creator_collection_id` | `(creator: Address) → u32` | Returns first collection ID (backward compat) |
 | `get_user_phase` | `(wallet: Address, collection_id: u32) → u32` | Returns token ID minted for wallet |
 
 All `token_id` parameters are `u32` — this is required for Freighter SEP-50 compatibility.
@@ -144,6 +149,8 @@ All `token_id` parameters are `u32` — this is required for Freighter SEP-50 co
 ---
 
 ## Wallet indexing
+
+![Wallet indexing logic](assets/diagram-wallet-indexing.png)
 
 When a user opens the Dashboard or Chamber, the app needs to list which NFTs they own. Soroban does not expose a native "tokens owned by address" query. PHASE handles this two ways:
 
@@ -168,7 +175,7 @@ The `/api/faucet` endpoint manages PHASELQ distribution for new and returning us
 - `quest_first_collection` — forging a collection or minting in any existing collection
 - `quest_first_settle` — completing a full Chamber settlement (on-chain mint confirmed)
 
-Reward eligibility is evaluated by querying the Soroban contract directly: `get_creator_collection_id`, `get_user_phase`, and `owner_of` scans. The server does not trust its own records for quest completion — it reads the ledger.
+Reward eligibility is evaluated by querying the Soroban contract directly: `get_creator_collection_ids`, `get_user_phase`, and `owner_of` scans. The server does not trust its own records for quest completion — it reads the ledger.
 
 Claims are persisted in a server-side JSON store (`lib/server-data-paths.ts`), which is the only off-chain state in the system. Everything else — ownership, collection registration, settlement history — lives on Soroban.
 

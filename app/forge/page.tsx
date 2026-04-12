@@ -2,10 +2,10 @@
 
 import Link from "next/link"
 import dynamic from "next/dynamic"
+import { createPortal } from "react-dom"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { signTransaction } from "@/lib/stellar-wallet-kit"
 import { FeeBumpTransaction, Transaction, TransactionBuilder, Networks } from "@stellar/stellar-sdk"
-import { ArtistAliasControl } from "@/components/artist-alias-control"
 import { LangToggle } from "@/components/lang-toggle"
 import { useLang } from "@/components/lang-context"
 import { TokenIcon } from "@/components/token-icon"
@@ -15,12 +15,12 @@ const TrustlineButton = dynamic(
     ssr: false,
     loading: () => (
       <section
-        className="tactical-frame mt-2 shrink-0 border-cyan-400/35 bg-cyan-950/20 px-2.5 py-2 shadow-[0_0_16px_rgba(34,211,238,0.1)]"
+        className="mt-2 shrink-0 border border-zinc-800/60 bg-black/25 px-2.5 py-2"
         aria-busy="true"
         aria-label="Trustline"
       >
-        <div className="h-2.5 w-40 max-w-full rounded bg-cyan-500/15" />
-        <div className="mt-2 h-9 w-full rounded border border-cyan-500/25 bg-cyan-950/30" />
+        <div className="h-2.5 w-40 max-w-full rounded bg-zinc-800/60" />
+        <div className="mt-2 h-9 w-full rounded border border-zinc-800 bg-zinc-900/40" />
       </section>
     ),
   },
@@ -149,18 +149,6 @@ function mapFusionChamberError(
   return errors.fusionChamberHalted
 }
 
-function captureWheelOnRewardsPanel(e: React.WheelEvent<HTMLDivElement>) {
-  const el = e.currentTarget
-  if (el.scrollHeight <= el.clientHeight + 1) return
-  const { scrollTop, scrollHeight, clientHeight } = el
-  const dy = e.deltaY
-  const atTop = scrollTop <= 0
-  const atBottom = scrollTop + clientHeight >= scrollHeight - 1
-  if ((dy < 0 && !atTop) || (dy > 0 && !atBottom)) {
-    e.stopPropagation()
-  }
-}
-
 /**
  * Enlace Stellar Expert: primer render = URL default fija (SSR + hidratación iguales).
  * Tras montar, aplica `stellarExpertPhaserLiqUrl()` (NEXT_PUBLIC_*) para evitar mismatch
@@ -208,7 +196,7 @@ function textWithPhaserLiqLinks(text: string): React.ReactNode {
 }
 
 const forgeNavBtn =
-  "tactical-interactive-glitch tactical-phosphor inline-flex min-h-[40px] items-center rounded-sm border-2 border-cyan-400/50 bg-cyan-950/45 px-3 py-2 text-[11px] font-bold uppercase tracking-widest text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.14)] transition-colors hover:border-cyan-300 hover:bg-cyan-900/35 hover:text-white sm:text-xs"
+  "inline-flex min-h-[36px] items-center rounded-sm border border-zinc-700 bg-zinc-900/60 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-400 transition-colors hover:border-violet-500/50 hover:text-violet-300"
 
 type AgentState =
   | "IDLE"
@@ -220,12 +208,18 @@ type AgentState =
 type ForgeMode = "ORACLE" | "MANUAL"
 type OracleImageStyleMode = "adaptive" | "cyber"
 
+type FaucetQuestBrief = {
+  questOverview?: { completed: number; total: number; progressPct: number }
+}
+
 export default function ForgePage() {
   const { lang } = useLang()
-  const f = pickCopy(lang).forge
-  const n = pickCopy(lang).nav
+  const copy = pickCopy(lang)
+  const f = copy.forge
+  const n = copy.nav
+  const ch = copy.chamber
 
-  const { address, connect, disconnect, connecting, refresh, artistAlias } = useWallet()
+  const { address, connect, disconnect, connecting, refresh } = useWallet()
 
   const [name, setName] = useState("")
   const [priceLiq, setPriceLiq] = useState("1")
@@ -259,6 +253,11 @@ export default function ForgePage() {
   const [worldEnabled, setWorldEnabled] = useState(false)
   const [worldName, setWorldName] = useState("")
   const [worldPrompt, setWorldPrompt] = useState("")
+
+  type ForgeOverlay = null | "rewards" | "protocol" | "lore" | "collection"
+  const [forgeOverlay, setForgeOverlay] = useState<ForgeOverlay>(null)
+  const [faucetBrief, setFaucetBrief] = useState<FaucetQuestBrief | null>(null)
+  const prevForgeOverlay = useRef<ForgeOverlay>(null)
 
   const agentFlowBusy =
     agentState === "AWAITING_PAYMENT" ||
@@ -381,6 +380,44 @@ export default function ForgePage() {
     void refreshLiqBalance().catch(() => {})
   }, [refreshLiqBalance])
 
+  const refetchFaucetBrief = useCallback(() => {
+    const g = address?.trim()
+    if (!g) {
+      setFaucetBrief(null)
+      return
+    }
+    void fetch(`/api/faucet?walletAddress=${encodeURIComponent(g)}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data) => setFaucetBrief(data as FaucetQuestBrief))
+      .catch(() => setFaucetBrief(null))
+  }, [address])
+
+  useEffect(() => {
+    refetchFaucetBrief()
+  }, [refetchFaucetBrief])
+
+  useEffect(() => {
+    const prev = prevForgeOverlay.current
+    if (prev === "rewards" && forgeOverlay === null) {
+      void refetchFaucetBrief()
+    }
+    prevForgeOverlay.current = forgeOverlay
+  }, [forgeOverlay, refetchFaucetBrief])
+
+  useEffect(() => {
+    if (!forgeOverlay) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setForgeOverlay(null)
+    }
+    window.addEventListener("keydown", onKey)
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      window.removeEventListener("keydown", onKey)
+      document.body.style.overflow = prevOverflow
+    }
+  }, [forgeOverlay])
+
   useEffect(() => {
     if (!isMintingCollection) return
     const tickers = f.deployTickers
@@ -392,15 +429,12 @@ export default function ForgePage() {
 
   useEffect(() => {
     if (agentState !== "FORGING_MATTER") return
-    const tickers = [
-      "[ SYSTEM: AGENT_PROCESSING... COMPILING_LORE... ]",
-      "[ SYSTEM: AGENT_PROCESSING... SYNTHESIZING_VISUAL_MATTER... ]",
-    ]
+    const tickers = pickCopy(lang).forge.forgeAgentForgingTickers
     const id = window.setInterval(() => {
       setAgentTickerIdx((i) => (i + 1) % tickers.length)
     }, 700)
     return () => window.clearInterval(id)
-  }, [agentState])
+  }, [agentState, lang])
 
   const previewSrc = useMemo(() => {
     if (forgeMode === "MANUAL") {
@@ -923,28 +957,24 @@ export default function ForgePage() {
     }
   }, [shareUrl, lang])
 
-  const shellClass = cn(
-    "tactical-cockpit-forge-shell tactical-frame relative flex min-h-full min-w-0 w-full flex-col p-4 text-cyan-100 md:p-6",
-    isMintingCollection && "forge-shell--deploying tactical-btn-forge-primary",
-  )
-
   const inputClass =
-    "tactical-frame w-full border-cyan-500/35 bg-black/55 px-3 py-2.5 text-[16px] leading-snug text-cyan-50 placeholder:text-cyan-500/40 focus:border-cyan-400/70 focus:outline-none focus:shadow-[0_0_16px_rgba(0,255,255,0.12)]"
+    "w-full border border-zinc-700 bg-zinc-900/80 px-3 py-2.5 text-[14px] leading-snug text-zinc-100 placeholder:text-zinc-600 focus:border-violet-500/60 focus:outline-none focus:ring-1 focus:ring-violet-500/20"
 
   const textareaClass = cn(
     inputClass,
-    "min-h-[8.25rem] resize-y font-mono text-[14px] leading-relaxed sm:min-h-[9.25rem] sm:text-[15px]",
+    "min-h-[7rem] resize-y font-mono text-[13px] leading-relaxed sm:min-h-[8rem]",
+  )
+  const oraclePromptTextareaClass = cn(
+    inputClass,
+    "min-h-[4.75rem] resize-y font-mono text-[13px] leading-relaxed sm:min-h-[5.25rem]",
   )
 
   const inputLabelClass =
-    "text-[11px] font-semibold uppercase tracking-[0.14em] text-cyan-200/90 tactical-phosphor sm:text-[12px]"
+    "text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500"
 
   const priceReadout = stroopsToLiqDisplay(liqToStroops(priceLiq))
 
-  const forgingTerminalLines = [
-    "[ SYSTEM: AGENT_PROCESSING... COMPILING_LORE... ]",
-    "[ SYSTEM: AGENT_PROCESSING... SYNTHESIZING_VISUAL_MATTER... ]",
-  ] as const
+  const forgingTerminalLines = f.forgeAgentForgingTickers
 
   const statusStripActive =
     forgeMode === "ORACLE" ? agentFlowBusy || isMintingCollection : isMintingCollection
@@ -952,27 +982,27 @@ export default function ForgePage() {
   const statusLine = isMintingCollection
     ? f.deployTickers[tickerIdx % f.deployTickers.length]
     : agentState === "PROCESSING_PAYMENT"
-      ? "[ x402_PAYMENT_REQUIRED // AWAITING_SIGNATURE ]"
+      ? f.forgeCtaGenerateSigning
       : agentState === "ARMING_SETTLEMENT"
-        ? "[ x402 // SOROBAN_PREPARE_SETTLE — RPC… ]"
+        ? f.forgeCtaGenerateArming
         : agentState === "FORGING_MATTER"
           ? forgingTerminalLines[agentTickerIdx % forgingTerminalLines.length]
           : agentState === "AWAITING_PAYMENT"
-            ? "[ CONTACTING_ORACLE... ]"
+            ? f.forgeCtaGenerateContacting
             : ""
 
   const initiatePrimaryLabel =
     agentState === "IDLE"
-      ? "[ INITIATE_AGENT_PROTOCOL ]"
+      ? f.forgeCtaGenerateIdle
       : agentState === "AWAITING_PAYMENT"
-        ? "[ CONTACTING_ORACLE... ]"
+        ? f.forgeCtaGenerateContacting
         : agentState === "ARMING_SETTLEMENT"
-          ? "[ x402 // PREPARING_SETTLE_TX… ]"
+          ? f.forgeCtaGenerateArming
           : agentState === "PROCESSING_PAYMENT"
-            ? "[ x402_PAYMENT_REQUIRED // AWAITING_SIGNATURE ]"
+            ? f.forgeCtaGenerateSigning
             : agentState === "FORGING_MATTER"
               ? forgingTerminalLines[agentTickerIdx % forgingTerminalLines.length]
-              : "[ INITIATE_AGENT_PROTOCOL ]"
+              : f.forgeCtaGenerateIdle
 
   const showCollectionLivePanel = shareUrl != null && createdId != null
 
@@ -1060,17 +1090,17 @@ export default function ForgePage() {
   ])
 
   return (
-    <div className="tactical-command-root tactical-command-root--stable tactical-command-root--cockpit relative flex h-screen max-h-[100dvh] flex-col overflow-x-hidden overflow-y-hidden font-mono text-foreground antialiased">
+    <div className="tactical-command-root tactical-command-root--chamber tactical-command-root--cockpit tactical-command-root--stable relative flex h-screen max-h-[100dvh] flex-col overflow-x-hidden overflow-y-hidden font-mono text-foreground antialiased">
       <div className="tactical-film-grain" aria-hidden />
       <div className="tactical-crt-veil" aria-hidden />
-      <div className="tactical-crt-fine" aria-hidden />
-      <TacticalCornerSigil className="pointer-events-none fixed bottom-2 left-2 z-50 hidden opacity-70 sm:block" />
+      <div className="tactical-crt-fine opacity-50" aria-hidden />
+      <TacticalCornerSigil className="pointer-events-none fixed bottom-2 left-2 z-50 hidden opacity-40 sm:block" />
 
-      <header className="tactical-header-bar relative z-10 flex shrink-0 flex-wrap items-center justify-between gap-2 px-3 py-2 md:px-5">
+      <header className="relative z-10 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-zinc-800/80 bg-black/60 px-3 py-2 backdrop-blur-sm md:px-5">
         <Link href="/" className={forgeNavBtn} onClick={() => playTacticalUiClick()}>
           {f.exit}
         </Link>
-        <span className="tactical-phosphor max-w-[min(52vw,18rem)] text-center text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-50 sm:text-sm">
+        <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-zinc-300 sm:text-sm">
           {f.title}
         </span>
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -1084,43 +1114,82 @@ export default function ForgePage() {
         </div>
       </header>
 
-      <main className="custom-scrollbar relative z-10 min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain px-2 pb-2 pt-0.5 md:px-4 [-webkit-overflow-scrolling:touch]">
-        <div className={shellClass}>
-          {statusStripActive && (
-            <div className="shrink-0">
-              <div className="forge-scanline" aria-hidden />
-              <div className="pointer-events-none absolute right-3 top-3 flex items-center gap-2 text-[10px] uppercase tracking-widest text-[#00ffff]">
-                <span className="forge-status-led inline-block size-2 rounded-full bg-[#00ffff]" />
-                {isMintingCollection ? f.deployStatus : f.agentDeployStatus}
-              </div>
-              <p
-                className={cn(
-                  "mb-2 border-b border-[#00ffff]/30 pb-2 font-mono text-[10px] uppercase tracking-[0.18em]",
-                  agentState === "PROCESSING_PAYMENT" && "forge-x402-blink",
-                  agentState === "FORGING_MATTER" && "forge-forge-glitch text-[#00ffff]/90",
-                  (agentState === "AWAITING_PAYMENT" ||
-                    agentState === "ARMING_SETTLEMENT" ||
-                    isMintingCollection) &&
-                    "text-[#00ffff]/90",
-                )}
-              >
-                {statusLine}
-              </p>
-            </div>
-          )}
+      <main
+        className={cn(
+          "custom-scrollbar relative z-10 flex min-h-0 flex-1 flex-col overflow-x-hidden px-3 py-2 md:px-5 md:py-3",
+          "overflow-y-auto [-webkit-overflow-scrolling:touch] lg:overflow-hidden",
+        )}
+      >
 
-          {!statusStripActive && (
-            <h1 className="tactical-phosphor shrink-0 border-b border-cyan-500/30 pb-2 text-[12px] font-bold uppercase tracking-[0.22em] text-cyan-50 sm:text-sm">
-              ◈ {f.registerTitle}
-            </h1>
-          )}
-
-          {!statusStripActive && (
-            <div
-              className="mt-2 flex w-full max-w-xl gap-0 border border-cyan-900/50 bg-black/35"
-              role="tablist"
-              aria-label="Forge mode"
+        {/* Status strip */}
+        {statusStripActive && (
+          <div className="mb-2 flex shrink-0 items-center gap-2.5 border border-violet-500/30 bg-violet-950/20 px-3 py-1.5">
+            <span className="forge-status-led inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" />
+            <p
+              className={cn(
+                "font-mono text-[10px] uppercase tracking-[0.16em] text-violet-300/90",
+                agentState === "PROCESSING_PAYMENT" && "forge-x402-blink",
+                agentState === "FORGING_MATTER" && "forge-forge-glitch",
+              )}
             >
+              {statusLine}
+            </p>
+          </div>
+        )}
+
+        {/* Error */}
+        {error && (
+          <div className="mb-2 shrink-0 border border-red-900/50 bg-red-950/20 px-3 py-1.5" role="alert">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-red-400">{error}</p>
+          </div>
+        )}
+
+        {/* Collection live — compact; details in modal */}
+        {showCollectionLivePanel && (
+          <div className="mb-2 flex shrink-0 flex-wrap items-center justify-between gap-2 border border-violet-500/35 bg-violet-950/15 px-2.5 py-1.5">
+            <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-violet-300">
+              {f.collectionLive} ·{" "}
+              <span className="font-mono text-violet-200/90">
+                {f.collectionIdLabel} #{createdId}
+              </span>
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                playTacticalUiClick()
+                setForgeOverlay("collection")
+              }}
+              className="shrink-0 rounded-sm border border-violet-500/45 bg-violet-950/40 px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-violet-200 transition-colors hover:border-violet-400 hover:text-white"
+            >
+              {f.collectionLiveDetails}
+            </button>
+          </div>
+        )}
+
+        {/* Main grid */}
+        <div className="flex min-h-0 flex-1 flex-col gap-3 lg:grid lg:grid-cols-12 lg:items-stretch lg:gap-4">
+
+          {/* ── Left column: form ── */}
+          <div className="custom-scrollbar flex min-h-0 flex-col gap-2.5 overflow-x-hidden overflow-y-visible overscroll-contain lg:col-span-7 lg:max-h-full lg:overflow-y-auto lg:pr-1">
+
+            <div className="flex flex-wrap items-end justify-between gap-2 border-b border-zinc-800 pb-2">
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-zinc-500">◈ {f.registerTitle}</p>
+              {!statusStripActive ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    playTacticalUiClick()
+                    setForgeOverlay("protocol")
+                  }}
+                  className="shrink-0 rounded-sm border border-zinc-700 bg-zinc-900/70 px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-zinc-500 transition-colors hover:border-violet-500/45 hover:text-violet-300"
+                >
+                  {f.protocolBriefButton}
+                </button>
+              ) : null}
+            </div>
+
+            {/* Mode tabs */}
+            <div className="flex border border-zinc-800 bg-black/40" role="tablist" aria-label={f.forgeTablistAria}>
               <button
                 type="button"
                 role="tab"
@@ -1128,11 +1197,11 @@ export default function ForgePage() {
                 disabled={tabSwitchLocked}
                 onClick={() => selectForgeMode("ORACLE")}
                 className={cn(
-                  "min-h-[40px] flex-1 rounded-none border-0 px-2 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.14em] transition-colors sm:px-3 sm:text-[11px]",
+                  "flex-1 py-2 text-[10px] font-bold uppercase tracking-[0.14em] transition-colors",
                   forgeMode === "ORACLE"
-                    ? "bg-cyan-950/50 text-cyan-200 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.45),0_0_16px_rgba(34,211,238,0.1)]"
-                    : "bg-transparent text-cyan-900/95 hover:bg-cyan-950/25 hover:text-cyan-700",
-                  tabSwitchLocked && "opacity-50",
+                    ? "border-b-2 border-violet-500 bg-violet-950/25 text-violet-300"
+                    : "text-zinc-600 hover:text-zinc-400",
+                  tabSwitchLocked && "cursor-not-allowed opacity-40",
                 )}
               >
                 {f.tabOracle}
@@ -1144,531 +1213,536 @@ export default function ForgePage() {
                 disabled={tabSwitchLocked}
                 onClick={() => selectForgeMode("MANUAL")}
                 className={cn(
-                  "min-h-[40px] flex-1 rounded-none border-l border-cyan-900/50 px-2 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.14em] transition-colors sm:px-3 sm:text-[11px]",
+                  "flex-1 border-l border-zinc-800 py-2 text-[10px] font-bold uppercase tracking-[0.14em] transition-colors",
                   forgeMode === "MANUAL"
-                    ? "bg-cyan-950/50 text-cyan-200 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.45),0_0_16px_rgba(34,211,238,0.1)]"
-                    : "bg-transparent text-cyan-900/95 hover:bg-cyan-950/25 hover:text-cyan-700",
-                  tabSwitchLocked && "opacity-50",
+                    ? "border-b-2 border-violet-500 bg-violet-950/25 text-violet-300"
+                    : "text-zinc-600 hover:text-zinc-400",
+                  tabSwitchLocked && "cursor-not-allowed opacity-40",
                 )}
               >
                 {f.tabManual}
               </button>
             </div>
-          )}
 
-          {!statusStripActive && (
-            <p className="mt-2 font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-400/90">
-              {forgeMode === "ORACLE" ? f.oracleBadge : f.manualBadge}
-            </p>
-          )}
-
-          {!statusStripActive && (
-            <p className="mt-1.5 line-clamp-4 shrink-0 text-[10px] leading-relaxed text-cyan-100/90 tactical-phosphor sm:text-[11px]">
-              {forgeMode === "ORACLE" ? f.intro : f.manualIntro}
-            </p>
-          )}
-
-          {!statusStripActive && (
-            <div
-              className="forge-ux-rail mt-2 max-w-xl"
-              role="navigation"
-              aria-label={lang === "es" ? "Pasos de forja" : "Forge steps"}
-            >
-              <span className={forgeUx.railStepAClass}>
-                {forgeMode === "ORACLE" ? f.uxRailStepAOracle : f.uxRailStepAManual}
-              </span>
-              <span className="forge-ux-rail__sep" aria-hidden>
-                —
-              </span>
-              <span className={forgeUx.railStepBClass}>{f.uxRailStepB}</span>
-            </div>
-          )}
-
-          {ipfsConfigured === false && (
-            <div className="tactical-frame mt-2 shrink-0 border-violet-500/40 bg-violet-950/15 px-2 py-2 text-[10px] text-violet-100/90">
-              <p className="font-mono uppercase tracking-widest text-violet-300/95">{f.ipfsOracleHint}</p>
-            </div>
-          )}
-
-          <TrustlineButton
-            address={address}
-            onRequestConnect={onTrustlineRequestConnect}
-            onReady={onTrustlineReady}
-          />
-
-          {error && (
-            <div className="forge-error-banner relative z-[1] mt-2 shrink-0 px-2 py-2" role="alert">
-              <p className="relative z-[1] text-center text-[10px] font-bold uppercase tracking-wider text-red-200">{error}</p>
-            </div>
-          )}
-
-          {showCollectionLivePanel && (
-            <div className="mt-2 shrink-0 border-2 border-[#00ffff]/55 bg-[#00ffff]/5 p-2 text-[10px]">
-              <p className="font-bold uppercase tracking-[0.15em] text-cyan-200">{f.collectionLive}</p>
-              <p className="mt-1 font-mono text-[12px] text-cyan-50">
-                {f.collectionIdLabel} <span className="text-cyan-300">#{createdId}</span>
-              </p>
-              <p className="mt-1 font-semibold uppercase tracking-widest text-cyan-400/80">{f.magicLink}</p>
-              <a
-                href={shareUrl}
-                className="mt-1 block break-all rounded border border-[#00ffff]/25 bg-black/30 px-2 py-1 text-[10px] text-[#7fffd4] underline-offset-2 hover:underline"
-              >
-                {shareUrl}
-              </a>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => void copyShare().catch(() => {})}
-                  className="inline-flex flex-1 items-center justify-center border-2 border-double border-[#00ffff]/80 px-3 py-2 text-[10px] uppercase tracking-widest text-[#00ffff] hover:bg-[#00ffff]/10 sm:flex-none"
-                >
-                  {copied ? f.copied : f.copy}
-                </button>
-                <Link
-                  href={`/chamber?collection=${createdId}`}
-                  className="inline-flex flex-1 items-center justify-center border-2 border-double border-cyan-400/55 bg-cyan-950/25 px-3 py-2 text-center text-[10px] font-bold uppercase tracking-widest text-cyan-100 hover:bg-cyan-900/35 sm:flex-none"
-                >
-                  {f.openChamber}
-                </Link>
+            {/* IPFS hint */}
+            {ipfsConfigured === false && (
+              <div className="border border-violet-500/20 bg-violet-950/10 px-2.5 py-2 text-[10px] text-violet-400/80">
+                {f.ipfsOracleHint}
               </div>
-            </div>
-          )}
+            )}
 
-          <div className="mt-2.5 flex flex-col gap-3 lg:grid lg:grid-cols-12 lg:gap-5 lg:items-start">
-            <div className="flex w-full flex-col gap-1.5 lg:col-span-5">
-              <div className="custom-scrollbar space-y-3 pr-0.5 lg:pr-0">
-                {forgeMode === "ORACLE" ? (
-                  <div className={forgeUx.oracleSourceRing}>
-                    <label htmlFor="forge-anomaly" className={inputLabelClass}>
-                      {f.anomalyLabel}
-                    </label>
-                    <textarea
-                      id="forge-anomaly"
-                      value={anomalyDescription}
-                      onChange={(e) => setAnomalyDescription(e.target.value)}
-                      disabled={anomalyFieldLocked}
-                      placeholder={f.placeholders.anomaly}
-                      rows={6}
-                      className={cn(textareaClass, "mt-1")}
-                      autoComplete="off"
-                      spellCheck={lang === "es"}
-                    />
-                    <p className="mt-1 text-[10px] leading-relaxed text-cyan-400/75 sm:text-[11px]">{f.oracleHint}</p>
-                    <div className="mt-2">
-                      <label htmlFor="forge-style-mode" className={inputLabelClass}>
-                        {lang === "es" ? "Modo de estilo IA" : "AI style mode"}
-                      </label>
-                      <select
-                        id="forge-style-mode"
-                        value={oracleImageStyleMode}
-                        onChange={(e) => setOracleImageStyleMode(e.target.value as OracleImageStyleMode)}
-                        disabled={anomalyFieldLocked}
-                        className={cn(inputClass, "mt-1 font-mono text-[12px] uppercase tracking-[0.12em]")}
-                      >
-                        <option value="adaptive">
-                          {lang === "es" ? "ADAPTIVE // RESPETA_TU_IDEA" : "ADAPTIVE // RESPECT_YOUR_PROMPT"}
-                        </option>
-                        <option value="cyber">{lang === "es" ? "AI_CYBER // ESTILO_PHASE" : "AI_CYBER // PHASE_STYLE"}</option>
-                      </select>
-                      <p className="mt-1 text-[10px] leading-relaxed text-cyan-400/75 sm:text-[11px]">
-                        {oracleImageStyleMode === "cyber"
-                          ? lang === "es"
-                            ? "AI Cyber aplica estética cyber-brutalist/isométrica."
-                            : "AI Cyber applies cyber-brutalist/isometric aesthetics."
-                          : lang === "es"
-                            ? "Adaptive prioriza tu descripción sin forzar estilo cyber."
-                            : "Adaptive prioritizes your description without forcing cyber style."}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className={cn("space-y-3", forgeUx.manualSourceRing)}>
-                    <input
-                      ref={manualFileInputRef}
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp"
-                      className="sr-only"
-                      aria-hidden
-                      tabIndex={-1}
-                      onChange={(e) => {
-                        const file = e.target.files?.[0]
-                        if (file?.type.startsWith("image/")) setManualFile(file)
-                        e.target.value = ""
-                      }}
-                    />
-                    <div>
-                      <p className={inputLabelClass}>{f.manualDropLabel}</p>
-                      <button
-                        type="button"
-                        disabled={namePriceLocked}
-                        onClick={() => manualFileInputRef.current?.click()}
-                        onDragEnter={(e) => {
-                          e.preventDefault()
-                          setManualDropActive(true)
-                        }}
-                        onDragOver={(e) => {
-                          e.preventDefault()
-                          e.dataTransfer.dropEffect = "copy"
-                        }}
-                        onDragLeave={(e) => {
-                          e.preventDefault()
-                          setManualDropActive(false)
-                        }}
-                        onDrop={(e) => {
-                          e.preventDefault()
-                          setManualDropActive(false)
-                          const file = e.dataTransfer.files?.[0]
-                          if (file?.type.startsWith("image/")) setManualFile(file)
-                        }}
-                        className={cn(
-                          "mt-1 flex min-h-[7.5rem] w-full flex-col items-center justify-center border-2 border-dashed px-3 py-4 text-center transition-colors",
-                          manualDropActive
-                            ? "border-cyan-400/60 bg-cyan-950/35"
-                            : "border-cyan-700/40 bg-black/40 hover:border-cyan-500/45",
-                          namePriceLocked && "pointer-events-none opacity-45",
-                        )}
-                      >
-                        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-cyan-200/90">
-                          {manualFile ? manualFile.name : "[ TAP_OR_DROP ]"}
-                        </span>
-                        <span className="mt-1 text-[9px] uppercase tracking-widest text-cyan-600/90">{f.manualDropHint}</span>
-                      </button>
-                      {manualFile ? (
-                        <button
-                          type="button"
-                          disabled={namePriceLocked}
-                          onClick={() => setManualFile(null)}
-                          className="mt-1 font-mono text-[9px] uppercase tracking-widest text-cyan-500/80 underline-offset-2 hover:text-cyan-300"
-                        >
-                          [ CLEAR_FILE ]
-                        </button>
-                      ) : null}
-                    </div>
-                    <div>
-                      <label htmlFor="forge-manual-url" className={inputLabelClass}>
-                        {f.manualUrlLabel}
-                      </label>
-                      <input
-                        id="forge-manual-url"
-                        value={manualImageUrl}
-                        onChange={(e) => setManualImageUrl(e.target.value)}
-                        disabled={namePriceLocked}
-                        placeholder={f.placeholders.manualImageUrl}
-                        className={cn(inputClass, "mt-1 font-mono text-[13px]")}
-                        autoComplete="off"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="forge-manual-lore" className={inputLabelClass}>
-                        {f.manualLoreLabel}
-                      </label>
-                      <textarea
-                        id="forge-manual-lore"
-                        value={manualLoreDraft}
-                        onChange={(e) => setManualLoreDraft(e.target.value)}
-                        disabled={namePriceLocked}
-                        placeholder={f.manualLorePlaceholder}
-                        rows={4}
-                        className={cn(textareaClass, "mt-1 min-h-[6.5rem]")}
-                        autoComplete="off"
-                        spellCheck={lang === "es"}
-                      />
-                    </div>
-                  </div>
-                )}
+            <TrustlineButton
+              address={address}
+              onRequestConnect={onTrustlineRequestConnect}
+              onReady={onTrustlineReady}
+              hero
+            />
 
-                <div className={cn("space-y-2", forgeUx.collectionRing)}>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
-                    <div>
-                      <label htmlFor="forge-name" className={inputLabelClass}>
-                        {f.collectionName}
-                      </label>
-                      <input
-                        id="forge-name"
-                        value={name}
-                        onChange={(e) => {
-                          const v = e.target.value
-                          setName(v)
-                          if (error === f.errors.nameShort && v.trim().length >= 2) {
-                            setError(null)
-                          }
-                        }}
-                        maxLength={64}
-                        disabled={namePriceLocked}
-                        placeholder={f.placeholders.collectionName}
-                        className={cn(inputClass, "mt-1")}
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="forge-price" className={inputLabelClass}>
-                        {textWithPhaserLiqLinks(f.fusionPrice)}
-                      </label>
-                      <input
-                        id="forge-price"
-                        value={priceLiq}
-                        onChange={(e) => setPriceLiq(e.target.value)}
-                        inputMode="decimal"
-                        disabled={namePriceLocked}
-                        placeholder={f.placeholders.price}
-                        className={cn(inputClass, "mt-1")}
-                      />
-                    </div>
-                  </div>
-                  <p className="font-mono text-[12px] tabular-nums tracking-wide text-cyan-200/95 sm:text-sm">
-                    <span className="text-cyan-400/90">{f.readout}</span>
-                    <span className="mx-2 text-cyan-600/50 select-none" aria-hidden>
-                      →
-                    </span>
-                    <span className="text-cyan-50">{priceReadout}</span>
-                    <span className="ml-2 inline-flex items-center">
-                      <PhaserLiqExpertLink>
-                        <TokenIcon className="h-4 w-4 shrink-0" />
-                        {PHASER_LIQ_SYMBOL}
-                      </PhaserLiqExpertLink>
-                    </span>
-                  </p>
-                </div>
-
-                {/* ── Narrative World Mode (optional) ── */}
-                <div className="mt-3 border border-cyan-400/20 bg-cyan-950/10 p-3">
-                  <label className="flex cursor-pointer items-center gap-3 select-none">
-                    <input
-                      type="checkbox"
-                      checked={worldEnabled}
-                      onChange={(e) => setWorldEnabled(e.target.checked)}
-                      disabled={busy}
-                      className="h-4 w-4 accent-cyan-400"
-                    />
-                    <span className="text-[11px] font-bold uppercase tracking-widest text-cyan-300">
-                      {lang === "es" ? "Activar mundo narrativo" : "Enable narrative world"}
-                    </span>
+            {/* Oracle source fields */}
+            {forgeMode === "ORACLE" ? (
+              <div className="space-y-2">
+                <div>
+                  <label htmlFor="forge-anomaly" className={inputLabelClass}>
+                    {f.anomalyLabel}
                   </label>
-
-                  {worldEnabled && (
-                    <div className="mt-3 space-y-2">
-                      <div>
-                        <label className="mb-1 block text-[10px] uppercase tracking-widest text-cyan-400/70">
-                          {lang === "es" ? "Nombre del mundo" : "World name"}
-                        </label>
-                        <input
-                          type="text"
-                          value={worldName}
-                          onChange={(e) => setWorldName(e.target.value)}
-                          maxLength={80}
-                          placeholder={lang === "es" ? "Ej: Sector Umbral-7" : "E.g. Sector Umbral-7"}
-                          disabled={busy}
-                          className="w-full border border-cyan-400/30 bg-transparent px-2 py-1.5 text-[11px] text-cyan-100 placeholder-cyan-700/60 outline-none focus:border-cyan-400/60"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="mb-1 block text-[10px] uppercase tracking-widest text-cyan-400/70">
-                          {lang === "es" ? "Contexto del mundo (prompt)" : "World context (prompt)"}
-                        </label>
-                        <textarea
-                          value={worldPrompt}
-                          onChange={(e) => setWorldPrompt(e.target.value)}
-                          maxLength={1000}
-                          rows={3}
-                          placeholder={lang === "es" ? "Describe el universo narrativo de esta colección..." : "Describe the narrative universe of this collection..."}
-                          disabled={busy}
-                          className="w-full resize-none border border-cyan-400/30 bg-transparent px-2 py-1.5 text-[11px] text-cyan-100 placeholder-cyan-700/60 outline-none focus:border-cyan-400/60"
-                        />
-                      </div>
-
-                      {worldPrompt.trim() && (
-                        <div className="border border-cyan-400/15 bg-cyan-950/30 p-2">
-                          <p className="mb-1 text-[9px] uppercase tracking-widest text-cyan-500">
-                            {lang === "es" ? "Vista previa — prompt Gemini" : "Preview — Gemini prompt"}
-                          </p>
-                          <p className="text-[10px] italic text-cyan-300/80">
-                            {`Contexto del mundo narrativo: ${worldPrompt.trim()}`}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  <textarea
+                    id="forge-anomaly"
+                    value={anomalyDescription}
+                    onChange={(e) => setAnomalyDescription(e.target.value)}
+                    disabled={anomalyFieldLocked}
+                    placeholder={f.placeholders.anomaly}
+                    rows={3}
+                    className={cn(oraclePromptTextareaClass, "mt-1")}
+                    autoComplete="off"
+                    spellCheck={lang === "es"}
+                  />
+                  <p className="mt-1 text-[10px] leading-snug text-zinc-600">{f.oracleHint}</p>
                 </div>
-
-                {!address ? null : (
-                  <div className="space-y-2 border-t border-cyan-900/40 pt-2">
-                    <p className="text-[11px] text-cyan-100/90 sm:text-[12px]">
-                      {f.walletLabel}: <span className="font-medium text-cyan-50">{truncateAddress(address)}</span>
-                    </p>
-                    <p className="text-[11px] text-cyan-200/88 sm:text-[12px]">
-                      {lang === "es" ? "Artista" : "Artist"}:{" "}
-                      <span className="font-medium text-cyan-100">{artistAlias ?? (lang === "es" ? "sin alias" : "no alias")}</span>
-                    </p>
-                    <div className="rounded border border-cyan-900/50 bg-black/40 p-2">
-                      <ArtistAliasControl compact />
-                    </div>
-                    <p className="font-mono text-[12px] tabular-nums text-cyan-200/95 sm:text-sm">
-                      <span className="text-cyan-300/90">{pickCopy(lang).chamber.liqBalance}</span>
-                      {": "}
-                      <span className="text-cyan-50">{stroopsToLiqDisplay(tokenBalance)} </span>
-                      <PhaserLiqExpertLink />
-                    </p>
-                  </div>
-                )}
+                <div>
+                  <label htmlFor="forge-style-mode" className={inputLabelClass}>
+                    {f.oracleStyleLabel}
+                  </label>
+                  <select
+                    id="forge-style-mode"
+                    value={oracleImageStyleMode}
+                    onChange={(e) => setOracleImageStyleMode(e.target.value as OracleImageStyleMode)}
+                    disabled={anomalyFieldLocked}
+                    className={cn(inputClass, "mt-1")}
+                  >
+                    <option value="adaptive">{f.oracleStyleAdaptive}</option>
+                    <option value="cyber">{f.oracleStyleCyber}</option>
+                  </select>
+                </div>
               </div>
-
-              <div className="shrink-0 space-y-1.5 border-t border-cyan-900/50 pt-1.5">
-                {!address ? (
+            ) : (
+              <div className="space-y-2">
+                <input
+                  ref={manualFileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="sr-only"
+                  aria-hidden
+                  tabIndex={-1}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file?.type.startsWith("image/")) setManualFile(file)
+                    e.target.value = ""
+                  }}
+                />
+                <div>
+                  <p className={inputLabelClass}>{f.manualDropLabel}</p>
                   <button
                     type="button"
-                    disabled={connecting}
+                    disabled={namePriceLocked}
+                    onClick={() => manualFileInputRef.current?.click()}
+                    onDragEnter={(e) => { e.preventDefault(); setManualDropActive(true) }}
+                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy" }}
+                    onDragLeave={(e) => { e.preventDefault(); setManualDropActive(false) }}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      setManualDropActive(false)
+                      const file = e.dataTransfer.files?.[0]
+                      if (file?.type.startsWith("image/")) setManualFile(file)
+                    }}
+                    className={cn(
+                      "mt-1 flex min-h-[5rem] w-full flex-col items-center justify-center border border-dashed px-3 py-3 text-center transition-colors",
+                      manualDropActive
+                        ? "border-violet-500/50 bg-violet-950/15"
+                        : "border-zinc-800 bg-black/30 hover:border-zinc-700",
+                      namePriceLocked && "pointer-events-none opacity-40",
+                    )}
+                  >
+                    <span className="text-[11px] font-semibold text-zinc-400">
+                      {manualFile ? manualFile.name : f.manualAwaitingHint}
+                    </span>
+                    <span className="mt-1 text-[9px] text-zinc-600">{f.manualDropHint}</span>
+                  </button>
+                  {manualFile ? (
+                    <button
+                      type="button"
+                      disabled={namePriceLocked}
+                      onClick={() => setManualFile(null)}
+                      className="mt-1 text-[10px] font-medium text-zinc-500 underline-offset-2 hover:text-zinc-300"
+                    >
+                      {f.manualClearFile}
+                    </button>
+                  ) : null}
+                </div>
+                <div>
+                  <label htmlFor="forge-manual-url" className={inputLabelClass}>
+                    {f.manualUrlLabel}
+                  </label>
+                  <input
+                    id="forge-manual-url"
+                    value={manualImageUrl}
+                    onChange={(e) => setManualImageUrl(e.target.value)}
+                    disabled={namePriceLocked}
+                    placeholder={f.placeholders.manualImageUrl}
+                    className={cn(inputClass, "mt-1")}
+                    autoComplete="off"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Action buttons — arriba del resto para generar sin scroll */}
+            <div className="space-y-2 border-t border-zinc-800/60 pt-2.5">
+              {!address ? (
+                <button
+                  type="button"
+                  disabled={connecting}
+                  onClick={() => {
+                    playTacticalUiClick()
+                    void connect().then(() => refresh()).catch(() => {})
+                  }}
+                  className="flex min-h-[46px] w-full items-center justify-center bg-gradient-to-r from-violet-600 to-cyan-500 py-3 text-center text-[12px] font-semibold tracking-tight text-white shadow-[0_0_18px_rgba(139,92,246,0.35)] transition-opacity hover:opacity-90 disabled:opacity-40"
+                >
+                  {connecting ? f.linking : f.linkWallet}
+                </button>
+              ) : (
+                <>
+                  {forgeMode === "MANUAL" ? (
+                    <button
+                      type="button"
+                      disabled={isMintingCollection || actionLockedByProtocol}
+                      onClick={() => {
+                        playTacticalUiClick()
+                        void handleManualUploadAndMint().catch(() => {})
+                      }}
+                      className={cn(
+                        "flex min-h-[46px] w-full items-center justify-center bg-gradient-to-r from-violet-600 to-cyan-500 py-3 text-center text-[12px] font-semibold tracking-tight text-white shadow-[0_0_18px_rgba(139,92,246,0.35)] transition-opacity hover:opacity-90 disabled:opacity-40",
+                        isMintingCollection && "forge-forge-glitch",
+                      )}
+                    >
+                      {isMintingCollection ? statusLine || f.deploying : f.manualUploadMint}
+                    </button>
+                  ) : agentState === "COMPLETE" ? (
+                    <button
+                      type="button"
+                      disabled={isMintingCollection || actionLockedByProtocol}
+                      onClick={() => {
+                        playTacticalUiClick()
+                        void handleMintArtifact().catch(() => {})
+                      }}
+                      className={cn(
+                        "flex min-h-[46px] w-full items-center justify-center bg-gradient-to-r from-violet-600 to-cyan-500 py-3 text-center text-[12px] font-semibold tracking-tight text-white shadow-[0_0_18px_rgba(139,92,246,0.35)] transition-opacity hover:opacity-90 disabled:opacity-40",
+                        isMintingCollection && "forge-forge-glitch",
+                      )}
+                    >
+                      {isMintingCollection ? statusLine || f.deploying : f.forgeCtaMintArtifact}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={busy || actionLockedByProtocol}
+                      onClick={() => {
+                        playTacticalUiClick()
+                        void handleForgeAgent().catch(() => {})
+                      }}
+                      className={cn(
+                        "flex min-h-[46px] w-full items-center justify-center bg-gradient-to-r from-violet-600 to-cyan-500 py-3 text-center text-[12px] font-semibold tracking-tight text-white shadow-[0_0_18px_rgba(139,92,246,0.35)] transition-opacity hover:opacity-90 disabled:opacity-40",
+                        agentState === "PROCESSING_PAYMENT" && "forge-x402-blink",
+                        agentState === "FORGING_MATTER" && "forge-forge-glitch",
+                      )}
+                    >
+                      {initiatePrimaryLabel}
+                    </button>
+                  )}
+                  <button
+                    type="button"
                     onClick={() => {
                       playTacticalUiClick()
-                      void connect()
-                        .then(() => refresh())
-                        .catch(() => {})
+                      disconnect()
+                      void refresh().catch(() => {})
                     }}
-                    className="tactical-interactive-glitch w-full border-4 border-double border-[#00ffff]/60 py-2.5 text-[11px] uppercase tracking-widest text-[#00ffff] transition-colors hover:bg-[#00ffff]/10 disabled:opacity-50 sm:text-xs"
+                    className="flex w-full items-center justify-center border border-zinc-800 py-1.5 text-[10px] uppercase tracking-widest text-zinc-700 transition-colors hover:border-red-900/60 hover:text-red-500"
                   >
-                    {connecting ? f.linking : f.linkWallet}
+                    {f.disconnect}
                   </button>
-                ) : (
-                  <>
-                    {forgeMode === "MANUAL" ? (
-                      <button
-                        type="button"
-                        disabled={isMintingCollection || actionLockedByProtocol}
-                        onClick={() => {
-                          playTacticalUiClick()
-                          void handleManualUploadAndMint().catch(() => {})
-                        }}
-                        className={cn(
-                          "tactical-interactive-glitch w-full border-4 border-double border-[#00ffff] bg-[#00ffff]/5 py-3 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-[#00ffff] shadow-[0_0_20px_rgba(0,255,255,0.14)] transition-all hover:bg-[#00ffff]/15 hover:shadow-[0_0_28px_rgba(0,255,255,0.2)] disabled:opacity-40 sm:text-[12px]",
-                          isMintingCollection && "forge-forge-glitch",
-                          forgeUx.mintManualGlow && "forge-cta-pulse",
-                        )}
-                      >
-                        {isMintingCollection ? statusLine || f.deploying : f.manualUploadMint}
-                      </button>
-                    ) : agentState === "COMPLETE" ? (
-                      <button
-                        type="button"
-                        disabled={isMintingCollection || actionLockedByProtocol}
-                        onClick={() => {
-                          playTacticalUiClick()
-                          void handleMintArtifact().catch(() => {})
-                        }}
-                        className={cn(
-                          "tactical-interactive-glitch w-full border-4 border-double border-[#00ffff] bg-[#00ffff]/5 py-3 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-[#00ffff] shadow-[0_0_20px_rgba(0,255,255,0.14)] transition-all hover:bg-[#00ffff]/15 hover:shadow-[0_0_28px_rgba(0,255,255,0.2)] disabled:opacity-40 sm:text-[12px]",
-                          isMintingCollection && "forge-forge-glitch",
-                          forgeUx.mintOracleGlow && "forge-cta-pulse",
-                        )}
-                      >
-                        {isMintingCollection ? statusLine || f.deploying : "[ ARTIFACT_READY_FOR_MINT ]"}
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={busy || actionLockedByProtocol}
-                        onClick={() => {
-                          playTacticalUiClick()
-                          void handleForgeAgent().catch(() => {})
-                        }}
-                        className={cn(
-                          "tactical-interactive-glitch w-full border-4 border-double border-[#00ffff] bg-[#00ffff]/5 py-3 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-[#00ffff] shadow-[0_0_20px_rgba(0,255,255,0.14)] transition-all hover:bg-[#00ffff]/15 hover:shadow-[0_0_28px_rgba(0,255,255,0.2)] disabled:opacity-40 sm:text-[12px]",
-                          agentState === "PROCESSING_PAYMENT" && "forge-x402-blink",
-                          agentState === "FORGING_MATTER" && "forge-forge-glitch",
-                          forgeUx.initiateGlow && "forge-cta-pulse",
-                        )}
-                      >
-                        {initiatePrimaryLabel}
-                      </button>
+                </>
+              )}
+            </div>
+
+            {forgeMode === "MANUAL" ? (
+              <div className="space-y-1.5 pt-1">
+                <label htmlFor="forge-manual-lore" className={inputLabelClass}>
+                  {f.manualLoreLabel}
+                </label>
+                <textarea
+                  id="forge-manual-lore"
+                  value={manualLoreDraft}
+                  onChange={(e) => setManualLoreDraft(e.target.value)}
+                  disabled={namePriceLocked}
+                  placeholder={f.manualLorePlaceholder}
+                  rows={2}
+                  className={cn(oraclePromptTextareaClass, "mt-1")}
+                  autoComplete="off"
+                  spellCheck={lang === "es"}
+                />
+              </div>
+            ) : null}
+
+            <div className="mt-2 space-y-2 border-t border-zinc-800/70 pt-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
+                {f.forgeSectionLaterOptions}
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label htmlFor="forge-name" className={inputLabelClass}>
+                    {f.collectionName}
+                  </label>
+                  <input
+                    id="forge-name"
+                    value={name}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setName(v)
+                      if (error === f.errors.nameShort && v.trim().length >= 2) setError(null)
+                    }}
+                    maxLength={64}
+                    disabled={namePriceLocked}
+                    placeholder={f.placeholders.collectionName}
+                    className={cn(inputClass, "mt-1")}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="forge-price" className={inputLabelClass}>
+                    {textWithPhaserLiqLinks(f.fusionPrice)}
+                  </label>
+                  <input
+                    id="forge-price"
+                    value={priceLiq}
+                    onChange={(e) => setPriceLiq(e.target.value)}
+                    inputMode="decimal"
+                    disabled={namePriceLocked}
+                    placeholder={f.placeholders.price}
+                    className={cn(inputClass, "mt-1")}
+                  />
+                </div>
+              </div>
+              <p className="font-mono text-[10px] tabular-nums text-zinc-600">
+                <span>{f.readout}</span>
+                <span className="mx-1.5 select-none text-zinc-800" aria-hidden>
+                  →
+                </span>
+                <span className="text-zinc-300">{priceReadout}</span>
+                <span className="ml-1.5 inline-flex items-center">
+                  <PhaserLiqExpertLink>
+                    <TokenIcon className="h-3.5 w-3.5 shrink-0" />
+                    {PHASER_LIQ_SYMBOL}
+                  </PhaserLiqExpertLink>
+                </span>
+              </p>
+            </div>
+
+            <div className="border border-zinc-800/60 bg-black/25 p-2">
+              <label className="flex cursor-pointer select-none items-center gap-2.5">
+                <input
+                  type="checkbox"
+                  checked={worldEnabled}
+                  onChange={(e) => setWorldEnabled(e.target.checked)}
+                  disabled={busy}
+                  className="h-4 w-4 accent-violet-500"
+                />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+                  {f.forgeNarrativeWorldTitle}
+                </span>
+              </label>
+              {worldEnabled && (
+                <div className="mt-2 space-y-2">
+                  <div>
+                    <label className="mb-1 block text-[9px] uppercase tracking-widest text-zinc-700">
+                      {f.forgeNarrativeWorldName}
+                    </label>
+                    <input
+                      type="text"
+                      value={worldName}
+                      onChange={(e) => setWorldName(e.target.value)}
+                      maxLength={80}
+                      placeholder={f.forgeNarrativeWorldNamePlaceholder}
+                      disabled={busy}
+                      className="w-full border border-zinc-800 bg-zinc-950/80 px-2 py-1.5 text-[11px] text-zinc-300 placeholder-zinc-800 outline-none focus:border-violet-500/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[9px] uppercase tracking-widest text-zinc-700">
+                      {f.forgeNarrativeWorldBackstory}
+                    </label>
+                    <textarea
+                      value={worldPrompt}
+                      onChange={(e) => setWorldPrompt(e.target.value)}
+                      maxLength={1000}
+                      rows={2}
+                      placeholder={f.forgeOptionalShort}
+                      disabled={busy}
+                      className="w-full resize-none border border-zinc-800 bg-zinc-950/80 px-2 py-1.5 text-[11px] text-zinc-300 placeholder-zinc-800 outline-none focus:border-violet-500/50"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {address ? (
+              <div className="space-y-1.5 border-t border-zinc-800/60 pt-2 text-[11px]">
+                <p className="text-zinc-500">
+                  {f.walletLabel}: <span className="text-zinc-300">{truncateAddress(address)}</span>
+                </p>
+                <p className="font-mono tabular-nums text-zinc-600">
+                  {ch.liqBalance}: <span className="text-zinc-300">{stroopsToLiqDisplay(tokenBalance)} </span>
+                  <PhaserLiqExpertLink />
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          {/* ── Right column: preview + rewards launcher ── */}
+          <div className="flex min-h-0 flex-1 flex-col gap-2 lg:col-span-5">
+            <p className="shrink-0 border-b border-zinc-800 pb-1.5 text-[11px] font-bold uppercase tracking-[0.2em] text-zinc-500">
+              {f.artPreview}
+            </p>
+
+            <div
+              className={cn(
+                "flex min-h-0 flex-1 items-center justify-center border border-zinc-800/60 bg-black/25",
+                showCollectionLivePanel
+                  ? "min-h-[min(100px,18vh)] lg:min-h-0"
+                  : "min-h-[min(160px,26vh)] lg:min-h-0",
+              )}
+            >
+              {previewSrc ? (
+                <div className="flex h-full min-h-0 w-full flex-col items-center justify-center gap-2 p-2 sm:p-3">
+                  <IpfsDisplayImg
+                    uri={previewSrc}
+                    className={cn(
+                      "max-w-full object-contain",
+                      showCollectionLivePanel
+                        ? "max-h-[min(22vh,180px)] lg:max-h-[min(32vh,260px)]"
+                        : "max-h-[min(38vh,320px)] lg:max-h-[min(48vh,380px)]",
                     )}
+                    loading="lazy"
+                  />
+                  {previewLoreText ? (
                     <button
                       type="button"
                       onClick={() => {
                         playTacticalUiClick()
-                        disconnect()
-                        void refresh().catch(() => {})
+                        setForgeOverlay("lore")
                       }}
-                      className="tactical-interactive-glitch w-full border-2 border-cyan-500/35 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-cyan-400/80 hover:border-red-500/50 hover:text-red-300"
+                      className="custom-scrollbar max-h-16 w-full max-w-lg overflow-hidden border border-zinc-700/80 bg-black/45 px-2 py-1.5 text-left transition-colors hover:border-violet-500/40 hover:bg-violet-950/15"
+                      aria-label={f.loreExpandHint}
                     >
-                      {f.disconnect}
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-600">{f.lorePreview}</p>
+                      <p className="mt-0.5 line-clamp-3 whitespace-pre-wrap font-mono text-[10px] leading-snug text-zinc-300">
+                        {previewLoreText}
+                      </p>
+                      <p className="mt-1 text-[8px] uppercase tracking-widest text-zinc-600">{f.loreExpandHint}</p>
                     </button>
-                  </>
-                )}
-              </div>
+                  ) : null}
+                </div>
+              ) : (
+                <span className="px-4 text-center font-mono text-[10px] uppercase leading-relaxed tracking-[0.2em] text-zinc-800">
+                  {forgeMode === "MANUAL" ? f.manualAwaiting : f.awaitingFeed}
+                </span>
+              )}
             </div>
 
-            <div
-              className={cn(
-                "flex w-full flex-col lg:col-span-7",
-                showCollectionLivePanel ? "min-h-0" : "min-h-[190px]",
-              )}
-            >
-              <div className="flex min-h-0 w-full flex-col gap-2 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)] lg:items-start lg:gap-4">
-                <div className="min-h-0 w-full">
-                  <p className="mb-2 shrink-0 border-b border-cyan-500/35 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.28em] text-cyan-200/95">
-                    {f.artPreview}
-                  </p>
-                  <div
-                    className={cn(
-                      "flex items-center justify-center overflow-hidden px-2 py-2",
-                      showCollectionLivePanel
-                        ? "min-h-[min(120px,22vh)] lg:min-h-[min(140px,24vh)]"
-                        : "min-h-[min(220px,34vh)] lg:min-h-[min(285px,40vh)]",
-                    )}
-                  >
-                    {previewSrc ? (
-                      <div className="relative z-[3] flex h-full max-h-full w-full max-w-full flex-col items-center justify-center gap-2">
-                        <IpfsDisplayImg
-                          uri={previewSrc}
-                          className={cn(
-                            "relative z-[3] max-w-full object-contain",
-                            showCollectionLivePanel
-                              ? "max-h-[min(28vh,240px)]"
-                              : "max-h-[min(52vh,420px)]",
-                          )}
-                          loading="lazy"
-                        />
-                        {previewLoreText ? (
-                          <div className="custom-scrollbar max-h-20 w-full max-w-lg overflow-y-auto border border-cyan-500/25 bg-black/50 px-2 py-1.5 text-left">
-                            <p className="text-[9px] font-bold uppercase tracking-widest text-cyan-500/80">{f.lorePreview}</p>
-                            <p className="mt-1 whitespace-pre-wrap font-mono text-[11px] leading-snug text-cyan-100/90">
-                              {previewLoreText}
-                            </p>
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <span className="relative z-[3] px-2 text-center font-mono text-[10px] font-medium uppercase leading-relaxed tracking-[0.2em] text-cyan-400/85">
-                        {forgeMode === "MANUAL" ? f.manualAwaiting : f.awaitingFeed}
-                        <br />
-                        <span className="text-[9px] tracking-widest text-cyan-500/70">
-                          {forgeMode === "MANUAL" ? f.manualAwaitingHint : f.oracleHint}
-                        </span>
-                      </span>
-                    )}
+            {address ? (
+              <div className="flex shrink-0 flex-wrap items-center gap-2 border border-zinc-800/60 bg-black/30 px-2 py-1.5">
+                <div className="min-w-0 flex-1">
+                  <div className="h-1 overflow-hidden rounded bg-cyan-950/70">
+                    <div
+                      className="h-full bg-cyan-300/75 transition-[width]"
+                      style={{ width: `${faucetBrief?.questOverview?.progressPct ?? 0}%` }}
+                    />
                   </div>
+                  <p className="mt-0.5 text-[8px] uppercase tracking-[0.16em] text-zinc-600">
+                    {ch.rewardsQuestProgress}{" "}
+                    <span className="tabular-nums text-zinc-400">
+                      {faucetBrief?.questOverview
+                        ? `${faucetBrief.questOverview.completed}/${faucetBrief.questOverview.total}`
+                        : "—/—"}
+                    </span>
+                  </p>
                 </div>
-                {address ? (
-                  <aside className="tactical-frame ml-auto w-full border-cyan-500/35 bg-black/35 p-2.5 lg:sticky lg:top-2 lg:self-start">
-                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-300/90">
-                      {pickCopy(lang).chamber.rewardsSectionTitle}
-                    </p>
-                    <div className="w-full" onWheelCapture={captureWheelOnRewardsPanel}>
-                      <LiquidityFaucetControl
-                        address={address}
-                        tokenBalance={tokenBalance}
-                        compact
-                        onRefreshBalance={refreshLiqBalance}
-                        className="rounded-none border-0 bg-transparent p-0 shadow-none"
-                        freighterNftCollect={
-                          collectionPhaseTokenId != null ? { tokenId: collectionPhaseTokenId } : null
-                        }
-                      />
-                    </div>
-                  </aside>
-                ) : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    playTacticalUiClick()
+                    setForgeOverlay("rewards")
+                  }}
+                  className="shrink-0 rounded-sm border border-cyan-500/45 bg-cyan-950/35 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.18em] text-cyan-200 transition-colors hover:border-cyan-300 hover:text-white"
+                >
+                  {f.rewardsPanelButton}
+                </button>
               </div>
-            </div>
+            ) : null}
           </div>
         </div>
       </main>
+
+      {forgeOverlay && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[260] flex items-end justify-center sm:items-center sm:p-4"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="forge-overlay-title"
+            >
+              <button
+                type="button"
+                className="absolute inset-0 bg-black/75 backdrop-blur-[2px]"
+                aria-label={ch.operatorPanelBackdropClose}
+                onClick={() => setForgeOverlay(null)}
+              />
+              <div
+                className="relative flex max-h-[min(90dvh,820px)] w-full max-w-lg flex-col overflow-hidden rounded-t-xl border border-zinc-700 bg-zinc-950 shadow-[0_-12px_48px_rgba(0,0,0,0.55)] sm:rounded-xl sm:shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+              >
+                <div className="flex shrink-0 items-center justify-between gap-2 border-b border-zinc-800 px-3 py-2.5 sm:px-4">
+                  <h2
+                    id="forge-overlay-title"
+                    className="text-left text-[11px] font-bold uppercase tracking-[0.2em] text-zinc-300"
+                  >
+                    {forgeOverlay === "rewards"
+                      ? f.rewardsPanelTitle
+                      : forgeOverlay === "protocol"
+                        ? forgeMode === "ORACLE"
+                          ? f.protocolBriefTitleOracle
+                          : f.protocolBriefTitleManual
+                        : forgeOverlay === "lore"
+                          ? f.lorePreview
+                          : f.collectionLive}
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playTacticalUiClick()
+                      setForgeOverlay(null)
+                    }}
+                    className="rounded-sm border border-zinc-600 px-2 py-1 font-mono text-sm leading-none text-zinc-300 transition-colors hover:bg-zinc-900"
+                    aria-label={f.rewardsPanelClose}
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 sm:px-4 sm:pb-4">
+                  {forgeOverlay === "rewards" && address ? (
+                    <LiquidityFaucetControl
+                      address={address}
+                      tokenBalance={tokenBalance}
+                      compact
+                      onRefreshBalance={refreshLiqBalance}
+                      className="border-zinc-800/80 bg-zinc-900/30"
+                      freighterNftCollect={
+                        collectionPhaseTokenId != null ? { tokenId: collectionPhaseTokenId } : null
+                      }
+                    />
+                  ) : null}
+                  {forgeOverlay === "protocol" ? (
+                    <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-zinc-400">
+                      {forgeMode === "ORACLE" ? f.intro : f.manualIntro}
+                    </p>
+                  ) : null}
+                  {forgeOverlay === "lore" && previewLoreText ? (
+                    <p className="whitespace-pre-wrap font-mono text-[12px] leading-relaxed text-zinc-300">
+                      {previewLoreText}
+                    </p>
+                  ) : null}
+                  {forgeOverlay === "collection" && showCollectionLivePanel ? (
+                    <div className="space-y-3">
+                      <p className="font-mono text-[11px] text-zinc-400">
+                        {f.collectionIdLabel} <span className="text-violet-300">#{createdId}</span>
+                      </p>
+                      <a
+                        href={shareUrl ?? undefined}
+                        className="block break-all text-[10px] text-violet-400/90 underline-offset-2 hover:text-violet-300"
+                      >
+                        {shareUrl}
+                      </a>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void copyShare().catch(() => {})}
+                          className="inline-flex items-center border border-zinc-700 bg-zinc-900/60 px-3 py-1.5 text-[10px] uppercase tracking-widest text-zinc-400 transition-colors hover:border-violet-500/50 hover:text-violet-300"
+                        >
+                          {copied ? f.copied : f.copy}
+                        </button>
+                        <Link
+                          href={`/chamber?collection=${createdId}`}
+                          className="inline-flex items-center border border-violet-600/50 bg-violet-950/40 px-3 py-1.5 text-[10px] uppercase tracking-widest text-violet-300 transition-colors hover:bg-violet-950/60"
+                        >
+                          {f.openChamber}
+                        </Link>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   )
 }

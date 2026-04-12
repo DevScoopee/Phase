@@ -1,7 +1,7 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Bytes, Env,
-    Map, String, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Bytes,
+    BytesN, Env, Map, String, Symbol, Vec,
 };
 
 /// Errores del protocolo PHASE
@@ -83,6 +83,8 @@ pub enum DataKey {
     CollectionCounter,
     Collection(u64),
     CreatorToCollection(Address),
+    /// Lista ordenada de todos los collection_id creados por esta dirección (multi-colección).
+    CreatorCollectionList(Address),
     ProtocolTreasury,
     /// Recuento de NFTs de utilidad por titular (SEP-41 / Freighter); mantenido en mint y transfer.
     Balance(Address),
@@ -449,12 +451,28 @@ impl PhaseProtocol {
             .set(&DataKey::ProtocolTreasury, &protocol_treasury);
 
         env.events().publish(
-            (Symbol::new(&env, "initialized"), admin),
+            (Symbol::new(&env, "initialized"), admin.clone()),
             (token_address, required_amount),
         );
+
+        // Store admin for in-place WASM upgrades.
+        env.storage().instance().set(&symbol_short!("Admin"), &admin);
     }
 
-    /// Creador registra una colección (una por dirección). Devuelve `collection_id` para `/chamber?collection=ID`.
+    /// Replace the contract WASM in-place (preserves all storage). Only callable by the
+    /// admin address stored during `initialize`.
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("Admin"))
+            .expect("Admin not set — call initialize first");
+        admin.require_auth();
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
+    }
+
+    /// Creador registra una colección. Una misma dirección puede tener múltiples colecciones.
+    /// Devuelve `collection_id` para `/chamber?collection=ID`.
     pub fn create_collection(
         env: Env,
         creator: Address,
@@ -470,11 +488,6 @@ impl PhaseProtocol {
 
         if !str_is_safe_for_json_fragment(&name, 64) || !str_is_safe_for_json_fragment(&image_uri, 256) {
             return Err(PhaseError::InvalidCollectionMetadata);
-        }
-
-        let ck = DataKey::CreatorToCollection(creator.clone());
-        if env.storage().persistent().has(&ck) {
-            return Err(PhaseError::CreatorAlreadyHasCollection);
         }
 
         let mut c: u64 = env
@@ -493,10 +506,31 @@ impl PhaseProtocol {
         };
 
         env.storage().persistent().set(&DataKey::Collection(c), &settings);
-        env.storage().persistent().set(&ck, &c);
         env.storage()
             .persistent()
             .set(&DataKey::CollectionCounter, &c);
+
+        // Append to the per-creator list, migrating any pre-existing single-id entry.
+        let list_key = DataKey::CreatorCollectionList(creator.clone());
+        let mut list: Vec<u64> = env
+            .storage()
+            .persistent()
+            .get(&list_key)
+            .unwrap_or_else(|| Vec::new(&env));
+
+        if list.is_empty() {
+            // Migrate legacy single-entry from old DataKey::CreatorToCollection if present.
+            if let Some(old_id) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, u64>(&DataKey::CreatorToCollection(creator.clone()))
+            {
+                list.push_back(old_id);
+            }
+        }
+
+        list.push_back(c);
+        env.storage().persistent().set(&list_key, &list);
 
         env.events().publish(
             (Symbol::new(&env, "collection_created"), creator),
@@ -513,10 +547,42 @@ impl PhaseProtocol {
         env.storage().persistent().get(&DataKey::Collection(collection_id))
     }
 
+    /// Devuelve el primer collection_id del creador (backward compat).
+    /// Usa `get_creator_collection_ids` para obtener todos.
     pub fn get_creator_collection_id(env: Env, creator: Address) -> Option<u64> {
+        // Prefer the new multi-collection list.
+        if let Some(list) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, Vec<u64>>(&DataKey::CreatorCollectionList(creator.clone()))
+        {
+            return list.first();
+        }
+        // Fall back to legacy single-entry key.
         env.storage()
             .persistent()
             .get(&DataKey::CreatorToCollection(creator))
+    }
+
+    /// Devuelve todos los collection_id del creador (puede ser múltiples).
+    pub fn get_creator_collection_ids(env: Env, creator: Address) -> Vec<u64> {
+        if let Some(list) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, Vec<u64>>(&DataKey::CreatorCollectionList(creator.clone()))
+        {
+            return list;
+        }
+        // Fall back: wrap legacy single-entry if present.
+        let mut v: Vec<u64> = Vec::new(&env);
+        if let Some(old_id) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, u64>(&DataKey::CreatorToCollection(creator))
+        {
+            v.push_back(old_id);
+        }
+        v
     }
 
     pub fn get_total_collections(env: Env) -> u64 {

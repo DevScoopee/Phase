@@ -188,10 +188,7 @@ function SplitFlapChar({ char, index, animationKey, skipEntrance, speed, playCli
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const tileDelay = 0.15 * index
-
-  /** Sin panel opaco en reposo — el hero aporta el fondo; el flip sigue usando el mismo color en ambas capas. */
-  const bgColor = isSettled ? "transparent" : "rgba(139, 92, 246, 0.18)"
-  const textColor = isSettled ? "#ffffff" : "#a78bfa"
+  const textColor = "#ffffff"
 
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current)
@@ -254,29 +251,30 @@ function SplitFlapChar({ char, index, animationKey, skipEntrance, speed, playCli
       initial={skipEntrance ? false : { opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: tileDelay, duration: 0.3, ease: "easeOut" }}
-      className="relative shrink-0 overflow-hidden flex items-center justify-center font-[family-name:var(--font-bebas)]"
+      className="relative shrink-0 flex items-center justify-center font-[family-name:var(--font-bebas)]"
       style={{
         fontSize: displayFontSize,
-        width: "0.65em",
+        width: "0.68em",
         height: "1.05em",
-        backgroundColor: bgColor,
         transformStyle: "preserve-3d",
-        transition: "background-color 0.15s ease",
+        backgroundColor: "transparent",
       }}
     >
-      <div className="absolute inset-x-0 top-0 bottom-1/2 flex items-end justify-center overflow-hidden">
+      {/* top half — clean horizontal split */}
+      <div className="absolute inset-x-0 top-0 flex items-end justify-center" style={{ height: "50%", backgroundColor: "transparent" }}>
         <span
-          className="block translate-y-[0.52em] leading-none transition-colors duration-150"
-          style={{ color: textColor }}
+          className="block leading-none"
+          style={{ color: textColor, transform: "translateY(50%)" }}
         >
           {currentChar}
         </span>
       </div>
 
-      <div className="absolute inset-x-0 top-1/2 bottom-0 flex items-start justify-center overflow-hidden">
+      {/* bottom half — clean horizontal split */}
+      <div className="absolute inset-x-0 bottom-0 flex items-start justify-center" style={{ height: "50%", backgroundColor: "transparent" }}>
         <span
-          className="-translate-y-[0.52em] leading-none transition-colors duration-150"
-          style={{ color: textColor }}
+          className="leading-none"
+          style={{ color: textColor, transform: "translateY(-50%)" }}
         >
           {currentChar}
         </span>
@@ -291,18 +289,19 @@ function SplitFlapChar({ char, index, animationKey, skipEntrance, speed, playCli
           duration: 0.25,
           ease: [0.22, 0.61, 0.36, 1],
         }}
-        className="absolute inset-x-0 top-0 bottom-1/2 origin-bottom overflow-hidden"
+        className="absolute inset-x-0 top-0"
         style={{
-          backgroundColor: bgColor,
+          height: "50%",
+          backgroundColor: "transparent",
           transformStyle: "preserve-3d",
           backfaceVisibility: "hidden",
-          transition: "background-color 0.15s ease",
+          transformOrigin: "bottom",
         }}
       >
         <div className="flex h-full items-end justify-center">
           <span
-            className="translate-y-[0.52em] leading-none transition-colors duration-150"
-            style={{ color: textColor }}
+            className="leading-none"
+            style={{ color: textColor, transform: "translateY(50%)" }}
           >
             {currentChar}
           </span>

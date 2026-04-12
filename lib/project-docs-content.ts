@@ -13,6 +13,7 @@ export type DocsBlock =
   | { type: "links"; intro?: string; items: DocsLinkItem[] }
   | { type: "table"; headers: string[]; rows: string[][] }
   | { type: "code"; text: string; label?: string }
+  | { type: "image"; src: string; alt: string; label?: string }
 
 export type DocsSection = {
   id: string
@@ -27,58 +28,6 @@ export type ProjectDocsPage = {
   sections: DocsSection[]
 }
 
-const X402_FLOW_DIAGRAM = `
-  Browser (wallet)               Next.js Server              Stellar Testnet
-  ─────────────────              ──────────────              ───────────────
-        │                               │                           │
-        │  POST /api/forge-agent        │                           │
-        │  { prompt }                   │                           │
-        │ ─────────────────────────────▶│                           │
-        │                               │                           │
-        │◀── HTTP 402 ─────────────────│                           │
-        │    { amount, token, network } │                           │
-        │                               │                           │
-        │  User signs Soroban tx        │                           │
-        │  (PHASELQ transfer)           │                           │
-        │ ──────────────────────────────────────────────────────────▶
-        │                               │                    ledger confirms
-        │  POST /api/forge-agent        │                           │
-        │  { prompt, txHash }           │                           │
-        │ ─────────────────────────────▶│                           │
-        │                               │  verify tx on RPC ───────▶
-        │                               │◀── owner + amount ────────
-        │                               │                           │
-        │                               │  Gemini → lore            │
-        │                               │  Nano Banana → image      │
-        │                               │  Pinata → IPFS seal       │
-        │                               │  initiate_phase ──────────▶
-        │                               │◀── token_id ──────────────
-        │◀── artifact + token_id ──────│                           │
-`.trimStart()
-
-const NFT_LIFECYCLE_DIAGRAM = `
-  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
-  │ REGISTER │──▶│   PAY    │──▶│  VERIFY  │──▶│ GENERATE │──▶│   MINT   │
-  │collection│   │ PHASELQ  │   │  on-chain│   │ AI + IPFS│   │ on-chain │
-  └──────────┘   └──────────┘   └──────────┘   └──────────┘   └──────────┘
-   create_        user signs      server reads    Gemini +       initiate_
-   collection     Soroban tx      ledger proof    Pinata seal    phase
-   (Soroban)      in wallet       via RPC         to IPFS        (Soroban)
-`.trimStart()
-
-const INDEXING_DIAGRAM = `
-  wallet address
-       │
-       ├── Mercury JWT set?
-       │         │
-       │        YES ──▶  Mercury Classic REST
-       │         │       (contract events → ms resolution)
-       │         │
-       │        NO  ──▶  concurrent owner_of() RPC scan
-       │                 (bounded by PHASE_EXPLORE_SCAN_CAP)
-       │
-       └──▶ NFT list for Dashboard / Vault
-`.trimStart()
 
 const projectDocs: Record<LandingLang, ProjectDocsPage> = {
   es: {
@@ -125,9 +74,10 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
             text: "En PHASE, x402 es el gate de acceso al Oracle de IA. El servidor nunca corre el pipeline especulativamente — el hash de la transacción Stellar es el recibo de pago.",
           },
           {
-            type: "code",
+            type: "image",
+            src: "/docs/diagram-forge-flow.png",
+            alt: "Flujo x402 completo: browser → 402 challenge → firma Soroban → verificación RPC → pipeline IA → mint",
             label: "Flujo x402 completo",
-            text: X402_FLOW_DIAGRAM,
           },
           {
             type: "table",
@@ -148,9 +98,10 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
         title: "Creación de NFTs: ciclo completo",
         blocks: [
           {
-            type: "code",
+            type: "image",
+            src: "/docs/diagram-phases.png",
+            alt: "Ciclo de vida del artefacto: Register → Pay → Verify → Generate → Mint",
             label: "Ciclo de vida del artefacto",
-            text: NFT_LIFECYCLE_DIAGRAM,
           },
           {
             type: "p",
@@ -227,9 +178,10 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
             text: "Soroban no expone una query nativa de \"tokens que posee una dirección\". PHASE resuelve esto con dos estrategias:",
           },
           {
-            type: "code",
+            type: "image",
+            src: "/docs/diagram-wallet-indexing.png",
+            alt: "Estrategia de indexación: Mercury JWT → Classic REST o RPC scan → NFT list",
             label: "Estrategia de indexación",
-            text: INDEXING_DIAGRAM,
           },
           {
             type: "table",
@@ -382,9 +334,10 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
             text: "In PHASE, x402 is the access gate to the AI Oracle. The server never runs the pipeline speculatively — the Stellar transaction hash is the payment receipt.",
           },
           {
-            type: "code",
+            type: "image",
+            src: "/docs/diagram-forge-flow.png",
+            alt: "Complete x402 flow: browser → 402 challenge → Soroban sign → RPC verification → AI pipeline → mint",
             label: "Complete x402 flow",
-            text: X402_FLOW_DIAGRAM,
           },
           {
             type: "table",
@@ -405,9 +358,10 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
         title: "NFT creation: full lifecycle",
         blocks: [
           {
-            type: "code",
+            type: "image",
+            src: "/docs/diagram-phases.png",
+            alt: "Artifact lifecycle: Register → Pay → Verify → Generate → Mint",
             label: "Artifact lifecycle",
-            text: NFT_LIFECYCLE_DIAGRAM,
           },
           {
             type: "p",
@@ -484,9 +438,10 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
             text: "Soroban does not expose a native query for \"tokens owned by address\". PHASE resolves this with two strategies:",
           },
           {
-            type: "code",
+            type: "image",
+            src: "/docs/diagram-wallet-indexing.png",
+            alt: "Indexing strategy: Mercury JWT → Classic REST or RPC scan → NFT list",
             label: "Indexing strategy",
-            text: INDEXING_DIAGRAM,
           },
           {
             type: "table",

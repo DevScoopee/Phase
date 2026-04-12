@@ -1920,8 +1920,8 @@ export function FusionChamber() {
                   </div>
                 </div>
               ) : phased && phaseId != null && address ? (
-                <div className="grid w-full max-h-full min-h-0 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:items-stretch lg:gap-5">
-                  <div className="ch-chamber-split-preview relative flex min-h-0 min-w-0 w-full max-w-full flex-col overflow-y-auto overflow-x-hidden rounded-xl lg:max-w-none">
+                <div className="grid w-full max-h-full min-h-0 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:items-start lg:gap-5">
+                  <div className="ch-chamber-split-preview relative flex min-h-0 min-w-0 w-full max-w-full flex-col overflow-y-auto overflow-x-hidden rounded-xl lg:max-w-none lg:self-start">
                     <div
                       className="pointer-events-none absolute inset-0 z-[1] rounded-xl opacity-[0.34] [background:repeating-linear-gradient(0deg,transparent,transparent_3px,rgba(0,0,0,0.12)_3px,rgba(0,0,0,0.12)_4px)]"
                       aria-hidden

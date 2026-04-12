@@ -29,6 +29,8 @@ type Props = {
   onRequestConnect?: () => Promise<string | null> | string | null
   onReady?: () => void | Promise<void>
   className?: string
+  /** Forja: bloque más visible y texto para principiantes. */
+  hero?: boolean
 }
 
 type HorizonBalance = {
@@ -50,7 +52,7 @@ async function fetchNativeXlmBalance(address: string): Promise<number> {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-export function TrustlineButton({ address, onRequestConnect, onReady, className }: Props) {
+export function TrustlineButton({ address, onRequestConnect, onReady, className, hero = false }: Props) {
   const { lang } = useLang()
   const ff = pickCopy(lang).forge
   const onReadyRef = useRef(onReady)
@@ -263,10 +265,22 @@ export function TrustlineButton({ address, onRequestConnect, onReady, className 
     <section
       className={cn(
         "tactical-frame mt-2 shrink-0 border-cyan-400/35 bg-cyan-950/20 px-2.5 py-2 shadow-[0_0_16px_rgba(34,211,238,0.1)]",
+        hero &&
+          "mt-0 rounded-md border-2 border-amber-400/55 bg-gradient-to-b from-amber-950/40 via-cyan-950/20 to-cyan-950/30 px-3 py-3 shadow-[0_0_32px_rgba(251,191,36,0.18)]",
         className,
       )}
     >
-      <p className="tactical-phosphor text-[9px] uppercase tracking-[0.2em] text-cyan-300/85">{ff.trustline_section_title}</p>
+      <p
+        className={cn(
+          "tactical-phosphor text-[9px] uppercase tracking-[0.2em] text-cyan-300/85",
+          hero && "text-[11px] font-semibold tracking-[0.14em] text-amber-100/95",
+        )}
+      >
+        {ff.trustline_section_title}
+      </p>
+      {hero ? (
+        <p className="mt-2 text-[11px] leading-snug text-zinc-300">{ff.trustline_beginner_blurb}</p>
+      ) : null}
       {walletAddress && albedoImplicitOk === false ? (
         <div className="mb-2 rounded border border-violet-500/45 bg-violet-950/30 p-2">
           <p className="text-[9px] font-semibold uppercase tracking-wide text-violet-200/95">
@@ -306,6 +320,7 @@ export function TrustlineButton({ address, onRequestConnect, onReady, className 
         }
         className={cn(
           "tactical-interactive-glitch mt-1.5 w-full border-2 px-2 py-2 text-[10px] font-bold uppercase tracking-[0.16em] transition-colors",
+          hero && "mt-3 py-3.5 text-[13px] font-semibold normal-case tracking-normal shadow-[0_0_20px_rgba(34,211,238,0.2)]",
           uiState === "READY"
             ? "border-emerald-500/70 bg-emerald-950/25 text-emerald-200"
             : uiState === "GET_TESTNET_XLM"
@@ -314,8 +329,8 @@ export function TrustlineButton({ address, onRequestConnect, onReady, className 
           busy && "opacity-75",
         )}
       >
-        <span className="inline-flex items-center justify-center gap-1.5">
-          <TokenIcon className={cn("h-4 w-4", uiState === "READY" && "text-emerald-300")} />
+        <span className="inline-flex items-center justify-center gap-2">
+          <TokenIcon className={cn("h-4 w-4", hero && "h-5 w-5", uiState === "READY" && "text-emerald-300")} />
           {buttonLabel}
         </span>
       </button>
@@ -340,14 +355,17 @@ export function TrustlineButton({ address, onRequestConnect, onReady, className 
           <p className="whitespace-pre-line text-[9px] leading-relaxed text-cyan-100/90">{message}</p>
         </div>
       ) : null}
-      {/* Info box con asset details */}
-      {asset && uiState !== "READY" && (
-        <div className="mt-2 text-[8px] text-cyan-400/60">
-          <p className="uppercase tracking-wider">Asset:</p>
-          <p className="font-mono">{asset.code}:{asset.issuer.slice(0, 12)}...</p>
-          <p className="mt-0.5 italic opacity-80">{ff.trustline_asset_hint}</p>
-        </div>
-      )}
+      {asset && uiState !== "READY" ? (
+        <details className="mt-2 rounded border border-cyan-800/45 bg-black/35 px-2 py-1.5">
+          <summary className="cursor-pointer select-none text-[10px] font-medium text-cyan-300/90 hover:text-cyan-100">
+            {ff.trustline_technical_details_label}
+          </summary>
+          <p className="mt-1.5 break-all font-mono text-[9px] leading-snug text-cyan-400/75">
+            {asset.code}:{asset.issuer}
+          </p>
+          <p className="mt-1 text-[9px] leading-relaxed text-cyan-500/70">{ff.trustline_asset_hint}</p>
+        </details>
+      ) : null}
     </section>
   )
 }

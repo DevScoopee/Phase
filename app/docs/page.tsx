@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import Link from "next/link"
 import { LangToggle } from "@/components/lang-toggle"
 import { useLang } from "@/components/lang-context"
@@ -226,6 +227,27 @@ export default function DocsPage() {
                           <pre className="overflow-x-auto border border-violet-500/20 bg-black/60 p-4 font-mono text-[10px] leading-relaxed text-zinc-300/85">
                             {block.text}
                           </pre>
+                        </div>
+                      )
+                    }
+                    if (block.type === "image") {
+                      return (
+                        <div key={idx}>
+                          {block.label ? (
+                            <p className="mb-2 font-mono text-[9px] font-bold uppercase tracking-[0.28em] text-violet-500/70">
+                              {block.label}
+                            </p>
+                          ) : null}
+                          <div className="border border-violet-500/20 bg-black/40 p-4">
+                            <Image
+                              src={block.src}
+                              alt={block.alt}
+                              width={800}
+                              height={500}
+                              className="w-full h-auto"
+                              unoptimized
+                            />
+                          </div>
                         </div>
                       )
                     }
