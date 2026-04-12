@@ -67,6 +67,47 @@ function normalizeForgeImageStyleMode(raw: unknown): ForgeImageStyleMode {
   return "adaptive"
 }
 
+function normalizeForgeOutputLang(raw: unknown): "en" | "es" {
+  if (typeof raw !== "string") return "en"
+  const v = raw.trim().toLowerCase()
+  if (v === "es" || v === "spa" || v === "spanish") return "es"
+  return "en"
+}
+
+function buildLoreSystemInstruction(
+  userPromptTrimmed: string,
+  styleMode: ForgeImageStyleMode,
+  worldPrompt: string | undefined,
+  outputLang: "en" | "es",
+): string {
+  const worldPrefix =
+    outputLang === "es"
+      ? worldPrompt
+        ? `Contexto del mundo narrativo: ${worldPrompt}\n\n`
+        : ""
+      : worldPrompt
+        ? `Narrative world context: ${worldPrompt}\n\n`
+        : ""
+
+  const cyber =
+    outputLang === "es"
+      ? `${worldPrefix}Eres el Arquitecto del Protocolo PHASE. Escribe una descripción de máximo 2 oraciones técnicas, oscuras, ciberpunk y enigmáticas sobre el siguiente artefacto forjado por el usuario: ${userPromptTrimmed}`
+      : `${worldPrefix}You are the PHASE Protocol Architect. Write at most 2 sentences — technical, dark, cyberpunk, and enigmatic — describing the following user-forged artifact: ${userPromptTrimmed}`
+
+  const adaptive =
+    outputLang === "es"
+      ? `${worldPrefix}Eres el Arquitecto del Protocolo PHASE. Escribe una descripción breve (máximo 2 oraciones) alineada a la idea exacta del usuario, sin imponer estética cyber por defecto: ${userPromptTrimmed}`
+      : `${worldPrefix}You are the PHASE Protocol Architect. Write a brief description (at most 2 sentences) aligned with the user's exact idea, without imposing a cyber aesthetic by default: ${userPromptTrimmed}`
+
+  const base = styleMode === "cyber" ? cyber : adaptive
+  const langLine =
+    outputLang === "es"
+      ? "\n\nResponde únicamente en español. Sin prefijos ni comillas."
+      : "\n\nReply in English only. No prefixes or quotation marks."
+
+  return base + langLine
+}
+
 function composeForgeImagePrompt(userPrompt: string, styleMode: ForgeImageStyleMode): string {
   const trimmed = userPrompt.trim()
   if (!trimmed) return ""
@@ -80,6 +121,8 @@ type ForgeAgentBody = {
   payerAddress?: string
   imageStyleMode?: ForgeImageStyleMode | string
   collection_id?: number
+  /** Lore (story text) language: `en` | `es`, aligned with app LangToggle. */
+  lang?: string
 }
 
 type LegacyChallenge = {
@@ -755,7 +798,8 @@ async function runForgeAgentCore(
   userPrompt: string,
   styleMode: ForgeImageStyleMode,
   nanobananaCallBackUrl: string,
-  worldPrompt?: string,
+  worldPrompt: string | undefined,
+  outputLang: "en" | "es",
 ): Promise<ForgeAgentSuccessResponse> {
   const trimmed = userPrompt.trim()
   if (!trimmed) {
@@ -769,11 +813,7 @@ async function runForgeAgentCore(
   const genAI = new GoogleGenerativeAI(apiKey)
   const candidates = geminiModelCandidates()
 
-  const worldContext = worldPrompt ? `Contexto del mundo narrativo: ${worldPrompt}\n\n` : ""
-  const systemInstruction =
-    styleMode === "cyber"
-      ? `${worldContext}Eres el Arquitecto del Protocolo PHASE. Escribe una descripción de máximo 2 oraciones técnicas, oscuras, ciberpunk y enigmáticas sobre el siguiente artefacto forjado por el usuario: ${trimmed}`
-      : `${worldContext}Eres el Arquitecto del Protocolo PHASE. Escribe una descripción breve (máximo 2 oraciones) alineada a la idea exacta del usuario, sin imponer estética cyber por defecto: ${trimmed}`
+  const systemInstruction = buildLoreSystemInstruction(trimmed, styleMode, worldPrompt, outputLang)
 
   type GeminiGenerateResult = Awaited<
     ReturnType<ReturnType<GoogleGenerativeAI["getGenerativeModel"]>["generateContent"]>
@@ -955,7 +995,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<ForgeAgen
       }
     }
 
-    const payload = await runForgeAgentCore(body.prompt, styleMode, nanobananaCallBackUrl, worldPrompt)
+    const outputLang = normalizeForgeOutputLang(body.lang)
+    const payload = await runForgeAgentCore(body.prompt, styleMode, nanobananaCallBackUrl, worldPrompt, outputLang)
     return NextResponse.json(payload)
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)

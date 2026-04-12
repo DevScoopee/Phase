@@ -620,7 +620,7 @@ export default function ForgePage() {
       const first = await fetch("/api/forge-agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: userPrompt, imageStyleMode }),
+        body: JSON.stringify({ prompt: userPrompt, imageStyleMode, lang }),
       })
 
       if (first.status !== 402) {
@@ -743,6 +743,7 @@ export default function ForgePage() {
         settlementTxHash: txHash,
         payerAddress,
         imageStyleMode,
+        lang,
         ...(collectionId != null && collectionId > 0 ? { collection_id: collectionId } : {}),
       }
       const phaseProofB64 = btoa(
