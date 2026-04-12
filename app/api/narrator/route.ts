@@ -30,8 +30,9 @@ function narratorGeminiApiKey(): string | null {
 
 function narratorModelId(): string {
   const fromEnv = process.env.GEMINI_MODEL?.trim().replace(/^models\//i, "").trim()
-  if (fromEnv && fromEnv.length > 0) return fromEnv
-  return "gemini-2.5-flash"
+  // Avoid gemini-1.5-* — many accounts return 404 in v1beta
+  if (fromEnv && fromEnv.length > 0 && !fromEnv.startsWith("gemini-1.5")) return fromEnv
+  return "gemini-2.0-flash"
 }
 
 type NarratorBody = {
