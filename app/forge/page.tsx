@@ -256,6 +256,10 @@ export default function ForgePage() {
   const [agentImageUrl, setAgentImageUrl] = useState<string | null>(null)
   const [lore, setLore] = useState<string | null>(null)
 
+  const [worldEnabled, setWorldEnabled] = useState(false)
+  const [worldName, setWorldName] = useState("")
+  const [worldPrompt, setWorldPrompt] = useState("")
+
   const agentFlowBusy =
     agentState === "AWAITING_PAYMENT" ||
     agentState === "ARMING_SETTLEMENT" ||
@@ -504,6 +508,17 @@ export default function ForgePage() {
           const path = `/chamber?collection=${id}`
           setShareUrl(`${window.location.origin}${path}`)
         }
+        if (worldEnabled && worldName.trim() && worldPrompt.trim()) {
+          fetch("/api/world", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              collection_id: id,
+              world_name: worldName.trim(),
+              world_prompt: worldPrompt.trim(),
+            }),
+          }).catch((e) => console.warn("[forge] world save failed", e))
+        }
 
         // Cada artefacto forjado debe materializarse como NFT: auto-mint en la colección recién creada.
         try {
@@ -542,7 +557,7 @@ export default function ForgePage() {
         setIsMintingCollection(false)
       }
     },
-    [address, lang, name, priceLiq, refresh],
+    [address, lang, name, priceLiq, refresh, worldEnabled, worldName, worldPrompt],
   )
 
   const initiateAgentForge = useCallback(
@@ -550,6 +565,7 @@ export default function ForgePage() {
       userPrompt: string,
       payerAddress: string,
       imageStyleMode: OracleImageStyleMode,
+      collectionId?: number | null,
     ): Promise<{ imageUrl: string; lore: string }> => {
       const ff = pickCopy(lang).forge
       // AWAITING_PAYMENT ya lo fija handleForgeAgent tras validar el prompt.
@@ -693,6 +709,7 @@ export default function ForgePage() {
         settlementTxHash: txHash,
         payerAddress,
         imageStyleMode,
+        ...(collectionId != null && collectionId > 0 ? { collection_id: collectionId } : {}),
       }
       const phaseProofB64 = btoa(
         JSON.stringify({ settlementTxHash: txHash, payerAddress }),
@@ -821,7 +838,7 @@ export default function ForgePage() {
     }
 
     try {
-      await initiateAgentForge(prompt, addr, oracleImageStyleMode)
+      await initiateAgentForge(prompt, addr, oracleImageStyleMode, createdId)
     } catch (e) {
       console.error("[forge] Oracle / x402 flow failed", e)
       setAgentState("IDLE")
@@ -1411,6 +1428,67 @@ export default function ForgePage() {
                   </p>
                 </div>
 
+                {/* ── Narrative World Mode (optional) ── */}
+                <div className="mt-3 border border-cyan-400/20 bg-cyan-950/10 p-3">
+                  <label className="flex cursor-pointer items-center gap-3 select-none">
+                    <input
+                      type="checkbox"
+                      checked={worldEnabled}
+                      onChange={(e) => setWorldEnabled(e.target.checked)}
+                      disabled={busy}
+                      className="h-4 w-4 accent-cyan-400"
+                    />
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-cyan-300">
+                      {lang === "es" ? "Activar mundo narrativo" : "Enable narrative world"}
+                    </span>
+                  </label>
+
+                  {worldEnabled && (
+                    <div className="mt-3 space-y-2">
+                      <div>
+                        <label className="mb-1 block text-[10px] uppercase tracking-widest text-cyan-400/70">
+                          {lang === "es" ? "Nombre del mundo" : "World name"}
+                        </label>
+                        <input
+                          type="text"
+                          value={worldName}
+                          onChange={(e) => setWorldName(e.target.value)}
+                          maxLength={80}
+                          placeholder={lang === "es" ? "Ej: Sector Umbral-7" : "E.g. Sector Umbral-7"}
+                          disabled={busy}
+                          className="w-full border border-cyan-400/30 bg-transparent px-2 py-1.5 text-[11px] text-cyan-100 placeholder-cyan-700/60 outline-none focus:border-cyan-400/60"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-[10px] uppercase tracking-widest text-cyan-400/70">
+                          {lang === "es" ? "Contexto del mundo (prompt)" : "World context (prompt)"}
+                        </label>
+                        <textarea
+                          value={worldPrompt}
+                          onChange={(e) => setWorldPrompt(e.target.value)}
+                          maxLength={1000}
+                          rows={3}
+                          placeholder={lang === "es" ? "Describe el universo narrativo de esta colección..." : "Describe the narrative universe of this collection..."}
+                          disabled={busy}
+                          className="w-full resize-none border border-cyan-400/30 bg-transparent px-2 py-1.5 text-[11px] text-cyan-100 placeholder-cyan-700/60 outline-none focus:border-cyan-400/60"
+                        />
+                      </div>
+
+                      {worldPrompt.trim() && (
+                        <div className="border border-cyan-400/15 bg-cyan-950/30 p-2">
+                          <p className="mb-1 text-[9px] uppercase tracking-widest text-cyan-500">
+                            {lang === "es" ? "Vista previa — prompt Gemini" : "Preview — Gemini prompt"}
+                          </p>
+                          <p className="text-[10px] italic text-cyan-300/80">
+                            {`Contexto del mundo narrativo: ${worldPrompt.trim()}`}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 {!address ? null : (
                   <div className="space-y-2 border-t border-cyan-900/40 pt-2">
                     <p className="text-[11px] text-cyan-100/90 sm:text-[12px]">
@@ -1529,18 +1607,18 @@ export default function ForgePage() {
                   </p>
                   <div
                     className={cn(
-                      "art-retro-monitor flex flex-col items-center justify-center overflow-hidden px-2 py-2",
+                      "flex items-center justify-center overflow-hidden px-2 py-2",
                       showCollectionLivePanel
                         ? "min-h-[min(120px,22vh)] lg:min-h-[min(140px,24vh)]"
                         : "min-h-[min(220px,34vh)] lg:min-h-[min(285px,40vh)]",
                     )}
                   >
                     {previewSrc ? (
-                      <div className="phase-artifact-preview-clean tactical-holo-wrap relative z-[3] flex h-full max-h-full w-full max-w-full flex-col items-center justify-center gap-2">
+                      <div className="relative z-[3] flex h-full max-h-full w-full max-w-full flex-col items-center justify-center gap-2">
                         <IpfsDisplayImg
                           uri={previewSrc}
                           className={cn(
-                            "art-retro-monitor__img tactical-holo-img relative z-[3] max-w-full object-contain",
+                            "relative z-[3] max-w-full object-contain",
                             showCollectionLivePanel
                               ? "max-h-[min(28vh,240px)]"
                               : "max-h-[min(52vh,420px)]",
