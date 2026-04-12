@@ -189,8 +189,9 @@ function SplitFlapChar({ char, index, animationKey, skipEntrance, speed, playCli
 
   const tileDelay = 0.15 * index
 
-  const bgColor = isSettled ? "hsl(0, 0%, 0%)" : "rgba(249, 115, 22, 0.2)"
-  const textColor = isSettled ? "#ffffff" : "#f97316"
+  /** Sin panel opaco en reposo — el hero aporta el fondo; el flip sigue usando el mismo color en ambas capas. */
+  const bgColor = isSettled ? "transparent" : "rgba(139, 92, 246, 0.18)"
+  const textColor = isSettled ? "#ffffff" : "#a78bfa"
 
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current)
@@ -263,8 +264,6 @@ function SplitFlapChar({ char, index, animationKey, skipEntrance, speed, playCli
         transition: "background-color 0.15s ease",
       }}
     >
-      <div className="absolute inset-x-0 top-1/2 h-[1px] bg-black/20 pointer-events-none z-10" />
-
       <div className="absolute inset-x-0 top-0 bottom-1/2 flex items-end justify-center overflow-hidden">
         <span
           className="block translate-y-[0.52em] leading-none transition-colors duration-150"

@@ -539,7 +539,7 @@ export function LiquidityFaucetControl({
             onClick={() => void request(reward).catch(() => {})}
             className={cn(
               "tactical-phosphor text-[10px] font-semibold uppercase tracking-[0.18em] transition-colors",
-              trustlineUi && "tactical-reward-trustline-establishing border-amber-600/70 text-amber-100",
+              trustlineUi && "tactical-reward-trustline-establishing border-violet-600/70 text-violet-100",
               Boolean(state?.claimedAt) &&
                 "cursor-not-allowed border border-gray-800 px-3 py-1 text-gray-600 opacity-50",
               !state?.claimedAt &&
@@ -808,14 +808,14 @@ export function LiquidityFaucetControl({
       ) : showCustodyHint && freighterNftCollect ? (
         <div
           className={cn(
-            "mb-2 rounded border border-amber-500/35 bg-amber-950/20 px-2 py-2",
+            "mb-2 rounded border border-violet-500/35 bg-violet-950/20 px-2 py-2",
             compact && "mb-1.5 py-1.5",
           )}
         >
-          <p className="text-[9px] font-semibold uppercase tracking-widest text-amber-200/90">
+          <p className="text-[9px] font-semibold uppercase tracking-widest text-violet-200/90">
             {lang === "es" ? "NFT · NO EN CUSTODIA DEL EMISOR" : "NFT · NOT IN ISSUER CUSTODY"}
           </p>
-          <p className="mt-1 text-[9px] leading-snug text-amber-100/80">
+          <p className="mt-1 text-[9px] leading-snug text-violet-100/80">
             {ch.rewardsNftNotIssuerCustodyBody.replace("{tokenId}", String(freighterNftCollect.tokenId))}
           </p>
         </div>

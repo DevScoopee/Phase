@@ -36,21 +36,19 @@ export function FreighterConnect({ trailing }: FreighterConnectProps) {
     <div className="flex flex-col items-end gap-1 pointer-events-auto">
       <div className="flex items-center gap-2 flex-wrap justify-end">
         {address ? (
-          <div className="flex items-center gap-2">
+          <div className="group flex items-center gap-2 rounded-sm border border-violet-700/40 bg-violet-950/30 px-3 py-1.5">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" aria-hidden />
+            <span className="max-w-[min(100vw-10rem,14rem)] truncate font-mono text-[10px] font-medium uppercase tracking-widest text-violet-300" title={address}>
+              {t.walletLabel} · {truncateAddress(address)}
+            </span>
             <button
               type="button"
               onClick={disconnect}
-              className="border border-red-900/50 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-red-700/70 hover:text-red-500 hover:border-red-500 transition-colors"
+              className="ml-1 shrink-0 font-mono text-[9px] font-bold uppercase tracking-widest text-zinc-500 transition-colors hover:text-red-400"
               title={t.disconnectTitle}
             >
-              ✕
+              {lang === "es" ? "DESCONECTAR" : "DISCONNECT"}
             </button>
-            <div
-              className="border border-green-500/40 bg-background/75 backdrop-blur-md px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-green-400 max-w-[min(100vw-3rem,20rem)] truncate shadow-sm"
-              title={address}
-            >
-              {t.walletLabel} · {truncateAddress(address)}
-            </div>
           </div>
         ) : (
           <button

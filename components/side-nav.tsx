@@ -38,10 +38,18 @@ export function SideNav() {
   }
 
   return (
-    <nav className="fixed left-0 top-0 z-50 h-screen w-16 md:w-20 hidden md:flex flex-col justify-center border-r border-cyan-500/15 bg-[oklch(0.09_0.014_220/0.82)] backdrop-blur-md supports-[backdrop-filter]:bg-[oklch(0.09_0.014_220/0.72)]">
-      <div className="flex flex-col gap-6 px-4">
+    <nav
+      className="pointer-events-none fixed left-0 top-0 z-50 hidden h-screen w-16 flex-col justify-center md:flex md:w-20"
+      aria-label={lang === "es" ? "Secciones de la página" : "Page sections"}
+    >
+      <div className="pointer-events-auto flex flex-col gap-6 px-4">
         {navItems.map(({ id, label }) => (
-          <button key={id} onClick={() => scrollToSection(id)} className="group relative flex items-center gap-3">
+          <button
+            key={id}
+            type="button"
+            onClick={() => scrollToSection(id)}
+            className="group relative flex items-center gap-3"
+          >
             <span
               className={cn(
                 "h-1.5 w-1.5 rounded-full transition-all duration-300",

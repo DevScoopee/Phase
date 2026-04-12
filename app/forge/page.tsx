@@ -40,11 +40,10 @@ import {
   REQUIRED_AMOUNT,
   buildCreateCollectionTransaction,
   buildSettleTransaction,
-  fetchCreatorCollectionId,
+  fetchCreatorCollectionIds,
   fetchUserPhaseArtifact,
   getTokenBalance,
   getTransactionResult,
-  isCreatorAlreadyHasCollectionError,
   liqToStroops,
   sendTransaction,
   stroopsToLiqDisplay,
@@ -243,8 +242,6 @@ export default function ForgePage() {
   const [agentState, setAgentState] = useState<AgentState>("IDLE")
   const [isMintingCollection, setIsMintingCollection] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  /** Si el error es “ya tenés colección”, guardamos el id para mostrar CTA a /chamber. */
-  const [forgeDuplicateChamberCtaId, setForgeDuplicateChamberCtaId] = useState<number | null>(null)
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [createdId, setCreatedId] = useState<number | null>(null)
   /** Token id del NFT PHASE (`get_user_phase`), no el id de colección — necesario para COLLECT en el panel lateral. */
@@ -274,25 +271,21 @@ export default function ForgePage() {
 
   const tabSwitchLocked = agentFlowBusy || isMintingCollection
 
-  useEffect(() => {
-    if (!error) setForgeDuplicateChamberCtaId(null)
-  }, [error])
-
-  // Pre-detect existing collection as soon as a wallet connects — avoids letting the
-  // user fill the whole form before hitting the CreatorAlreadyHasCollection contract error.
+  // On wallet connect, load the most-recently created collection (last in list) for the
+  // "Collection Live" panel. Multiple collections are now supported; we show the last one
+  // as the active context without blocking the form.
   useEffect(() => {
     const g = address?.trim()
     setCreatedId(null)
     setShareUrl(null)
-    setForgeDuplicateChamberCtaId(null)
     if (!g) return
     let cancelled = false
-    void fetchCreatorCollectionId(g).then((id) => {
-      if (cancelled || id == null) return
-      setCreatedId(id)
-      setForgeDuplicateChamberCtaId(id)
+    void fetchCreatorCollectionIds(g).then((ids) => {
+      if (cancelled || ids.length === 0) return
+      const last = ids[ids.length - 1]
+      setCreatedId(last)
       if (typeof window !== "undefined") {
-        setShareUrl(`${window.location.origin}/chamber?collection=${id}`)
+        setShareUrl(`${window.location.origin}/chamber?collection=${last}`)
       }
     })
     return () => {
@@ -467,38 +460,22 @@ export default function ForgePage() {
       const ff = pickCopy(lang).forge
       const addr = address ?? (await refresh())
       if (!addr) {
-        setForgeDuplicateChamberCtaId(null)
         setError(ff.errors.connectWallet)
         return
       }
       const wrongNet = await freighterTestnetMismatchLabel()
       if (wrongNet) {
-        setForgeDuplicateChamberCtaId(null)
         setError(ff.errors.freighterWrongNetwork.replace("{network}", wrongNet))
         return
       }
       const trimmedName = name.trim()
       if (trimmedName.length < 2) {
-        setForgeDuplicateChamberCtaId(null)
         setError(ff.errors.nameShort)
         return
       }
       const stroops = liqToStroops(priceLiq)
       if (stroops === "0") {
-        setForgeDuplicateChamberCtaId(null)
         setError(ff.errors.priceInvalid)
-        return
-      }
-
-      const existingId = await fetchCreatorCollectionId(addr)
-      if (existingId != null) {
-        setCreatedId(existingId)
-        if (typeof window !== "undefined") {
-          const path = `/chamber?collection=${existingId}`
-          setShareUrl(`${window.location.origin}${path}`)
-        }
-        setForgeDuplicateChamberCtaId(existingId)
-        setError(ff.errors.creatorAlreadyHasCollection.replace("{id}", String(existingId)))
         return
       }
 
@@ -506,7 +483,6 @@ export default function ForgePage() {
       setTickerIdx(0)
 
       try {
-        setForgeDuplicateChamberCtaId(null)
         const txEnvelopeCreate = await buildCreateCollectionTransaction(addr, trimmedName, stroops, finalUri)
         const signCreate = await signTransaction(txEnvelopeCreate, {
           networkPassphrase: NETWORK_PASSPHRASE,
@@ -520,7 +496,8 @@ export default function ForgePage() {
         const sendCreate = await sendTransaction(signedCreate)
         await getTransactionResult(sendCreate.hash as string)
 
-        const id = await fetchCreatorCollectionId(addr)
+        const ids = await fetchCreatorCollectionIds(addr)
+        const id = ids.length > 0 ? ids[ids.length - 1] : null
         if (id == null) throw new Error(ff.errors.collectionIdRead)
         setCreatedId(id)
         if (typeof window !== "undefined") {
@@ -549,7 +526,6 @@ export default function ForgePage() {
               ? "La colección se creó, pero el auto-mint del NFT falló. Abrí Chamber para mintear manualmente."
               : "Collection created, but NFT auto-mint failed. Open Chamber to mint manually."
           const friendly = mapFusionChamberError(mintErr, ff.errors)
-          setForgeDuplicateChamberCtaId(null)
           setError(`${fallback} ${friendly}`)
         }
 
@@ -560,22 +536,7 @@ export default function ForgePage() {
           setManualLoreDraft("")
         }
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e)
         if (opts.restoreOracleOnFail) setAgentState("COMPLETE")
-        if (isCreatorAlreadyHasCollectionError(msg)) {
-          const id = await fetchCreatorCollectionId(addr)
-          if (id != null) {
-            setCreatedId(id)
-            if (typeof window !== "undefined") {
-              const path = `/chamber?collection=${id}`
-              setShareUrl(`${window.location.origin}${path}`)
-            }
-            setForgeDuplicateChamberCtaId(id)
-            setError(ff.errors.creatorAlreadyHasCollection.replace("{id}", String(id)))
-            return
-          }
-        }
-        setForgeDuplicateChamberCtaId(null)
         setError(mapFusionChamberError(e, ff.errors))
       } finally {
         setIsMintingCollection(false)
@@ -1207,8 +1168,8 @@ export default function ForgePage() {
           )}
 
           {ipfsConfigured === false && (
-            <div className="tactical-frame mt-2 shrink-0 border-amber-500/40 bg-amber-950/15 px-2 py-2 text-[10px] text-amber-100/90">
-              <p className="font-mono uppercase tracking-widest text-amber-300/95">{f.ipfsOracleHint}</p>
+            <div className="tactical-frame mt-2 shrink-0 border-violet-500/40 bg-violet-950/15 px-2 py-2 text-[10px] text-violet-100/90">
+              <p className="font-mono uppercase tracking-widest text-violet-300/95">{f.ipfsOracleHint}</p>
             </div>
           )}
 
@@ -1221,17 +1182,6 @@ export default function ForgePage() {
           {error && (
             <div className="forge-error-banner relative z-[1] mt-2 shrink-0 px-2 py-2" role="alert">
               <p className="relative z-[1] text-center text-[10px] font-bold uppercase tracking-wider text-red-200">{error}</p>
-              {forgeDuplicateChamberCtaId != null && (
-                <div className="relative z-[1] mt-2 flex justify-center">
-                  <Link
-                    href={`/chamber?collection=${forgeDuplicateChamberCtaId}`}
-                    onClick={() => playTacticalUiClick()}
-                    className="inline-flex items-center border-2 border-violet-400/60 bg-violet-950/40 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-violet-100 hover:border-violet-300 hover:text-white"
-                  >
-                    {f.openChamberForExistingCollection.replace("{id}", String(forgeDuplicateChamberCtaId))}
-                  </Link>
-                </div>
-              )}
             </div>
           )}
 

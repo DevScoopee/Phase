@@ -2,8 +2,9 @@
 
 import { albedoImplicitTxAllowed, isAlbedoSelectedInKit } from "@/lib/albedo-intent-client"
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react"
+import { createPortal } from "react-dom"
 import { signTransaction } from "@/lib/stellar-wallet-kit"
 import { toast } from "sonner"
 import { IpfsDisplayImg } from "@/components/ipfs-display-img"
@@ -148,7 +149,7 @@ function PhaserLiqTokenLink({
   symbol: string
   iconClassName?: string
   className?: string
-  variant?: "default" | "amber"
+  variant?: "default" | "violet"
 }) {
   return (
     <a
@@ -162,8 +163,8 @@ function PhaserLiqTokenLink({
       }}
       className={cn(
         "inline-flex items-center gap-1.5 rounded-sm border border-transparent font-mono tracking-normal underline-offset-[3px] transition-colors hover:underline focus:outline-none",
-        variant === "amber"
-          ? "text-amber-200/95 hover:border-amber-500/45 hover:bg-amber-950/35 hover:text-amber-50 focus-visible:ring-2 focus-visible:ring-amber-400/55"
+        variant === "violet"
+          ? "text-violet-200/95 hover:border-violet-500/45 hover:bg-violet-950/35 hover:text-violet-50 focus-visible:ring-2 focus-visible:ring-violet-400/55"
           : "text-cyan-400/95 hover:border-cyan-500/45 hover:bg-cyan-950/35 hover:text-cyan-50 focus-visible:ring-2 focus-visible:ring-cyan-400/60",
         className,
       )}
@@ -174,12 +175,30 @@ function PhaserLiqTokenLink({
   )
 }
 
-const chamberNavLink =
-  "tactical-interactive-glitch tactical-phosphor inline-flex min-h-[38px] items-center rounded-sm border-2 border-cyan-400/50 bg-cyan-950/40 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-cyan-100 shadow-[0_0_12px_rgba(34,211,238,0.12)] transition-colors hover:border-cyan-300 hover:bg-cyan-900/35 hover:text-white"
+/** Same zinc / violet chrome as `/dashboard` (Phase Market). */
+const chamberChromeNav =
+  "inline-flex min-h-[36px] items-center rounded-sm border border-zinc-700 bg-zinc-900/60 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-400 transition-colors hover:border-violet-500/50 hover:text-violet-300"
+const chamberChromeNavHere =
+  "inline-flex min-h-[36px] items-center rounded-sm border border-violet-600/50 bg-violet-950/50 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-violet-300"
+const chamberChromePrimaryBtn =
+  "flex min-h-[46px] w-full items-center justify-center bg-gradient-to-r from-violet-600 to-cyan-500 py-3 text-center text-[11px] font-bold uppercase tracking-wide text-white shadow-[0_0_18px_rgba(139,92,246,0.35)] transition-opacity hover:opacity-90 disabled:pointer-events-none"
+const chamberChromeRefreshBtn =
+  "flex items-center gap-1.5 rounded-sm border border-zinc-700 bg-zinc-900/60 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-zinc-400 transition-colors hover:border-violet-500/50 hover:text-violet-300 disabled:opacity-40"
 
 export function FusionChamber() {
+  const router = useRouter()
   const { lang } = useLang()
   const ch = pickCopy(lang).chamber
+  const nav = pickCopy(lang).nav
+  const dash = pickCopy(lang).dashboard
+
+  const goBack = useCallback(() => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back()
+    } else {
+      router.push("/")
+    }
+  }, [router])
 
   const searchParams = useSearchParams()
   const collectionId = useMemo(() => {
@@ -212,6 +231,7 @@ export function FusionChamber() {
   /** THE_REACTOR: POST /api/phase-nft/custodian-release (mismo flujo que el panel COLLECT). */
   const [claimToWalletBusy, setClaimToWalletBusy] = useState(false)
   const [logsOpen, setLogsOpen] = useState(false)
+  const [operatorModalOpen, setOperatorModalOpen] = useState(false)
   const [collectionInfo, setCollectionInfo] = useState<CollectionInfo | null>(null)
   const [collectionLoadState, setCollectionLoadState] = useState<"idle" | "loading" | "done">("idle")
   /** `image` parseado de `token_uri` on-chain (colección 0 o refuerzo). */
@@ -585,6 +605,24 @@ export function FusionChamber() {
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
   }, [logsOpen])
+
+  useEffect(() => {
+    if (!operatorModalOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOperatorModalOpen(false)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [operatorModalOpen])
+
+  useEffect(() => {
+    if (!operatorModalOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [operatorModalOpen])
 
   const handleConnect = async () => {
     const logs = pickCopy(lang).chamber.logs
@@ -1391,88 +1429,110 @@ export function FusionChamber() {
 
   return (
     <div
-      className="tactical-command-root tactical-command-root--chamber tactical-command-root--cockpit fixed inset-0 z-[100] flex flex-col overflow-hidden font-mono text-foreground"
+      className="tactical-command-root tactical-command-root--chamber tactical-command-root--cockpit tactical-command-root--stable fixed inset-0 z-[100] flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-black font-mono text-foreground"
       suppressHydrationWarning
     >
-      <div className="tactical-film-grain" aria-hidden />
-      <div className="tactical-crt-veil" aria-hidden />
-      <div className="tactical-crt-fine" aria-hidden />
+      <div className="grid-bg pointer-events-none fixed inset-0 z-0 opacity-[0.28]" aria-hidden />
+      <div className="tactical-film-grain opacity-[0.055]" aria-hidden />
+      <div className="tactical-crt-veil opacity-[0.11]" aria-hidden />
+      <div className="tactical-crt-fine opacity-50" aria-hidden />
       <TacticalCornerSigil className="pointer-events-none fixed bottom-2 left-2 z-[200] hidden opacity-70 sm:block" />
 
-      <header className="tactical-header-bar relative z-[102] flex shrink-0 items-center justify-between px-4 py-2 md:px-6">
-        <Link href="/" className={chamberNavLink} onClick={() => playTacticalUiClick()}>
-          {ch.exit}
-        </Link>
-        <span className="max-w-[min(52vw,16rem)] truncate text-center text-[10px] uppercase tracking-[0.35em] text-cyan-300 tactical-phosphor">
-          {chamberTitle}
-        </span>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <LangToggle variant="phosphor" />
-          <Link href="/explore" className={chamberNavLink} onClick={() => playTacticalUiClick()}>
+      <header className="relative z-[102] flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-950/95 px-4 py-3 backdrop-blur-sm md:px-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href="/" className={chamberChromeNav} onClick={() => playTacticalUiClick()}>
+            {nav.home}
+          </Link>
+          <Link href="/explore" className={chamberChromeNav} onClick={() => playTacticalUiClick()}>
             {lang === "es" ? "Explorar" : "Explore"}
           </Link>
-          <Link href="/dashboard" className={chamberNavLink} onClick={() => playTacticalUiClick()}>
-            {ch.market}
+          <Link href="/forge" className={chamberChromeNav} onClick={() => playTacticalUiClick()}>
+            {nav.forge}
           </Link>
-          <Link href="/forge" className={chamberNavLink} onClick={() => playTacticalUiClick()}>
-            {ch.forge}
+          <Link href="/dashboard" className={chamberChromeNav} onClick={() => playTacticalUiClick()}>
+            {nav.market}
           </Link>
+          <span className={chamberChromeNavHere} aria-current="page">
+            {nav.chamber.toUpperCase()}
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <button
             type="button"
             onClick={() => {
               playTacticalUiClick()
               void refreshStatus().catch(() => {})
               void refreshClassicStatus().catch(() => {})
+              void refresh().catch(() => {})
             }}
-            className={`${chamberNavLink} cursor-pointer border-dashed`}
+            className={chamberChromeRefreshBtn}
           >
             ⟳ {ch.sync}
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              playTacticalUiClick()
-              if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
-                document.getElementById("chamber-log-dock")?.scrollIntoView({
-                  behavior: "smooth",
-                  block: "nearest",
-                })
-              } else {
-                setLogsOpen((o) => !o)
-              }
-            }}
-            aria-expanded={logsOpen}
-            aria-controls="chamber-logs-panel"
-            className={cn(
-              chamberNavLink,
-              "cursor-pointer",
-              logsOpen && "max-lg:border-cyan-300/80 max-lg:text-white",
-            )}
-          >
-            {ch.logsToggle}
-          </button>
+          {!address ? (
+            <button
+              type="button"
+              disabled={connecting}
+              onClick={() => {
+                playTacticalUiClick()
+                void handleConnect().catch(() => {})
+              }}
+              className="rounded-sm border border-violet-700/60 bg-violet-950/40 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-violet-300 transition-colors hover:bg-violet-900/40 disabled:opacity-50"
+            >
+              {connecting ? dash.connecting : dash.connect}
+            </button>
+          ) : (
+            <div className="group flex max-w-[14rem] items-center gap-2 rounded-sm border border-violet-700/40 bg-violet-950/30 px-3 py-1.5">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" aria-hidden />
+              <span className="truncate text-[10px] font-medium text-violet-300">{truncateAddress(address)}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  playTacticalUiClick()
+                  disconnect()
+                  appendLog(ch.logs.walletUnlink)
+                  void refreshStatus().catch(() => {})
+                  void refreshClassicStatus().catch(() => {})
+                }}
+                className="ml-1 shrink-0 text-[9px] font-bold uppercase text-zinc-500 transition-colors hover:text-red-400"
+              >
+                {dash.disconnect}
+              </button>
+            </div>
+          )}
+          <LangToggle variant="phosphor" />
         </div>
       </header>
 
+      <div className="relative z-[102] shrink-0 border-b border-zinc-800/90 bg-zinc-950/85 px-4 py-2 md:px-6 md:py-2.5">
+        <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-zinc-500">
+          PHASE · {nav.chamber.toUpperCase()}
+        </p>
+        <p className="mt-1 max-w-3xl text-[10px] leading-relaxed text-zinc-600">{ch.pageHeroSubtitle}</p>
+        <p className="mt-2 font-mono text-[10px] uppercase tracking-widest text-violet-400/95">{chamberTitle}</p>
+      </div>
+
       <div
-        className="relative z-[102] grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-hidden md:grid-cols-[300px_minmax(0,1fr)]"
+        className={cn(
+          "relative z-[102] grid min-h-0 flex-1 grid-cols-1 items-stretch gap-0 overflow-hidden md:grid-cols-[minmax(0,17rem)_minmax(0,1fr)] [&>*]:min-h-0",
+          address
+            ? "lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)_minmax(12.5rem,17.5rem)] xl:grid-cols-[minmax(0,18rem)_minmax(0,1fr)_minmax(14rem,18rem)]"
+            : "lg:grid-cols-[minmax(0,19rem)_minmax(0,1fr)]",
+        )}
         suppressHydrationWarning
       >
         {/* STATUS_MONITOR */}
         <aside
           className={cn(
-            "tactical-cockpit-aside tactical-chamber-aside relative z-[102] flex min-h-0 flex-col overflow-hidden p-2.5 pl-3 sm:p-3 sm:pl-4 lg:max-h-full lg:pl-5",
-            "max-md:max-h-[min(52dvh,420px)] max-md:overflow-y-auto max-md:overscroll-contain",
-            "max-md:border-b max-md:border-cyan-500/15",
+            "tactical-cockpit-aside tactical-chamber-aside relative z-[102] flex h-full min-h-0 flex-col overflow-hidden border-zinc-800/90 bg-zinc-950/25 p-3 sm:p-4",
+            "max-md:max-h-[min(36dvh,300px)] max-md:overflow-y-auto max-md:overscroll-contain max-md:border-b max-md:border-zinc-800 md:border-r",
           )}
         >
-          <div className="tactical-cockpit-signal" aria-hidden>
-            <span className="tactical-cockpit-signal__label">{ch.signalLabel}</span>
-          </div>
-          <h2 className="tactical-phosphor mb-1 border-b border-cyan-500/20 pb-1 text-[10px] uppercase tracking-[0.28em] text-cyan-400/75 sm:text-[11px]">
-            ┃ {ch.statusMonitor}
+          <h2 className="mb-2 border-b border-zinc-800 pb-2 text-[10px] font-bold uppercase tracking-[0.22em] text-zinc-500">
+            {ch.statusMonitor}
           </h2>
-          <p className="mb-1.5 line-clamp-2 text-[9px] leading-snug text-cyan-300/70">{ch.protocolStackLabel}</p>
+          <p className="mb-2 line-clamp-3 text-[9px] leading-relaxed text-zinc-600">{ch.protocolStackLabel}</p>
 
           {invalidCollection && (
             <div className="tactical-alert-critical relative z-0 mb-4 px-3 py-3">
@@ -1486,8 +1546,8 @@ export function FusionChamber() {
           )}
 
           {systemDesync && (
-            <div className="tactical-frame mb-3 border-orange-500/50 bg-orange-950/30 p-2.5 shadow-[0_0_16px_rgba(251,146,60,0.12)]">
-              <p className="text-center text-[9px] uppercase tracking-wide text-orange-300 tactical-phosphor">
+            <div className="tactical-frame mb-3 border-violet-500/50 bg-violet-950/30 p-2.5 shadow-[0_0_16px_rgba(139,92,246,0.12)]">
+              <p className="text-center text-[9px] uppercase tracking-wide text-violet-300 tactical-phosphor">
                 ⚠ {ch.nodeDesyncTitle}
               </p>
               <button
@@ -1496,7 +1556,7 @@ export function FusionChamber() {
                   playTacticalUiClick()
                   rebootProcess()
                 }}
-                className="tactical-interactive-glitch tactical-btn mt-2 w-full py-1.5 text-[9px] uppercase tracking-widest text-orange-200"
+                className="tactical-interactive-glitch tactical-btn mt-2 w-full py-1.5 text-[9px] uppercase tracking-widest text-violet-200"
               >
                 <span>⟲ {ch.rebootProcess}</span>
               </button>
@@ -1504,137 +1564,147 @@ export function FusionChamber() {
           )}
 
           {lowEnergy && address && !phased && !invalidCollection && (
-            <div className="tactical-frame mb-2 border-amber-500/50 bg-amber-950/25 px-2.5 py-1.5 shadow-[0_0_18px_rgba(245,158,11,0.12)]">
-              <p className="text-center text-[10px] font-bold uppercase tracking-wider text-amber-300 tactical-phosphor">
+            <div className="tactical-frame mb-2 border-violet-500/40 bg-violet-950/20 px-2.5 py-1.5 shadow-[0_0_16px_rgba(139,92,246,0.12)]">
+              <p className="text-center text-[10px] font-bold uppercase tracking-wider text-violet-300 tactical-phosphor">
                 ⚡ {ch.lowEnergyTitle}
               </p>
-              <p className="mt-1.5 flex flex-wrap items-center justify-center gap-x-1 text-center text-[10px] text-amber-200/80">
+              <p className="mt-1.5 flex flex-wrap items-center justify-center gap-x-1 text-center text-[10px] text-violet-200/80">
                 <span>{ch.reqLiqPrefix}</span>{" "}
-                <span className="tactical-digits-7seg text-amber-200/95">{stroopsToLiqDisplay(effectivePriceStroops)}</span>{" "}
+                <span className="tactical-digits-7seg text-violet-200/95">{stroopsToLiqDisplay(effectivePriceStroops)}</span>{" "}
                 <PhaserLiqTokenLink
                   href={expertUrl}
                   symbol={chainTokenSymbol}
-                  variant="amber"
                   iconClassName="h-3.5 w-3.5"
-                  className="text-[10px]"
+                  className="text-[10px] text-violet-300/90"
                 />
               </p>
             </div>
           )}
 
-          <div className="min-h-0 flex-1 overflow-y-auto text-[12px] leading-snug lg:overflow-y-auto">
-            <div className="mb-2 space-y-2 border-b border-cyan-900/40 pb-2">
-              <dl className="space-y-2">
-                <div>
-                  <dt className="text-[12px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{ch.wallet}</dt>
-                  <dd className="mt-1.5 break-all text-[13px] text-foreground/90">
-                    {address ? truncateAddress(address) : ch.offline}
-                  </dd>
-                </div>
-                {address ? (
+          <div className="min-h-0 flex-1 overflow-y-auto lg:overflow-y-auto">
+            <div className="space-y-6 pr-0.5">
+              <section className="space-y-3">
+                <h3 className="text-[9px] font-semibold uppercase tracking-[0.22em] text-zinc-600">
+                  {lang === "es" ? "Operador" : "Operator"}
+                </h3>
+                <dl className="space-y-2.5">
                   <div>
-                    <dt className="text-[12px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                      {lang === "es" ? "Artista" : "Artist"}
-                    </dt>
-                    <dd className="mt-1.5 text-[13px] text-cyan-300/90">
-                      {artistAlias ?? (lang === "es" ? "Sin alias" : "No alias")}
+                    <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{ch.wallet}</dt>
+                    <dd className="mt-1 font-mono text-[13px] leading-snug text-zinc-200">
+                      {address ? truncateAddress(address) : ch.offline}
                     </dd>
                   </div>
-                ) : null}
-              </dl>
-            </div>
-
-            <div className="mb-2 space-y-2 border-b border-cyan-900/40 pb-2">
-              <dl className="space-y-2">
-                <div>
-                  <dt className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{ch.liqBalance}</dt>
-                  <dd className={cn("mt-1", lowEnergy && "text-amber-400", balanceGlitch && "tactical-balance-glitch")}>
-                    <span className="tactical-digits-7seg text-lg tabular-nums tracking-tight text-cyan-100 sm:text-xl">
-                      {formatLiq(tokenBalance)}
-                    </span>{" "}
-                    <PhaserLiqTokenLink
-                      href={expertUrl}
-                      symbol={chainTokenSymbol}
-                      className="align-middle text-xs text-cyan-500/90"
-                    />
-                    <p className="mt-1 text-[8px] leading-snug tracking-wide text-cyan-500/50">{ch.tokenStandardSep41Note}</p>
-                    {showLiqIssuerMismatch ? (
-                      <p className="mt-1.5 text-[8px] leading-snug tracking-wide text-amber-400/95">
-                        {ch.liqBalanceIssuerMismatch.replace("{total}", formatLiq(walletLiqTotal))}
-                      </p>
-                    ) : null}
-                  </dd>
-                </div>
-                {classicAsset && (
-                  <>
+                  {address ? (
                     <div>
-                      <dt className="text-[12px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{ch.classicAssetLabel}</dt>
-                      <dd className="mt-1.5 text-[13px] text-foreground/80">
-                        {displayPhaserLiqSymbol(classicAsset.code)} · {truncateAddress(classicAsset.issuer)}
-                      </dd>
+                      <dt className="text-[9px] uppercase tracking-wider text-zinc-500">
+                        {lang === "es" ? "Artista" : "Artist"}
+                      </dt>
+                      <dd className="mt-1 text-[13px] text-zinc-300">{artistAlias ?? (lang === "es" ? "Sin alias" : "No alias")}</dd>
                     </div>
-                    <div>
-                      <dt className="text-[12px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{ch.freighterBalanceLabel}</dt>
-                      <dd className="mt-1.5 font-mono text-sm tabular-nums text-cyan-300/95">
-                        {classicStatus?.hasTrustline ? (classicStatus.balance ?? "0.0000000") : "NO_TRUSTLINE"}
-                      </dd>
-                    </div>
-                  </>
-                )}
-              </dl>
-            </div>
+                  ) : null}
+                </dl>
+              </section>
 
-            <div className="mb-2 space-y-2 border-b border-cyan-900/40 pb-2">
-              <dl className="space-y-2">
-                <div>
-                  <dt className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{ch.collectionId}</dt>
-                  <dd className="mt-1 text-[12px] tabular-nums text-foreground/85">
-                    {collectionId > 0 ? String(collectionId) : ch.collectionIdProtocol}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{ch.x402Price}</dt>
-                  <dd className="tactical-phosphor mt-1 text-cyan-300">
-                    <span className="tactical-digits-7seg text-lg tabular-nums tracking-tight sm:text-xl">
-                      {stroopsToLiqDisplay(effectivePriceStroops)}
-                    </span>{" "}
-                    <PhaserLiqTokenLink
-                      href={expertUrl}
-                      symbol={chainTokenSymbol}
-                      className="align-middle text-xs text-cyan-500/80"
-                    />
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{ch.network}</dt>
-                  <dd className="mt-1 text-[12px] text-foreground/85">{ch.networkValue}</dd>
-                </div>
-              </dl>
-            </div>
+              <hr className="border-zinc-800/90" />
 
-            <div className="mb-2 space-y-2 pb-1">
-              <dl className="space-y-2">
-                <div>
-                  <dt className="text-[12px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{ch.phaseState}</dt>
-                  <dd className="mt-1.5 text-[13px]">
-                    {phased ? (
-                      <span className="text-green-400">
-                        {ch.nftMinted} // #{phaseId}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">{ch.liquid}</span>
-                    )}
-                  </dd>
-                </div>
-                {phased && energyLevelBp != null && (
+              <section className="space-y-3">
+                <h3 className="text-[9px] font-semibold uppercase tracking-[0.22em] text-zinc-600">
+                  {lang === "es" ? "Liquidez" : "Liquidity"}
+                </h3>
+                <dl className="space-y-2.5">
                   <div>
-                    <dt className="text-[12px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{ch.powerLevel}</dt>
-                    <dd className="mt-1.5 font-mono text-sm tabular-nums text-cyan-400/95">
-                      {(energyLevelBp / 100).toFixed(0)}% <span className="text-muted-foreground">({energyLevelBp} bp)</span>
+                    <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{ch.liqBalance}</dt>
+                    <dd className={cn("mt-1", lowEnergy && "text-violet-400", balanceGlitch && "tactical-balance-glitch")}>
+                      <span className="tactical-digits-7seg text-xl tabular-nums tracking-tight text-zinc-100">
+                        {formatLiq(tokenBalance)}
+                      </span>{" "}
+                      <PhaserLiqTokenLink
+                        href={expertUrl}
+                        symbol={chainTokenSymbol}
+                        className="align-middle text-xs text-zinc-400"
+                      />
+                      {address && <p className="mt-1.5 text-[8px] leading-relaxed text-zinc-600">{ch.tokenStandardSep41Note}</p>}
+                      {showLiqIssuerMismatch ? (
+                        <p className="mt-1.5 text-[8px] leading-relaxed text-violet-400/90">
+                          {ch.liqBalanceIssuerMismatch.replace("{total}", formatLiq(walletLiqTotal))}
+                        </p>
+                      ) : null}
                     </dd>
                   </div>
-                )}
-              </dl>
+                  {address && classicAsset && (
+                    <>
+                      <div>
+                        <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{ch.classicAssetLabel}</dt>
+                        <dd className="mt-1 text-[12px] text-zinc-300">
+                          {displayPhaserLiqSymbol(classicAsset.code)} · {truncateAddress(classicAsset.issuer)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{ch.freighterBalanceLabel}</dt>
+                        <dd className="mt-1 font-mono text-[13px] tabular-nums text-zinc-200">
+                          {classicStatus?.hasTrustline ? (classicStatus.balance ?? "0.0000000") : ch.noTrustline}
+                        </dd>
+                      </div>
+                    </>
+                  )}
+                </dl>
+              </section>
+
+              <hr className="border-zinc-800/90" />
+
+              <section className="space-y-3">
+                <h3 className="text-[9px] font-semibold uppercase tracking-[0.22em] text-zinc-600">
+                  {lang === "es" ? "Colección / red" : "Collection / network"}
+                </h3>
+                <dl className="space-y-2.5">
+                  <div>
+                    <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{ch.collectionId}</dt>
+                    <dd className="mt-1 font-mono text-[13px] tabular-nums text-zinc-200">
+                      {collectionId > 0 ? String(collectionId) : ch.collectionIdProtocol}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{ch.x402Price}</dt>
+                    <dd className="mt-1 text-zinc-100">
+                      <span className="tactical-digits-7seg text-lg tabular-nums tracking-tight">
+                        {stroopsToLiqDisplay(effectivePriceStroops)}
+                      </span>{" "}
+                      <PhaserLiqTokenLink href={expertUrl} symbol={chainTokenSymbol} className="align-middle text-xs text-zinc-400" />
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{ch.network}</dt>
+                    <dd className="mt-1 font-mono text-[12px] text-zinc-400">{ch.networkValue}</dd>
+                  </div>
+                </dl>
+              </section>
+
+              <hr className="border-zinc-800/90" />
+
+              <section className="space-y-3">
+                <h3 className="text-[9px] font-semibold uppercase tracking-[0.22em] text-zinc-600">{ch.phaseState}</h3>
+                <dl className="space-y-2.5">
+                  <div>
+                    <dd className="text-[13px] leading-snug">
+                      {phased ? (
+                        <span className="font-medium text-emerald-400">
+                          {ch.nftMinted} · #{phaseId}
+                        </span>
+                      ) : (
+                        <span className="text-zinc-500">{ch.liquid}</span>
+                      )}
+                    </dd>
+                  </div>
+                  {phased && energyLevelBp != null && (
+                    <div>
+                      <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{ch.powerLevel}</dt>
+                      <dd className="mt-1 font-mono text-[13px] tabular-nums text-zinc-300">
+                        {(energyLevelBp / 100).toFixed(0)}% <span className="text-zinc-600">({energyLevelBp} bp)</span>
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+              </section>
             </div>
           </div>
 
@@ -1669,11 +1739,11 @@ export function FusionChamber() {
           )}
 
           {address && classicAsset ? (
-            <div className="tactical-frame mt-2.5 border-cyan-300/45 bg-cyan-950/25 px-3 py-2.5 shadow-[0_0_22px_rgba(0,255,255,0.12)]">
-              <p className="text-[9px] font-semibold uppercase tracking-widest text-cyan-200">
-                {lang === "es" ? "2 OPCIONES // ACTIVAR + RECOLECTAR" : "2 OPTIONS // ENABLE + COLLECT"}
+            <div className="tactical-frame mt-2.5 border-violet-500/35 bg-violet-950/15 px-3 py-2.5">
+              <p className="text-[9px] font-semibold uppercase tracking-widest text-violet-300">
+                {ch.classicRewardOptions}
               </p>
-              <div className="mt-2 grid grid-cols-1 gap-2">
+              <div className="mt-2 flex flex-col gap-2">
                 <button
                   type="button"
                   disabled={classicBusy || !classicEnabled || (classicStatus?.hasTrustline && !!classicFundedAt)}
@@ -1681,27 +1751,17 @@ export function FusionChamber() {
                     playTacticalUiClick()
                     void collectClassicAsset().catch(() => {})
                   }}
-                  className="tactical-interactive-glitch tactical-btn w-full border-emerald-500/55 py-2 text-[9px] uppercase tracking-widest text-emerald-200 disabled:opacity-50"
+                  className="tactical-interactive-glitch tactical-btn w-full border-violet-500/55 py-2 text-[9px] uppercase tracking-widest text-violet-200 disabled:opacity-50"
                 >
                   {!classicEnabled
-                    ? lang === "es"
-                      ? "[ RECOLECTA_CLASICA_NO_DISPONIBLE ]"
-                      : "[ CLASSIC_COLLECT_DISABLED ]"
+                    ? ch.classicCollectDisabled
                     : classicBusy
-                    ? lang === "es"
-                      ? "RECOLECTANDO_ASSET..."
-                      : "COLLECTING_ASSET..."
+                    ? ch.classicCollecting
                     : classicStatus?.hasTrustline && !!classicFundedAt
-                      ? lang === "es"
-                        ? "[ ASSET_CLASICO_YA_RECOLECTADO ]"
-                        : "[ CLASSIC_ASSET_ALREADY_COLLECTED ]"
+                    ? ch.classicAlreadyCollected
                     : !classicStatus?.hasTrustline
-                      ? lang === "es"
-                        ? `[ RECOLECTAR_AUTO (TRUSTLINE +${classicBootstrapAmount || "0"}) ]`
-                        : `[ AUTO_COLLECT (TRUSTLINE +${classicBootstrapAmount || "0"}) ]`
-                      : lang === "es"
-                        ? `[ RECOLECTAR_ASSET +${classicBootstrapAmount || "0"} ]`
-                        : `[ COLLECT_ASSET +${classicBootstrapAmount || "0"} ]`}
+                    ? ch.classicAutoCollect.replace("{amount}", classicBootstrapAmount || "0")
+                    : ch.classicCollectAsset.replace("{amount}", classicBootstrapAmount || "0")}
                 </button>
                 <button
                   type="button"
@@ -1709,19 +1769,19 @@ export function FusionChamber() {
                     playTacticalUiClick()
                     void copyClassicAssetForManualAdd().catch(() => {})
                   }}
-                  className="tactical-interactive-glitch tactical-btn w-full border-cyan-400/55 py-2 text-[9px] uppercase tracking-widest text-cyan-200"
+                  className="tactical-interactive-glitch tactical-btn w-full border-violet-400/40 py-1.5 text-[9px] uppercase tracking-widest text-violet-300/80"
                 >
-                  {lang === "es" ? "[ AÑADIR MANUAL EN FREIGHTER ]" : "[ ADD MANUALLY IN FREIGHTER ]"}
+                  {lang === "es" ? "COPIAR ASSET PARA FREIGHTER" : "COPY ASSET CODE FOR FREIGHTER"}
                 </button>
               </div>
-              <p className="mt-2 text-[9px] text-cyan-100/80">
-                {lang === "es"
-                  ? "Manual: pegá este asset en Freighter (code:issuer). Luego podés recolectar."
-                  : "Manual: paste this asset in Freighter (code:issuer). Then you can collect."}
-              </p>
-              <p className="mt-1 break-all font-mono text-[10px] text-cyan-200/90">
-                {classicAsset.code}:{classicAsset.issuer}
-              </p>
+              <div className="mt-2.5 border border-violet-500/20 bg-black/30 px-2.5 py-2">
+                <p className="text-[8px] uppercase tracking-widest text-violet-400/70">
+                  {lang === "es" ? "Asset para trustline manual" : "Asset code for manual trustline"}
+                </p>
+                <p className="mt-1 break-all font-mono text-[9px] text-violet-200/80">
+                  {classicAsset.code}:{classicAsset.issuer}
+                </p>
+              </div>
             </div>
           ) : null}
 
@@ -1742,313 +1802,347 @@ export function FusionChamber() {
         </aside>
 
         {/* THE_REACTOR */}
-        <main className="tactical-cockpit-stage relative z-[102] flex h-full min-h-0 flex-col items-stretch overflow-hidden overflow-x-hidden max-lg:border-b max-lg:border-cyan-500/15">
+        <main className="tactical-cockpit-stage relative z-[102] flex min-h-0 flex-1 flex-col overflow-hidden max-lg:border-b max-lg:border-zinc-800/80">
           <div
-            className="pointer-events-none absolute inset-2 rounded-lg bg-gradient-to-b from-cyan-500/[0.045] to-transparent shadow-[inset_0_1px_0_rgba(34,211,238,0.05)] sm:inset-3"
+            className="pointer-events-none absolute inset-2 rounded-sm bg-gradient-to-b from-zinc-800/20 to-transparent shadow-[inset_0_1px_0_rgba(63,63,70,0.2)] sm:inset-3"
             aria-hidden
           />
 
-          <div className="tactical-cockpit-stage__content relative flex h-full min-h-0 flex-1 flex-col overflow-hidden px-3 py-3 sm:px-5 sm:py-4 lg:px-6 lg:py-4">
-          <div
-            className={cn(
-              "relative z-10 flex min-h-0 w-full max-w-[min(76rem,100%)] flex-1 flex-col gap-3 overflow-hidden lg:mx-auto lg:max-w-none",
-              address &&
-                "lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(18.5rem,22rem)] lg:items-stretch lg:gap-4 lg:overflow-visible",
-            )}
-          >
-          <div className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden lg:min-h-0">
+          <div className="tactical-cockpit-stage__content relative flex min-h-0 flex-1 flex-col overflow-hidden px-3 py-2 sm:px-4 sm:py-3 lg:px-5 lg:py-4">
+          <div className="relative z-10 flex min-h-0 w-full max-w-[min(76rem,100%)] flex-1 flex-col gap-3 overflow-hidden lg:mx-auto lg:max-w-none">
+          <div className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden overscroll-contain lg:min-h-0">
+            <div className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {/* Exhibition pedestal — NFT de utilidad PHASE (Soroban) */}
           <div className="relative z-10 mx-auto mb-0 flex min-h-0 w-full max-w-[min(76rem,100%)] flex-1 flex-col lg:mx-0 lg:max-w-none">
-            <p className="tactical-phosphor mb-0.5 shrink-0 text-center text-[10px] uppercase tracking-[0.32em] text-cyan-500/60 sm:text-[11px]">
-              ◈ {ch.exhibitionPedestal}
+            <p className="mb-1 shrink-0 text-center text-[12px] font-medium tracking-wide text-zinc-300 lg:text-left">
+              {ch.pedestalVisualShort}
             </p>
-            <p className="mb-1 shrink-0 text-center text-[9px] uppercase tracking-[0.24em] text-cyan-400/85 tactical-phosphor sm:text-[10px]">
+            <p className="mb-2 shrink-0 text-center text-[10px] leading-snug text-zinc-500 lg:text-left">
               {collectionPedestalLine}
             </p>
-            <div className="tactical-frame flex min-h-[min(26svh,220px)] max-h-[min(44svh,390px)] flex-1 flex-col items-stretch gap-1.5 overflow-hidden rounded-xl border border-cyan-500/18 bg-[oklch(0.055_0.02_220)]/90 px-3 py-2 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.08),inset_0_0_48px_rgba(0,0,0,0.5)] sm:min-h-[min(28svh,240px)] sm:max-h-[min(46svh,420px)] sm:gap-2 sm:px-4 sm:py-3">
+            <div className="flex min-h-0 flex-1 flex-col items-stretch gap-3 overflow-hidden rounded-xl border border-zinc-800/60 bg-zinc-950/35 px-3 py-3 sm:gap-3 sm:px-4 sm:py-4">
               {mintingArtifact ? (
-                <div className="text-center">
-                  <div className="mx-auto mb-2 h-12 w-12 border-2 border-cyan-500/60 border-t-transparent animate-spin rounded-full" />
-                  <p className="animate-pulse text-sm font-bold uppercase tracking-[0.2em] text-cyan-400">
-                    {ch.mintingTitle}
-                  </p>
-                  <p className="mt-2 text-[9px] uppercase tracking-widest text-muted-foreground">
-                    {ch.committingLedger}
-                  </p>
+                <div className="flex flex-1 items-center justify-center text-center">
+                  <div>
+                    <div className="mx-auto mb-3 h-12 w-12 animate-spin rounded-full border-2 border-violet-500/60 border-t-transparent" />
+                    <p className="animate-pulse text-sm font-bold uppercase tracking-[0.2em] text-violet-400">
+                      {ch.mintingTitle}
+                    </p>
+                    <p className="mt-2 text-[9px] uppercase tracking-widest text-muted-foreground">
+                      {ch.committingLedger}
+                    </p>
+                  </div>
                 </div>
               ) : phased && phaseId != null && address ? (
-                <div className="flex w-full max-h-full min-h-0 flex-col gap-2 overflow-hidden">
-                  {isOwnerOnChain ? (
-                    <div className="shrink-0 rounded-lg border border-[#39ff14]/55 bg-gradient-to-b from-[rgba(57,255,20,0.12)] to-[rgba(0,0,0,0.35)] px-3 py-3 shadow-[0_0_32px_rgba(57,255,20,0.2),inset_0_1px_0_rgba(125,245,216,0.25)] sm:px-4 sm:py-3.5">
-                      <Link
-                        href="/dashboard"
-                        onClick={() => playTacticalUiClick()}
-                        className="tactical-phosphor-green block text-center text-[10px] font-extrabold uppercase leading-snug tracking-[0.22em] text-[#39ff14] transition [text-shadow:0_0_18px_rgba(57,255,20,0.45)] hover:text-[#7df5d8] sm:text-[11px]"
-                      >
-                        {ch.artifactSecuredLedgerVault}
-                      </Link>
-                      <p className="mt-2 text-center font-mono text-[8px] uppercase tracking-[0.2em] text-[#7df5d8]/80 sm:text-[9px]">
-                        owner_of(#{Math.max(0, Math.floor(phaseId))}) ≡ wallet ·{" "}
-                        {phaseLedgerNftCountDone
-                          ? ch.artifactLedgerBalanceContract.replace("{count}", phaseLedgerNftCount ?? "0")
-                          : lang === "es"
-                            ? "SINCRONIZANDO balance()…"
-                            : "SYNCING balance()…"}
-                      </p>
-                    </div>
-                  ) : issuerCustodyForCollect ? (
-                    <div className="shrink-0 rounded-lg border border-violet-400/45 bg-violet-950/20 px-3 py-2.5 shadow-[inset_0_0_0_1px_rgba(167,139,250,0.12)] sm:px-4">
-                      <p className="text-center text-[9px] leading-snug text-violet-100/85 sm:text-left">
-                        {ch.pedestalIssuerCustodyHint}
-                      </p>
-                      <a
-                        href="#chamber-collect-panel"
-                        onClick={() => playTacticalUiClick()}
-                        className="tactical-interactive-glitch mt-2 block w-full border border-violet-400/55 py-2 text-center text-[10px] font-bold uppercase tracking-widest text-violet-100 hover:border-violet-300 hover:text-white sm:w-auto sm:px-4"
-                      >
-                        {ch.pedestalIssuerCustodyScrollLink}
-                      </a>
-                    </div>
-                  ) : null}
-                  <div className="grid min-h-0 flex-1 grid-cols-1 items-stretch gap-2 overflow-hidden md:grid-cols-[minmax(0,1.25fr)_minmax(22rem,1fr)]">
-                  <div className="flex min-h-0 flex-col items-center gap-1.5 overflow-hidden sm:gap-2">
-                    <p className="mb-0.5 shrink-0 text-center text-[8px] uppercase tracking-[0.35em] text-muted-foreground">
-                      {ch.artifactAsciiView}
-                    </p>
-                    <PhaseArtifactVisualizer
-                      mode="verified"
-                      contractId={CONTRACT_ID}
-                      ownerTruncated={
-                        onChainTokenOwner ? truncateAddress(onChainTokenOwner) : truncateAddress(address)
-                      }
-                      serial={phaseId}
-                      energyLevelBp={energyLevelBp ?? 10_000}
-                      collectionTitle={artifactCollectionTitle}
-                      collectionDisplayName={artifactPublicCollectionName}
-                      imageUrl={effectiveArtifactImage?.trim() ? effectiveArtifactImage.trim() : undefined}
-                      labels={ch.artifact}
-                      viewerAddress={address}
-                      isOwner={isOwnerOnChain}
-                      authenticityPending={authenticityPending}
-                      supplyMinted={collectionSupply?.minted ?? null}
-                      supplyCap={collectionSupply?.cap ?? null}
-                      compact
-                      showPublicMetaPanel={false}
-                      showPrivateMetaPanel={false}
-                      className="w-full"
-                      onAccessPrivateMetadata={
-                        isOwnerOnChain ? () => void handleAccessPrivateMetadata().catch(() => {}) : undefined
-                      }
+                <div className="grid w-full max-h-full min-h-0 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:items-stretch lg:gap-5">
+                  <div className="ch-chamber-split-preview relative flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl">
+                    <div
+                      className="pointer-events-none absolute inset-0 z-[1] rounded-xl opacity-[0.34] [background:repeating-linear-gradient(0deg,transparent,transparent_3px,rgba(0,0,0,0.12)_3px,rgba(0,0,0,0.12)_4px)]"
+                      aria-hidden
                     />
+                    <div className="relative z-[2] flex min-h-0 min-w-0 flex-1 flex-col">
+                      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-cyan-500/35 bg-black/50 px-2.5 py-1.5 sm:px-3">
+                        <p className="min-w-0 truncate font-mono text-[8px] font-semibold uppercase tracking-[0.2em] text-cyan-200/95 sm:text-[9px]">
+                          {ch.chamberDockPreviewTicker}
+                        </p>
+                        <span className="shrink-0 font-mono text-[7px] uppercase tracking-widest text-cyan-500/85 sm:text-[8px]">
+                          {ch.chamberColumnPreview}
+                        </span>
+                      </div>
+                      <div className="flex min-h-0 w-full min-w-0 flex-1 items-start justify-start p-2.5 sm:p-3">
+                        <PhaseArtifactVisualizer
+                          mode="verified"
+                          contractId={CONTRACT_ID}
+                          ownerTruncated={
+                            onChainTokenOwner ? truncateAddress(onChainTokenOwner) : truncateAddress(address)
+                          }
+                          serial={phaseId}
+                          energyLevelBp={energyLevelBp ?? 10_000}
+                          collectionTitle={artifactCollectionTitle}
+                          collectionDisplayName={artifactPublicCollectionName}
+                          imageUrl={effectiveArtifactImage?.trim() ? effectiveArtifactImage.trim() : undefined}
+                          labels={ch.artifact}
+                          viewerAddress={address}
+                          isOwner={isOwnerOnChain}
+                          authenticityPending={authenticityPending}
+                          supplyMinted={collectionSupply?.minted ?? null}
+                          supplyCap={collectionSupply?.cap ?? null}
+                          compact
+                          showPublicMetaPanel={false}
+                          showPrivateMetaPanel={false}
+                          chamberPresentation={isOwnerOnChain}
+                          chamberFrameless={isOwnerOnChain}
+                          expertUrl={stellarExpertTestnetContractUrl(CONTRACT_ID)}
+                          expertLabel={ch.stellarExpert}
+                          className="w-full max-w-lg lg:max-w-[min(100%,22rem)]"
+                          onAccessPrivateMetadata={
+                            isOwnerOnChain ? () => void handleAccessPrivateMetadata().catch(() => {}) : undefined
+                          }
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex min-h-0 flex-col gap-4 overflow-y-auto custom-scrollbar pr-1.5">
-                    <div className="w-full rounded border border-cyan-500/28 bg-black/35 px-3.5 py-3.5">
-                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-300/85">
-                        ON_CHAIN_META
+                  <div className="ch-chamber-split-info relative flex min-h-0 min-w-0 flex-col gap-3 overflow-y-auto overscroll-contain rounded-xl p-2 sm:p-2.5">
+                    <div className="shrink-0 space-y-1.5">
+                      <div className="flex items-start justify-between gap-2 rounded border border-cyan-500/40 bg-cyan-950/30 px-2.5 py-1.5 shadow-[0_0_14px_rgba(34,211,238,0.1)] sm:px-3 sm:py-2">
+                        <p className="min-w-0 flex-1 font-mono text-[8px] font-semibold uppercase leading-snug tracking-[0.18em] text-cyan-200/95 sm:text-[9px]">
+                          {ch.chamberDockInfoTicker}
+                        </p>
+                        <span className="shrink-0 pt-0.5 text-right font-mono text-[7px] uppercase tracking-widest text-cyan-500/80 sm:text-[8px]">
+                          {ch.chamberColumnInfo}
+                        </span>
+                      </div>
+                      <p className="rounded border border-violet-600/20 bg-black/55 px-2.5 py-1.5 font-mono text-[7px] uppercase leading-relaxed tracking-[0.14em] text-violet-200/65 sm:px-3 sm:text-[8px]">
+                        {ch.chamberDockInfoSubline}
                       </p>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-2 border-b border-cyan-900/45 pb-1.5">
-                          <span className="text-[9px] uppercase tracking-[0.14em] text-cyan-400/80">COLLECTION_NAME</span>
-                          <span className="min-w-0 max-w-[62%] truncate text-right text-[11px] text-cyan-100/90">
-                            {artifactPublicCollectionName}
-                          </span>
-                        </div>
-                        <div className="flex flex-col gap-1 border-b border-cyan-900/45 pb-1.5">
-                          <span className="text-[9px] uppercase tracking-[0.14em] text-cyan-400/80">
-                            {ch.onChainMetaNftContractLabel}
-                          </span>
-                          <span
-                            className="break-all text-right font-mono text-[10px] leading-snug text-cyan-100/90"
-                            title={CONTRACT_ID}
-                          >
-                            {CONTRACT_ID}
-                          </span>
-                        </div>
-                        <div className="flex flex-col gap-1 border-b border-cyan-900/45 pb-1.5">
-                          <span className="text-[9px] uppercase tracking-[0.14em] text-cyan-400/80">
-                            {ch.onChainMetaPhaselqSacLabel}
-                          </span>
-                          <span
-                            className="break-all text-right font-mono text-[10px] leading-snug text-cyan-100/75"
-                            title={TOKEN_ADDRESS}
-                          >
-                            {TOKEN_ADDRESS}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[9px] uppercase tracking-[0.14em] text-cyan-400/80">SUPPLY_STABILIZED</span>
-                          <span className="text-right font-mono text-[11px] text-cyan-100/90">
-                            [ {collectionSupply?.minted ?? "—"} / {collectionSupply?.cap ?? "—"} ]
-                          </span>
-                        </div>
-                      </div>
                     </div>
-                    <div className="w-full rounded border border-cyan-500/35 bg-cyan-950/25 px-3.5 py-3.5">
-                      <div className="space-y-2.5">
-                        <p className="text-left text-[10px] font-bold uppercase tracking-[0.14em] text-cyan-200 tactical-phosphor">
-                          {ch.artifact.privateChannelUnlocked}
-                        </p>
-                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-b border-cyan-500/20 pb-1.5">
-                          <span className="text-[10px] uppercase tracking-[0.08em] text-cyan-400/85">
-                            {ch.artifact.metadataStandard}
-                          </span>
-                          <span className="text-right font-mono text-[11px] text-cyan-100/95">SEP-20</span>
-                        </div>
-                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-b border-cyan-500/20 pb-1.5">
-                          <span className="text-[10px] uppercase tracking-[0.08em] text-cyan-400/85">{ch.artifact.secretId}</span>
-                          <span className="text-right font-mono text-[11px] text-cyan-100/95">#{Math.max(0, Math.floor(phaseId))}</span>
-                        </div>
-                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-b border-cyan-500/20 pb-1.5">
-                          <span className="text-[10px] uppercase tracking-[0.08em] text-cyan-400/85">{ch.artifact.powerLevel}</span>
-                          <span className="text-right font-mono text-[11px] text-cyan-100/95">
-                            {ch.artifact.stateSolid} · {formatPowerBp(energyLevelBp ?? 10_000)}
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1">
-                          <span className="text-[10px] uppercase tracking-[0.08em] text-cyan-400/85">
-                            {ch.artifact.holderSignature}
-                          </span>
-                          <span className="max-w-[62%] truncate text-right font-mono text-[11px] text-cyan-100/95">
-                            {viewerSignatureShort(address)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    {manualAddEnabled ? (
-                    <div className="w-full rounded border border-cyan-500/35 bg-cyan-950/20 px-3.5 py-3.5">
-                      <div className="mb-3 rounded border border-violet-500/40 bg-violet-950/30 px-3 py-2.5 shadow-[inset_0_0_0_1px_rgba(167,139,250,0.12)]">
-                        <p className="text-left text-[10px] font-bold uppercase tracking-[0.18em] text-violet-200/95">
-                          {ch.walletNftVisibilityTitle}
-                        </p>
-                        <p className="mt-1.5 whitespace-pre-line text-left text-[11px] leading-relaxed text-violet-100/88">
-                          {ch.walletNftVisibilityBody}
-                        </p>
-                        <div className="mt-2.5 flex flex-wrap gap-2">
+                    {isOwnerOnChain ? (
+                      <div className="shrink-0 rounded-md border border-violet-500/35 bg-violet-950/20 px-4 py-3 sm:py-3.5">
+                        <div className="flex items-start justify-between gap-3">
                           <Link
                             href="/dashboard"
                             onClick={() => playTacticalUiClick()}
-                            className="tactical-interactive-glitch inline-flex border border-violet-400/55 bg-violet-950/40 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-violet-100 hover:border-violet-300 hover:text-white"
+                            className="block text-[11px] font-bold uppercase tracking-[0.18em] text-violet-300 transition hover:text-violet-100"
                           >
-                            {lang === "es" ? "Bóveda PHASE (Dashboard) ↗" : "PHASE vault (Dashboard) ↗"}
+                            {ch.artifactSecuredLedgerVault}
                           </Link>
                           <a
                             href={stellarExpertTestnetContractUrl(CONTRACT_ID)}
                             target="_blank"
                             rel="noopener noreferrer"
                             onClick={() => playTacticalUiClick()}
-                            className="tactical-interactive-glitch inline-flex border border-violet-400/55 bg-violet-950/40 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-violet-100 hover:border-violet-300 hover:text-white"
+                            className="shrink-0 font-mono text-[9px] uppercase tracking-widest text-violet-400/80 transition hover:text-violet-200"
                           >
                             Stellar Expert ↗
                           </a>
                         </div>
-                      </div>
-                      <p className="text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-cyan-200">
-                        {ch.freighterManualAddTitle}
-                      </p>
-                      <p className="mt-1.5 text-left text-[12px] leading-relaxed text-cyan-100/85">
-                        {isOwnerOnChain ? ch.freighterOwnerOnChainAddBody : ch.freighterManualAddBody}
-                      </p>
-                      {!freighterCollectibleReady ? (
-                        <p className="mt-2.5 rounded border border-amber-500/35 bg-amber-950/20 px-2.5 py-2.5 text-[11px] leading-relaxed text-amber-200/90">
-                          {!isOwnerOnChain
-                            ? lang === "es"
-                              ? "Aun si Freighter da error, ya puedes intentar Add manually con estos datos. Si falla, pulsa SYNC y reintenta en 30-90s."
-                              : "Even if Freighter errors, you can already try Add manually using these values. If it fails, press SYNC and retry in 30-90s."
+                        <p className="mt-2 font-mono text-[9px] uppercase tracking-wider text-violet-200/60">
+                          owner_of(#{Math.max(0, Math.floor(phaseId))}) ≡ wallet ·{" "}
+                          {phaseLedgerNftCountDone
+                            ? ch.artifactLedgerBalanceContract.replace("{count}", phaseLedgerNftCount ?? "0")
                             : lang === "es"
-                              ? "Freighter puede usar su propio backend al añadir coleccionables. Si falla, usá el botón naranja Ping índice (self-transfer); para enviar el NFT a otra persona copiá su G… al portapapeles y usá el botón magenta. Tu lista oficial en PHASE está en el dashboard (bóveda RPC)."
-                              : "Freighter may use its own backend when adding collectibles. If it fails, use the amber Ping index button (self-transfer); to send the NFT to someone else copy their G-address to the clipboard, then use the magenta button. Your authoritative PHASE list is the dashboard vault (RPC scan)."}
+                              ? "SINCRONIZANDO balance()…"
+                              : "SYNCING balance()…"}
                         </p>
-                      ) : (
-                        <p className="mt-2.5 rounded border border-cyan-500/20 bg-black/25 px-2.5 py-2.5 text-[11px] leading-relaxed text-cyan-100/80">
-                          {ch.freighterManualAddTroubleshoot}
+                      </div>
+                    ) : issuerCustodyForCollect ? (
+                      <div className="shrink-0 rounded-lg border border-violet-400/45 bg-violet-950/20 px-3 py-2.5 shadow-[inset_0_0_0_1px_rgba(167,139,250,0.12)] sm:px-4">
+                        <p className="text-center text-[9px] leading-snug text-violet-100/85 sm:text-left">
+                          {ch.pedestalIssuerCustodyHint}
                         </p>
-                      )}
-                      <p className="mt-2.5 text-[10px] leading-relaxed text-cyan-200/80">{ch.freighterSep50CheckIntro}</p>
-                      <button
-                        type="button"
-                        disabled={!nftNumericTokenIdStr || freighterSep50Busy}
-                        onClick={() => {
-                          playTacticalUiClick()
-                          void handleFreighterSep50Check()
-                        }}
-                        className="tactical-interactive-glitch mt-2 w-full border border-cyan-500/40 bg-black/40 py-2 text-[10px] font-bold uppercase tracking-widest text-cyan-100 hover:border-cyan-300 disabled:opacity-45"
-                      >
-                        {freighterSep50Busy ? "…" : ch.freighterSep50CheckButton}
-                      </button>
-                      {freighterSep50Report ? (
-                        <pre className="mt-2 max-h-48 overflow-auto rounded border border-cyan-500/25 bg-black/50 p-2 text-[9px] leading-snug text-cyan-100/90">
-                          {freighterSep50Report}
-                        </pre>
-                      ) : null}
-                      <div className="mt-3 space-y-2.5 border-t border-cyan-500/20 pt-2.5">
                         <button
                           type="button"
-                          disabled={!nftNumericTokenIdStr}
                           onClick={() => {
                             playTacticalUiClick()
-                            void copyFreighterCollectibleBundle(CONTRACT_ID, nftNumericTokenIdStr).catch(() => {})
+                            setOperatorModalOpen(true)
                           }}
-                          className="tactical-interactive-glitch w-full border border-cyan-400/60 bg-cyan-950/35 py-2 text-[10px] font-bold uppercase tracking-widest text-cyan-100 hover:border-cyan-300 disabled:opacity-45"
+                          className="tactical-interactive-glitch mt-2 w-full border border-violet-400/55 py-2 text-center text-[10px] font-bold uppercase tracking-widest text-violet-100 hover:border-violet-300 hover:text-white sm:w-auto sm:px-4"
                         >
-                          {ch.freighterCopyBundleButton}
+                          {ch.pedestalIssuerCustodyScrollLink}
                         </button>
-                        {phaseId != null && phaseId > 0 && !isOwnerOnChain ? (
-                          <button
-                            type="button"
-                            disabled={claimToWalletBusy}
-                            onClick={() => void handleCollectWithWalletKit()}
-                            className="tactical-interactive-glitch w-full border border-violet-400/55 bg-violet-950/30 py-2.5 text-[10px] font-bold uppercase tracking-widest text-violet-100 hover:border-violet-300 disabled:opacity-45"
-                          >
-                            {claimToWalletBusy
-                              ? ch.rewardsNftCollectSending
-                              : lang === "es"
-                                ? "[ COLECTAR A MI WALLET ]"
-                                : "[ COLLECT TO MY WALLET ]"}
-                          </button>
-                        ) : null}
-                        <div className="rounded border border-cyan-500/20 bg-black/35 px-2 py-1.5">
-                          <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-300/85">
-                            {lang === "es" ? "Collection Address" : "Collection Address"}
+                      </div>
+                    ) : null}
+                    <details className="overflow-hidden rounded-lg border border-violet-500/20 bg-zinc-950/50 [&_summary::-webkit-details-marker]:hidden">
+                      <summary className="cursor-pointer list-none px-4 py-3 text-center text-[10px] font-semibold uppercase tracking-widest text-violet-300/70 transition hover:bg-violet-950/30 hover:text-violet-200 lg:text-left">
+                        {ch.chamberTechnicalDetails}
+                        <span className="ml-1.5 text-violet-500/70" aria-hidden>
+                          ▾
+                        </span>
+                      </summary>
+                      <div className="space-y-4 border-t border-violet-500/15 px-4 pb-4 pt-3">
+                    <div className="w-full rounded-lg border border-zinc-800/60 bg-black/25 p-3">
+                      <h3 className="mb-3 text-[9px] font-semibold uppercase tracking-[0.18em] text-zinc-600">
+                        {lang === "es" ? "Cadena" : "On-chain"}
+                      </h3>
+                      <dl className="divide-y divide-zinc-800/90">
+                        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1 py-2.5 first:pt-0">
+                          <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{lang === "es" ? "Colección" : "Collection"}</dt>
+                          <dd className="max-w-[min(100%,14rem)] text-right text-[12px] font-medium leading-snug text-zinc-200 sm:max-w-[70%]">
+                            {artifactPublicCollectionName}
+                          </dd>
+                        </div>
+                        <div className="space-y-1 py-2.5">
+                          <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{ch.onChainMetaNftContractLabel}</dt>
+                          <dd className="break-all font-mono text-[10px] leading-relaxed text-zinc-300" title={CONTRACT_ID}>
+                            {CONTRACT_ID}
+                          </dd>
+                        </div>
+                        <div className="space-y-1 py-2.5">
+                          <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{ch.onChainMetaPhaselqSacLabel}</dt>
+                          <dd className="break-all font-mono text-[10px] leading-relaxed text-zinc-400" title={TOKEN_ADDRESS}>
+                            {TOKEN_ADDRESS}
+                          </dd>
+                        </div>
+                        <div className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+                          <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{lang === "es" ? "Emisión" : "Supply"}</dt>
+                          <dd className="font-mono text-[12px] text-zinc-200">
+                            {collectionSupply?.minted ?? "—"} / {collectionSupply?.cap ?? "—"}
+                          </dd>
+                        </div>
+                      </dl>
+
+                      <div className="mt-5 border-t border-zinc-800/90 pt-5">
+                        <h4 className="mb-3 text-[9px] font-semibold uppercase tracking-[0.2em] text-zinc-600">
+                          {ch.artifact.privateChannelUnlocked}
+                        </h4>
+                        <dl className="space-y-3">
+                          <div className="flex items-baseline justify-between gap-3">
+                            <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{ch.artifact.metadataStandard}</dt>
+                            <dd className="font-mono text-[12px] text-zinc-200">SEP-20</dd>
+                          </div>
+                          <div className="flex items-baseline justify-between gap-3">
+                            <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{ch.artifact.secretId}</dt>
+                            <dd className="font-mono text-[12px] text-zinc-200">#{Math.max(0, Math.floor(phaseId))}</dd>
+                          </div>
+                          <div className="flex flex-wrap items-baseline justify-between gap-3">
+                            <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{ch.artifact.powerLevel}</dt>
+                            <dd className="text-right font-mono text-[12px] text-zinc-200">
+                              {ch.artifact.stateSolid} · {formatPowerBp(energyLevelBp ?? 10_000)}
+                            </dd>
+                          </div>
+                          <div className="flex flex-wrap items-baseline justify-between gap-3">
+                            <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{ch.artifact.holderSignature}</dt>
+                            <dd className="max-w-[min(100%,12rem)] truncate font-mono text-[11px] text-zinc-300">
+                              {viewerSignatureShort(address)}
+                            </dd>
+                          </div>
+                        </dl>
+                      </div>
+                    </div>
+
+                    {manualAddEnabled ? (
+                      <div className="w-full space-y-4 rounded-lg border border-zinc-700/90 bg-zinc-950/40 p-4">
+                        <div className="rounded-md bg-violet-950/25 px-3 py-3">
+                          <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-violet-200">{ch.walletNftVisibilityTitle}</p>
+                          <p className="mt-2 whitespace-pre-line text-[11px] leading-relaxed text-violet-100/90">
+                            {ch.walletNftVisibilityBody}
                           </p>
-                          <div className="mt-1 flex items-center gap-2">
-                            <p className="min-w-0 flex-1 break-all font-mono text-[11px] leading-relaxed text-cyan-100/95">
-                              {CONTRACT_ID}
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                playTacticalUiClick()
-                                void copyFreighterCollectibleField("Collection Address", CONTRACT_ID).catch(() => {})
-                              }}
-                              className="shrink-0 rounded border border-cyan-500/45 px-2 py-0.5 text-[10px] uppercase tracking-widest text-cyan-200 hover:border-cyan-300 hover:text-white"
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Link
+                              href="/dashboard"
+                              onClick={() => playTacticalUiClick()}
+                              className="inline-flex rounded-sm border border-violet-500/40 bg-violet-950/50 px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-violet-100 transition-colors hover:border-violet-400 hover:bg-violet-900/40"
                             >
-                              {lang === "es" ? "COPIAR" : "COPY"}
-                            </button>
+                              {lang === "es" ? "Bóveda PHASE (Dashboard) ↗" : "PHASE vault (Dashboard) ↗"}
+                            </Link>
+                            <a
+                              href={stellarExpertTestnetContractUrl(CONTRACT_ID)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={() => playTacticalUiClick()}
+                              className="inline-flex rounded-sm border border-violet-500/40 bg-violet-950/50 px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-violet-100 transition-colors hover:border-violet-400 hover:bg-violet-900/40"
+                            >
+                              Stellar Expert ↗
+                            </a>
                           </div>
                         </div>
-                        <div className="rounded border border-cyan-500/20 bg-black/35 px-2 py-1.5">
-                          <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-300/85">Token ID</p>
-                          <div className="mt-1 flex items-center gap-2">
-                            <p className="min-w-0 flex-1 break-all font-mono text-[11px] leading-relaxed text-cyan-100/95">
-                              {nftNumericTokenIdStr || "—"}
-                            </p>
+
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">{ch.freighterManualAddTitle}</p>
+                          <p className="mt-2 text-[12px] leading-relaxed text-zinc-300">
+                            {isOwnerOnChain ? ch.freighterOwnerOnChainAddBody : ch.freighterManualAddBody}
+                          </p>
+                        </div>
+
+                        {!freighterCollectibleReady ? (
+                          <p className="rounded-md bg-violet-950/20 px-3 py-2.5 text-[11px] leading-relaxed text-violet-200/85">
+                            {!isOwnerOnChain
+                              ? lang === "es"
+                                ? "Aun si Freighter da error, ya puedes intentar Add manually con estos datos. Si falla, pulsa SYNC y reintenta en 30-90s."
+                                : "Even if Freighter errors, you can already try Add manually using these values. If it fails, press SYNC and retry in 30-90s."
+                              : lang === "es"
+                                ? "Freighter puede usar su propio backend al añadir coleccionables. Si falla, usá el botón naranja Ping índice (self-transfer); para enviar el NFT a otra persona copiá su G… al portapapeles y usá el botón magenta. Tu lista oficial en PHASE está en el dashboard (bóveda RPC)."
+                                : "Freighter may use its own backend when adding collectibles. If it fails, use the amber Ping index button (self-transfer); to send the NFT to someone else copy their G-address to the clipboard, then use the magenta button. Your authoritative PHASE list is the dashboard vault (RPC scan)."}
+                          </p>
+                        ) : (
+                          <p className="rounded-md bg-zinc-900/60 px-3 py-2.5 text-[11px] leading-relaxed text-zinc-400">
+                            {ch.freighterManualAddTroubleshoot}
+                          </p>
+                        )}
+
+                        <p className="text-[10px] leading-relaxed text-zinc-500">{ch.freighterSep50CheckIntro}</p>
+                        <button
+                          type="button"
+                          disabled={!nftNumericTokenIdStr || freighterSep50Busy}
+                          onClick={() => {
+                            playTacticalUiClick()
+                            void handleFreighterSep50Check()
+                          }}
+                          className="w-full rounded-sm border border-zinc-600 bg-zinc-900/80 py-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-800 disabled:opacity-45"
+                        >
+                          {freighterSep50Busy ? "…" : ch.freighterSep50CheckButton}
+                        </button>
+                        {freighterSep50Report ? (
+                          <pre className="max-h-48 overflow-auto rounded-md bg-black/60 p-3 font-mono text-[9px] leading-snug text-zinc-400">
+                            {freighterSep50Report}
+                          </pre>
+                        ) : null}
+
+                        <div className="space-y-3 border-t border-zinc-800/90 pt-4">
+                          <button
+                            type="button"
+                            disabled={!nftNumericTokenIdStr}
+                            onClick={() => {
+                              playTacticalUiClick()
+                              void copyFreighterCollectibleBundle(CONTRACT_ID, nftNumericTokenIdStr).catch(() => {})
+                            }}
+                            className="w-full rounded-sm border border-zinc-600 bg-zinc-900 py-2.5 text-[10px] font-bold uppercase tracking-wide text-zinc-100 transition-colors hover:border-violet-500/50 hover:text-white disabled:opacity-45"
+                          >
+                            {ch.freighterCopyBundleButton}
+                          </button>
+                          {phaseId != null && phaseId > 0 && !isOwnerOnChain ? (
                             <button
                               type="button"
-                              disabled={!nftNumericTokenIdStr}
-                              onClick={() => {
-                                playTacticalUiClick()
-                                void copyFreighterCollectibleField("Token ID", nftNumericTokenIdStr).catch(() => {})
-                              }}
-                              className="shrink-0 rounded border border-cyan-500/45 px-2 py-0.5 text-[10px] uppercase tracking-widest text-cyan-200 hover:border-cyan-300 hover:text-white"
+                              disabled={claimToWalletBusy}
+                              onClick={() => void handleCollectWithWalletKit()}
+                              className="w-full rounded-sm border border-violet-600/50 bg-violet-950/40 py-2.5 text-[10px] font-bold uppercase tracking-wide text-violet-100 transition-colors hover:bg-violet-900/35 disabled:opacity-45"
                             >
-                              {lang === "es" ? "COPIAR" : "COPY"}
+                              {claimToWalletBusy ? ch.rewardsNftCollectSending : ch.collectToMyWallet}
                             </button>
+                          ) : null}
+
+                          <div className="space-y-4 rounded-md bg-zinc-900/50 p-3">
+                            <div>
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[9px] uppercase tracking-wider text-zinc-500">
+                                  {lang === "es" ? "Contrato (colección)" : "Collection contract"}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    playTacticalUiClick()
+                                    void copyFreighterCollectibleField("Collection Address", CONTRACT_ID).catch(() => {})
+                                  }}
+                                  className="shrink-0 rounded-sm px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-violet-400 hover:text-violet-200"
+                                >
+                                  {lang === "es" ? "Copiar" : "Copy"}
+                                </button>
+                              </div>
+                              <p className="mt-1.5 break-all font-mono text-[10px] leading-relaxed text-zinc-300">{CONTRACT_ID}</p>
+                            </div>
+                            <div className="border-t border-zinc-800/80 pt-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[9px] uppercase tracking-wider text-zinc-500">Token ID</span>
+                                <button
+                                  type="button"
+                                  disabled={!nftNumericTokenIdStr}
+                                  onClick={() => {
+                                    playTacticalUiClick()
+                                    void copyFreighterCollectibleField("Token ID", nftNumericTokenIdStr).catch(() => {})
+                                  }}
+                                  className="shrink-0 rounded-sm px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-violet-400 hover:text-violet-200 disabled:opacity-40"
+                                >
+                                  {lang === "es" ? "Copiar" : "Copy"}
+                                </button>
+                              </div>
+                              <p className="mt-1.5 font-mono text-[12px] text-zinc-200">{nftNumericTokenIdStr || "—"}</p>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
                     ) : null}
-                  </div>
+                      </div>
+                    </details>
                   </div>
                 </div>
               ) : collectionLoadState === "loading" && collectionId > 0 ? (
@@ -2057,8 +2151,8 @@ export function FusionChamber() {
                 </p>
               ) : (
                 <div className="flex w-full max-h-full min-h-0 flex-col items-center gap-1.5 overflow-hidden sm:gap-2">
-                  <div className="tactical-frame w-full shrink-0 px-3 py-2 text-center shadow-[0_0_16px_rgba(0,255,255,0.08)]">
-                    <p className="text-[8px] uppercase tracking-[0.35em] text-cyan-500/55">{ch.x402MintPrice}</p>
+                  <div className="w-full shrink-0 rounded-sm border border-zinc-700 bg-zinc-950/50 px-3 py-2.5 text-center shadow-[inset_0_0_0_1px_rgba(63,63,70,0.25)]">
+                    <p className="text-[8px] uppercase tracking-[0.35em] text-zinc-500">{ch.x402MintPrice}</p>
                     <p className="tactical-phosphor mt-0.5 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xl tracking-wider text-cyan-200 sm:text-2xl">
                       <span className="tactical-digits-7seg">{stroopsToLiqDisplay(effectivePriceStroops)}</span>
                       <PhaserLiqTokenLink
@@ -2081,31 +2175,15 @@ export function FusionChamber() {
                       </p>
                     )}
                   </div>
-                  <p className="text-center text-[9px] uppercase tracking-[0.35em] text-muted-foreground">
-                    {ch.artifactAsciiView}
-                  </p>
-                  <PhaseArtifactVisualizer
-                    mode={artifactVerificationMode === "verifying" ? "verifying" : "locked"}
-                    contractId={CONTRACT_ID}
-                    ownerTruncated={address ? truncateAddress(address) : ch.offline}
-                    serial={0}
-                    energyLevelBp={0}
-                    collectionTitle={artifactCollectionTitle}
-                    collectionDisplayName={artifactPublicCollectionName}
-                    imageUrl={collectionInfo?.imageUri?.trim() || undefined}
-                    labels={ch.artifact}
-                    viewerAddress={address}
-                    supplyMinted={collectionSupply?.minted ?? null}
-                    supplyCap={collectionSupply?.cap ?? null}
-                    compact
-                  />
                 </div>
               )}
             </div>
           </div>
+            </div>
 
-          <p className="tactical-phosphor mb-0.5 mt-1 shrink-0 text-center text-[10px] uppercase tracking-[0.36em] text-cyan-500/55 sm:text-[11px]">
-            ◇ {ch.theReactor}
+            <div className="relative z-10 shrink-0 border-t border-zinc-800/70 pt-1.5">
+          <p className="mb-0.5 shrink-0 text-center text-[10px] font-bold uppercase tracking-[0.28em] text-zinc-500 sm:text-[11px]">
+            {ch.theReactor}
           </p>
 
           {!phased ? (
@@ -2115,6 +2193,11 @@ export function FusionChamber() {
                 genesisLoading && "tactical-reactor-filling",
               )}
             >
+              {!canInitializeGenesisSupply && !processing && (
+                <p className="mb-1.5 text-center text-[9px] leading-relaxed text-zinc-500 sm:text-left">
+                  {ch.paymentGateExplainer.replace("{amount}", stroopsToLiqDisplay(effectivePriceStroops))}
+                </p>
+              )}
               <button
                 type="button"
                 disabled={
@@ -2133,14 +2216,13 @@ export function FusionChamber() {
                   void initiateX402().catch(() => {})
                 }}
                 className={cn(
-                  "tactical-interactive-glitch tactical-btn tactical-btn-x402 relative py-2.5 text-xs uppercase tracking-[0.18em] sm:py-3 sm:text-sm",
-                  canInitializeGenesisSupply && !address
-                    ? "cursor-not-allowed opacity-40"
-                    : "text-cyan-100 tactical-btn-x402--armed",
-                  processing && x402Tx === "busy" && "tactical-btn-x402--streaming",
+                  chamberChromePrimaryBtn,
+                  "tactical-interactive-glitch relative rounded-sm px-2 py-2.5 text-xs tracking-[0.18em] sm:py-3 sm:text-sm",
+                  canInitializeGenesisSupply && !address && "cursor-not-allowed opacity-40",
+                  processing && x402Tx === "busy" && "motion-safe:animate-pulse",
                 )}
               >
-                <span className="tactical-x402-label px-2 text-base font-bold tracking-widest sm:text-lg md:text-xl">
+                <span className="px-2 text-base font-bold tracking-widest sm:text-lg md:text-xl">
                   {genesisLoading
                     ? `▶▶ ${ch.genesisSupplyLoading}`
                     : processing && x402Tx === "busy"
@@ -2155,7 +2237,7 @@ export function FusionChamber() {
             <div className="relative z-10 mx-auto flex w-full max-w-[min(52rem,100%)] shrink-0 flex-col items-stretch gap-2 px-1 sm:px-2 lg:mx-0 lg:max-w-none">
               {authenticityPending ? (
                 <p className="tactical-phosphor text-center text-[10px] uppercase tracking-[0.2em] text-cyan-500/85">
-                  {lang === "es" ? "◌ VERIFICANDO_PROPIETARIO_ON_CHAIN…" : "◌ VERIFYING_ON_CHAIN_OWNER…"}
+                  ◌ {ch.verifyingOwner}
                 </p>
               ) : !address ? (
                 <p className="tactical-phosphor text-center text-[10px] uppercase tracking-[0.2em] text-cyan-500/85">
@@ -2167,12 +2249,12 @@ export function FusionChamber() {
                   disabled={claimToWalletBusy}
                   onClick={() => void handleClaimNftToWallet()}
                   className={cn(
-                    "tactical-interactive-glitch tactical-btn tactical-btn-x402 relative border-violet-400/45 py-2.5 text-xs uppercase tracking-[0.18em] text-violet-100 sm:py-3 sm:text-sm",
-                    "tactical-btn-x402--armed",
-                    claimToWalletBusy && "tactical-btn-x402--streaming",
+                    chamberChromePrimaryBtn,
+                    "tactical-interactive-glitch relative rounded-sm px-2 py-2.5 text-xs tracking-[0.18em] sm:py-3 sm:text-sm",
+                    claimToWalletBusy && "motion-safe:animate-pulse",
                   )}
                 >
-                  <span className="tactical-x402-label px-2 text-base font-bold tracking-widest sm:text-lg md:text-xl">
+                  <span className="px-2 text-base font-bold tracking-widest sm:text-lg md:text-xl">
                     {claimToWalletBusy
                       ? `▶▶ ${ch.rewardsNftCollectSending}`
                       : ch.reactorClaimNftCta}
@@ -2195,7 +2277,7 @@ export function FusionChamber() {
                   </Link>
                 </div>
               ) : tokenOwnerLookupDone && phaseId != null ? (
-                <p className="text-center text-[9px] leading-relaxed uppercase tracking-[0.18em] text-amber-200/90">
+                <p className="text-center text-[9px] leading-relaxed uppercase tracking-[0.18em] text-violet-300/80">
                   {ch.reactorClaimUnavailableHint}
                 </p>
               ) : (
@@ -2205,80 +2287,19 @@ export function FusionChamber() {
               )}
             </div>
           )}
-
-          {address ? (
-            <div className="relative z-10 mt-3 w-full shrink-0 border-t border-cyan-500/15 pt-2.5">
-              <p className="tactical-phosphor mb-1.5 text-center text-[10px] uppercase tracking-[0.28em] text-cyan-500/70 sm:text-[11px] lg:text-left">
-                ◇ {ch.reactorQuestsSectionTitle}
-              </p>
-              <LiquidityFaucetControl
-                address={address}
-                tokenBalance={tokenBalance}
-                onNarrativeLog={appendLog}
-                onRefreshBalance={refreshStatus}
-                compact
-                hideInlineMissionToggle
-                omitLiquidityLane
-                omitFreighterNftBlock
-                className="border-cyan-500/25 bg-black/40 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.05)]"
-                freighterNftCollect={null}
-              />
             </div>
-          ) : null}
 
           </div>
-
-          {address ? (
-            <aside className="relative z-10 mt-1 flex w-full min-h-0 shrink-0 flex-col gap-2 lg:mt-0 lg:h-full lg:max-h-full lg:min-h-0 lg:overflow-hidden lg:self-stretch">
-              <div
-                id="chamber-collect-panel"
-                className="tactical-frame shrink-0 scroll-mt-4 border border-cyan-400/40 bg-black/45 p-2 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.06)]"
-              >
-                <p className="tactical-phosphor mb-1.5 border-b border-cyan-500/20 pb-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-100/95">
-                  ▣ {ch.collectInfoPanelTitle}
-                </p>
-                <LiquidityFaucetControl
-                  address={address}
-                  tokenBalance={tokenBalance}
-                  onNarrativeLog={appendLog}
-                  onRefreshBalance={refreshStatus}
-                  compact
-                  omitHeader
-                  omitMissionChain
-                  omitFreighterNftBlock={Boolean(issuerCustodyForCollect || isOwnerOnChain)}
-                  className="rounded-none border-0 bg-transparent p-0 shadow-none"
-                  freighterNftCollect={
-                    phased && phaseId != null && tokenOwnerLookupDone ? { tokenId: phaseId } : null
-                  }
-                />
-              </div>
-
-              <div
-                id="chamber-log-dock"
-                className="tactical-frame-panel hidden min-h-[10rem] min-w-0 flex-1 flex-col overflow-hidden border-2 border-[#39ff14]/40 bg-black/90 shadow-[inset_0_0_0_1px_rgba(57,255,20,0.08)] lg:flex lg:max-h-[min(44vh,400px)] lg:min-h-[11rem]"
-              >
-                <div className="flex shrink-0 items-center justify-between gap-2 border-b border-green-500/25 px-3 py-2">
-                  <h2 className="tactical-phosphor-green text-[10px] uppercase tracking-[0.28em] text-[#39ff14]/85 sm:text-[11px]">
-                    ┃ {ch.systemLogs}
-                  </h2>
-                  <span className="tactical-phosphor-green text-[9px] text-[#39ff14]/85 sm:text-[10px]">● {ch.live}</span>
-                </div>
-                <div className="custom-scrollbar tactical-log-viewport tactical-log-viewport--analog min-h-0 min-h-[7rem] flex-1 overflow-y-auto overscroll-y-contain px-3 py-2.5 pr-2">
-                  <ChamberLogStream lines={lines} endRef={logEndDockRef} />
-                </div>
-              </div>
-            </aside>
-          ) : null}
           </div>
 
-          <div className="relative z-10 mt-2 w-full min-h-0 max-w-[min(52rem,100%)] shrink-0 border-t border-cyan-500/15 pt-2 lg:max-w-none">
+          <div className="relative z-10 mt-2 w-full min-h-0 shrink-0 border-t border-zinc-800/90 pt-2 lg:max-w-none">
             <div className="mb-2 flex items-center justify-between gap-2">
-              <p className="tactical-phosphor text-[10px] font-semibold uppercase tracking-[0.25em] text-cyan-300/90">
-                ▣ {ch.community}
+              <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-zinc-500">
+                {ch.community}
               </p>
               <Link
                 href="/dashboard"
-                className="tactical-phosphor shrink-0 rounded border border-cyan-500/45 bg-cyan-950/30 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-cyan-100 hover:border-cyan-300 hover:text-white"
+                className="shrink-0 rounded-sm border border-zinc-700 bg-zinc-900/60 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-zinc-400 transition-colors hover:border-violet-500/50 hover:text-violet-300"
               >
                 {ch.fullMarket}
               </Link>
@@ -2304,10 +2325,10 @@ export function FusionChamber() {
                 <Link
                   href="/chamber"
                   className={cn(
-                    "tactical-frame flex w-[4.75rem] shrink-0 flex-col bg-black/50 transition-shadow",
+                    "flex w-[4.75rem] shrink-0 flex-col border border-zinc-700 bg-zinc-950/80 transition-colors",
                     collectionId === 0
-                      ? "shadow-[0_0_16px_rgba(0,255,255,0.28)]"
-                      : "opacity-90 hover:shadow-[0_0_12px_rgba(0,255,255,0.12)]",
+                      ? "border-violet-500/60 shadow-[0_0_14px_rgba(139,92,246,0.22)]"
+                      : "opacity-95 hover:border-violet-500/40",
                   )}
                   title={ch.defaultPool}
                 >
@@ -2342,10 +2363,10 @@ export function FusionChamber() {
                         key={c.collectionId}
                         href={`/chamber?collection=${c.collectionId}`}
                         className={cn(
-                          "tactical-frame flex w-[4.75rem] shrink-0 flex-col bg-black/50 transition-shadow",
+                          "flex w-[4.75rem] shrink-0 flex-col border border-zinc-700 bg-zinc-950/80 transition-colors",
                           active
-                            ? "shadow-[0_0_16px_rgba(0,255,255,0.28)]"
-                            : "opacity-90 hover:shadow-[0_0_12px_rgba(0,255,255,0.12)]",
+                            ? "border-violet-500/60 shadow-[0_0_14px_rgba(139,92,246,0.22)]"
+                            : "opacity-95 hover:border-violet-500/40",
                         )}
                         title={c.name || `Collection #${c.collectionId}`}
                       >
@@ -2384,7 +2405,94 @@ export function FusionChamber() {
           </div>
         </main>
 
+      {address ? (
+        <aside
+          className={cn(
+            "relative z-[102] flex min-h-0 w-full min-w-0 flex-col overflow-hidden md:col-span-2 lg:col-span-1",
+            "max-lg:border-t max-lg:border-zinc-800/90 max-lg:pt-3 lg:h-full lg:border-l lg:border-zinc-800/90 lg:pt-0",
+          )}
+        >
+          <div
+            id="chamber-log-dock"
+            className="tactical-frame-panel flex max-h-[min(32dvh,260px)] min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-emerald-500/35 bg-black/90 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.12)] lg:max-h-none lg:min-h-0 lg:flex-1"
+          >
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-emerald-500/25 px-3 py-1.5">
+              <h2 className="text-[10px] font-bold uppercase tracking-[0.22em] text-emerald-400/90 sm:text-[11px]">
+                {ch.systemLogs}
+              </h2>
+              <span className="text-[9px] text-emerald-500/90 sm:text-[10px]">● {ch.live}</span>
+            </div>
+            <div className="custom-scrollbar tactical-log-viewport tactical-log-viewport--analog min-h-0 flex-1 overflow-y-scroll overscroll-y-contain px-3 py-2 pr-2 [scrollbar-gutter:stable]">
+              <ChamberLogStream lines={lines} endRef={logEndDockRef} />
+            </div>
+          </div>
+        </aside>
+      ) : null}
+
       </div>
+
+      {operatorModalOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[280] flex items-end justify-center sm:items-center sm:p-4"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="chamber-operator-heading"
+            >
+              <button
+                type="button"
+                className="absolute inset-0 bg-black/75 backdrop-blur-[2px]"
+                aria-label={ch.operatorPanelBackdropClose}
+                onClick={() => setOperatorModalOpen(false)}
+              />
+              <div
+                className="relative flex max-h-[min(90dvh,820px)] w-full max-w-lg flex-col overflow-hidden rounded-t-xl border border-zinc-700 bg-zinc-950 shadow-[0_-12px_48px_rgba(0,0,0,0.55)] sm:rounded-xl sm:shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+              >
+                <div className="flex shrink-0 items-center justify-between gap-2 border-b border-zinc-800 px-4 py-3">
+                  <h2 id="chamber-operator-heading" className="text-[11px] font-bold uppercase tracking-[0.22em] text-zinc-300">
+                    {ch.operatorPanelHeading}
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playTacticalUiClick()
+                      setOperatorModalOpen(false)
+                    }}
+                    className="rounded-sm border border-zinc-600 px-2 py-1 font-mono text-sm leading-none text-zinc-300 transition-colors hover:bg-zinc-900"
+                    aria-label={ch.operatorPanelBackdropClose}
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 sm:px-4 sm:pb-5">
+                  {address ? (
+                    <LiquidityFaucetControl
+                      address={address}
+                      tokenBalance={tokenBalance}
+                      onNarrativeLog={appendLog}
+                      onRefreshBalance={refreshStatus}
+                      compact
+                      freighterNftCollect={
+                        phased && phaseId != null && tokenOwnerLookupDone ? { tokenId: phaseId } : null
+                      }
+                      hideInlineMissionToggle={false}
+                      omitHeader={false}
+                      omitMissionChain={false}
+                      omitLiquidityLane={false}
+                      omitFreighterNftBlock={Boolean(issuerCustodyForCollect || isOwnerOnChain)}
+                      className="border-zinc-800/80 bg-zinc-900/30"
+                    />
+                  ) : (
+                    <p className="py-8 text-center text-[12px] text-zinc-500">{ch.linkWallet}</p>
+                  )}
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
 
       {logsOpen ? (
         <>

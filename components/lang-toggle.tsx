@@ -15,12 +15,12 @@ export function LangToggle({ variant = "default", className }: LangToggleProps) 
 
   const isPhosphor = variant === "phosphor"
   const baseWrap = isPhosphor
-    ? "border border-cyan-400/55 bg-black/55 shadow-[0_0_12px_rgba(34,211,238,0.12)] backdrop-blur-sm"
+    ? "border border-violet-500/45 bg-black/55 shadow-[0_0_10px_rgba(139,92,246,0.1)] backdrop-blur-sm"
     : "border border-border/60 bg-background/75 shadow-sm backdrop-blur-md text-muted-foreground"
 
-  const active = isPhosphor ? "bg-cyan-500/25 text-cyan-50" : "bg-foreground/10 text-foreground"
-  const inactive = isPhosphor ? "text-cyan-300/90 hover:bg-cyan-500/15 hover:text-cyan-50" : "hover:text-foreground"
-  const divider = isPhosphor ? "border-cyan-500/40" : "border-border/60"
+  const active   = isPhosphor ? "bg-violet-500/20 text-violet-100"                          : "bg-foreground/10 text-foreground"
+  const inactive = isPhosphor ? "text-violet-300/80 hover:bg-violet-500/15 hover:text-violet-100" : "hover:text-foreground"
+  const divider  = isPhosphor ? "border-violet-500/35"                                       : "border-border/60"
 
   return (
     <div

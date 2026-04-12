@@ -268,15 +268,15 @@ export function TrustlineButton({ address, onRequestConnect, onReady, className 
     >
       <p className="tactical-phosphor text-[9px] uppercase tracking-[0.2em] text-cyan-300/85">{ff.trustline_section_title}</p>
       {walletAddress && albedoImplicitOk === false ? (
-        <div className="mb-2 rounded border border-amber-500/45 bg-amber-950/30 p-2">
-          <p className="text-[9px] font-semibold uppercase tracking-wide text-amber-200/95">
+        <div className="mb-2 rounded border border-violet-500/45 bg-violet-950/30 p-2">
+          <p className="text-[9px] font-semibold uppercase tracking-wide text-violet-200/95">
             {ff.trustline_albedo_prep_title}
           </p>
-          <p className="mt-1 text-[8px] leading-relaxed text-amber-100/85">{ff.trustline_albedo_prep_body}</p>
+          <p className="mt-1 text-[8px] leading-relaxed text-violet-100/85">{ff.trustline_albedo_prep_body}</p>
           <button
             type="button"
             disabled={albedoPrepBusy}
-            className="mt-2 w-full border border-amber-500/60 bg-amber-500/15 px-2 py-1.5 text-[9px] font-bold uppercase tracking-wider text-amber-100 hover:bg-amber-500/25 disabled:opacity-50"
+            className="mt-2 w-full border border-violet-500/60 bg-violet-500/15 px-2 py-1.5 text-[9px] font-bold uppercase tracking-wider text-violet-100 hover:bg-violet-500/25 disabled:opacity-50"
             onClick={() => {
               playTacticalUiClick()
               setAlbedoPrepBusy(true)
@@ -309,7 +309,7 @@ export function TrustlineButton({ address, onRequestConnect, onReady, className 
           uiState === "READY"
             ? "border-emerald-500/70 bg-emerald-950/25 text-emerald-200"
             : uiState === "GET_TESTNET_XLM"
-              ? "border-amber-500/65 bg-amber-950/25 text-amber-200"
+              ? "border-violet-500/65 bg-violet-950/25 text-violet-200"
               : "border-cyan-500/60 bg-cyan-950/30 text-cyan-100 hover:border-cyan-300 hover:text-white",
           busy && "opacity-75",
         )}

@@ -5,34 +5,112 @@ import { LangToggle } from "@/components/lang-toggle"
 import { useLang } from "@/components/lang-context"
 import { pickProjectDocs, type DocsLinkItem } from "@/lib/project-docs-content"
 
+/** Renders text with every occurrence of "wallet" highlighted in cyan. */
+function W({ children }: { children: string }) {
+  const parts = children.split(/(wallet)/gi)
+  return (
+    <>
+      {parts.map((part, i) =>
+        /^wallet$/i.test(part) ? (
+          <span key={i} className="text-cyan-400 font-semibold">
+            {part}
+          </span>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  )
+}
+
 function DocsHref({ item }: { item: DocsLinkItem }) {
   const isInternal = item.href.startsWith("/")
-  const className =
-    "font-semibold text-cyan-300 underline decoration-cyan-500/40 underline-offset-4 transition-colors hover:text-cyan-100 hover:decoration-cyan-300 break-words"
+  const linkClass =
+    "font-semibold text-violet-300 underline decoration-violet-500/40 underline-offset-4 transition-colors hover:text-violet-100 hover:decoration-violet-300 break-words"
   const label = (
     <>
       {item.label}
       {!isInternal ? (
-        <span className="ml-1 text-[10px] font-normal text-cyan-500/60" aria-hidden>
+        <span className="ml-1 text-[10px] font-normal text-violet-500/60" aria-hidden>
           ↗
         </span>
       ) : null}
     </>
   )
   return (
-    <div className="rounded-lg border border-cyan-500/20 bg-black/30 p-4 transition-colors hover:border-cyan-400/35">
+    <div className="border border-violet-500/25 bg-violet-950/10 p-4 transition-colors hover:border-violet-400/40 hover:bg-violet-950/20">
       {isInternal ? (
-        <Link href={item.href} className={className}>
+        <Link href={item.href} className={linkClass}>
           {label}
         </Link>
       ) : (
-        <a href={item.href} target="_blank" rel="noopener noreferrer" className={className}>
+        <a href={item.href} target="_blank" rel="noopener noreferrer" className={linkClass}>
           {label}
         </a>
       )}
       {item.description ? (
-        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{item.description}</p>
+        <p className="mt-2 text-xs leading-relaxed text-zinc-400">{item.description}</p>
       ) : null}
+    </div>
+  )
+}
+
+/** Detects if a cell looks like code (route, function sig, env var, etc.) */
+function isCodeCell(text: string): boolean {
+  return (
+    text.startsWith("/") ||
+    text.startsWith("(") ||
+    text.includes("_") ||
+    /^[A-Z_]{4,}/.test(text) ||
+    text.includes("→") ||
+    text.includes("PHASELQ") ||
+    text.includes("u32") ||
+    text.includes("Vec") ||
+    text.includes("GET") ||
+    text.includes("POST")
+  )
+}
+
+function DocsTable({ headers, rows }: { headers: string[]; rows: string[][] }) {
+  return (
+    <div className="overflow-x-auto border border-violet-500/25 bg-black/40">
+      <table className="w-full min-w-[420px] text-left">
+        <thead>
+          <tr className="border-b border-violet-500/30 bg-violet-950/30">
+            {headers.map((h) => (
+              <th
+                key={h}
+                className="px-4 py-3 font-mono text-[9px] font-bold uppercase tracking-[0.28em] text-violet-400/90 whitespace-nowrap"
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, ri) => (
+            <tr
+              key={ri}
+              className="border-b border-violet-500/10 transition-colors last:border-0 hover:bg-violet-950/15"
+            >
+              {row.map((cell, ci) => (
+                <td
+                  key={ci}
+                  className={
+                    ci === 0
+                      ? "px-4 py-3 align-top font-mono text-[11px] font-semibold text-violet-200/95 whitespace-nowrap"
+                      : isCodeCell(cell)
+                        ? "px-4 py-3 align-top font-mono text-[11px] text-zinc-300/85"
+                        : "px-4 py-3 align-top text-[12px] leading-snug text-zinc-300/80"
+                  }
+                >
+                  <W>{cell}</W>
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
@@ -43,134 +121,139 @@ export default function DocsPage() {
 
   return (
     <div className="min-h-screen bg-background font-mono text-foreground">
-      <div className="border-b border-cyan-500/20 bg-black/40 px-4 py-4 md:px-8">
-        <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3">
+      {/* Nav */}
+      <div className="sticky top-0 z-40 border-b border-violet-500/20 bg-black/80 px-4 py-3 backdrop-blur-sm md:px-8">
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
           <Link
             href="/"
-            className="text-[10px] uppercase tracking-[0.35em] text-muted-foreground transition-colors hover:text-cyan-300"
+            className="font-mono text-[10px] uppercase tracking-[0.35em] text-zinc-500 transition-colors hover:text-violet-300"
           >
             ← HOME
           </Link>
-          <LangToggle />
+          <LangToggle variant="phosphor" />
         </div>
       </div>
 
-      <main className="mx-auto max-w-3xl px-4 py-10 pb-20 md:px-8">
-        <h1 className="font-[var(--font-bebas)] text-4xl tracking-tight text-foreground md:text-5xl">{d.pageTitle}</h1>
-        <p className="mt-4 text-sm leading-relaxed text-muted-foreground">{d.pageSubtitle}</p>
+      <main className="mx-auto max-w-3xl px-4 py-12 pb-24 md:px-8">
+        {/* Header */}
+        <div className="mb-12">
+          <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-violet-400/80">
+            {lang === "es" ? "PROTOCOLO PHASE" : "PHASE PROTOCOL"}
+          </span>
+          <h1 className="mt-3 font-[var(--font-bebas)] text-5xl tracking-tight text-foreground md:text-6xl">
+            {d.pageTitle}
+          </h1>
+          <p className="mt-4 max-w-2xl font-sans text-[13px] leading-relaxed text-zinc-400">
+            {d.pageSubtitle}
+          </p>
+          <div className="mt-6 h-px max-w-[8rem] bg-gradient-to-r from-violet-400/60 to-transparent" />
+        </div>
 
+        {/* Table of contents */}
         <nav
           aria-label={d.tocLabel}
-          className="mt-10 rounded-xl border border-cyan-500/25 bg-cyan-950/20 p-5 shadow-[inset_0_1px_0_rgba(34,211,238,0.08)]"
+          className="mb-14 border border-violet-500/25 bg-violet-950/10 p-5"
         >
-          <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-cyan-400/90">{d.tocLabel}</p>
-          <ol className="mt-4 space-y-2 text-sm">
+          <p className="font-mono text-[9px] font-bold uppercase tracking-[0.3em] text-violet-400/90">
+            {d.tocLabel}
+          </p>
+          <ol className="mt-4 grid grid-cols-1 gap-1 sm:grid-cols-2">
             {d.sections.map((s, i) => (
               <li key={s.id}>
                 <a
                   href={`#${s.id}`}
-                  className="text-cyan-200/90 underline-offset-4 transition-colors hover:text-cyan-100 hover:underline"
+                  className="flex items-center gap-2 py-1 text-[11px] text-zinc-400 transition-colors hover:text-violet-300"
                 >
-                  <span className="text-cyan-600/60">{String(i + 1).padStart(2, "0")}.</span> {s.title}
+                  <span className="font-mono text-[9px] text-violet-600/70 tabular-nums">
+                    {String(i + 1).padStart(2, "0")}.
+                  </span>
+                  {s.title}
                 </a>
               </li>
             ))}
           </ol>
         </nav>
 
-        <div className="mt-14 space-y-16">
-          {d.sections.map((section) => (
-            <section key={section.id} id={section.id} className="scroll-mt-24">
-              <h2 className="border-b border-cyan-500/25 pb-3 text-lg font-bold uppercase tracking-[0.18em] text-cyan-100">
-                {section.title}
-              </h2>
-              <div className="mt-5 space-y-5 text-sm leading-relaxed text-foreground/88">
-                {section.blocks.map((block, idx) => {
-                  if (block.type === "p") {
-                    return (
-                      <p key={idx} className="text-pretty">
-                        {block.text}
-                      </p>
-                    )
-                  }
-                  if (block.type === "links") {
-                    return (
-                      <div key={idx} className="space-y-3">
-                        {block.intro ? (
-                          <p className="text-pretty text-muted-foreground">{block.intro}</p>
-                        ) : null}
-                        <ul className="list-none space-y-3">
-                          {block.items.map((item) => (
-                            <li key={`${item.href}-${item.label}`}>
-                              <DocsHref item={item} />
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )
-                  }
-                  if (block.type === "table") {
-                    return (
-                      <div key={idx} className="overflow-x-auto rounded-lg border border-cyan-500/20 bg-black/30">
-                        <table className="w-full text-left">
-                          <thead>
-                            <tr className="border-b border-cyan-500/25 bg-cyan-950/30">
-                              {block.headers.map((h) => (
-                                <th key={h} className="px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-cyan-400/90 whitespace-nowrap">
-                                  {h}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {block.rows.map((row, ri) => (
-                              <tr key={ri} className="border-b border-cyan-500/10 transition-colors hover:bg-cyan-950/10">
-                                {row.map((cell, ci) => (
-                                  <td key={ci} className="px-4 py-2 font-mono text-[11px] text-foreground/85 align-top">
-                                    {cell}
-                                  </td>
-                                ))}
-                              </tr>
+        {/* Sections */}
+        <div className="space-y-20">
+          {d.sections.map((section, si) => (
+            <section key={section.id} id={section.id} className="scroll-mt-20">
+              <div className="mb-6 flex items-center gap-3">
+                <span className="font-mono text-[9px] text-violet-600/60 tabular-nums">
+                  {String(si + 1).padStart(2, "0")}
+                </span>
+                <h2 className="font-[var(--font-bebas)] text-2xl tracking-wide text-foreground md:text-3xl">
+                  {section.title}
+                </h2>
+              </div>
+              <div className="border-l-2 border-violet-500/20 pl-6">
+                <div className="space-y-6 text-sm leading-relaxed">
+                  {section.blocks.map((block, idx) => {
+                    if (block.type === "p") {
+                      return (
+                        <p key={idx} className="font-sans text-[13px] leading-relaxed text-zinc-300/90 text-pretty">
+                          <W>{block.text}</W>
+                        </p>
+                      )
+                    }
+                    if (block.type === "links") {
+                      return (
+                        <div key={idx} className="space-y-3">
+                          {block.intro ? (
+                            <p className="font-sans text-[13px] text-zinc-400">{block.intro}</p>
+                          ) : null}
+                          <ul className="list-none space-y-2">
+                            {block.items.map((item) => (
+                              <li key={`${item.href}-${item.label}`}>
+                                <DocsHref item={item} />
+                              </li>
                             ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )
-                  }
-                  if (block.type === "code") {
+                          </ul>
+                        </div>
+                      )
+                    }
+                    if (block.type === "table") {
+                      return <DocsTable key={idx} headers={block.headers} rows={block.rows} />
+                    }
+                    if (block.type === "code") {
+                      return (
+                        <div key={idx}>
+                          {block.label ? (
+                            <p className="mb-2 font-mono text-[9px] font-bold uppercase tracking-[0.28em] text-violet-500/70">
+                              {block.label}
+                            </p>
+                          ) : null}
+                          <pre className="overflow-x-auto border border-violet-500/20 bg-black/60 p-4 font-mono text-[10px] leading-relaxed text-zinc-300/85">
+                            {block.text}
+                          </pre>
+                        </div>
+                      )
+                    }
                     return (
-                      <div key={idx}>
-                        {block.label ? (
-                          <p className="mb-2 text-[9px] font-bold uppercase tracking-[0.28em] text-cyan-500/70">
-                            {block.label}
-                          </p>
-                        ) : null}
-                        <pre className="overflow-x-auto rounded-lg border border-cyan-500/20 bg-black/60 p-4 text-[10px] leading-relaxed text-cyan-200/85 shadow-[inset_0_1px_0_rgba(34,211,238,0.06)]">
-                          {block.text}
-                        </pre>
-                      </div>
+                      <ul key={idx} className="list-none space-y-2">
+                        {block.items.map((item) => (
+                          <li key={item} className="flex gap-2.5 font-sans text-[13px] text-zinc-300/90">
+                            <span className="mt-[3px] shrink-0 text-violet-500/60" aria-hidden>
+                              ▹
+                            </span>
+                            <span><W>{item}</W></span>
+                          </li>
+                        ))}
+                      </ul>
                     )
-                  }
-                  return (
-                    <ul key={idx} className="list-none space-y-3 border-l-2 border-cyan-500/30 pl-4">
-                      {block.items.map((item) => (
-                        <li key={item} className="flex gap-2.5 text-pretty">
-                          <span className="shrink-0 text-cyan-500/70" aria-hidden>
-                            ▹
-                          </span>
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )
-                })}
+                  })}
+                </div>
               </div>
             </section>
           ))}
         </div>
 
-        <p className="mt-16 border-t border-cyan-500/15 pt-8 text-[10px] uppercase tracking-widest text-muted-foreground">
-          PHASE · {lang === "es" ? "Documentación integrada en la aplicación." : "Documentation lives inside the app."}
+        {/* Footer */}
+        <p className="mt-20 border-t border-violet-500/15 pt-8 font-mono text-[9px] uppercase tracking-widest text-zinc-600">
+          PHASE ·{" "}
+          {lang === "es"
+            ? "Documentación integrada en la aplicación."
+            : "Documentation lives inside the app."}
         </p>
       </main>
     </div>

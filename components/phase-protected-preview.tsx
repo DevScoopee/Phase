@@ -50,7 +50,7 @@ export function PhaseProtectedPreview({ uri, className, chainVerified, viewerAdd
         <>
           <div className="phase-dashboard-scanlines pointer-events-none absolute inset-0 z-[2]" aria-hidden />
           <div className="pointer-events-none absolute inset-0 z-[3] flex items-center justify-center bg-black/25" aria-hidden>
-            <span className="max-w-[90%] border border-orange-500/50 bg-orange-950/75 px-2 py-1.5 text-center font-mono text-[8px] font-bold uppercase leading-tight tracking-[0.2em] text-orange-200/95 shadow-[0_0_20px_rgba(234,88,12,0.2)]">
+            <span className="max-w-[90%] border border-violet-500/50 bg-violet-950/75 px-2 py-1.5 text-center font-mono text-[8px] font-bold uppercase leading-tight tracking-[0.2em] text-violet-200/95 shadow-[0_0_20px_rgba(139,92,246,0.2)]">
               {labels.pendingFusion}
             </span>
           </div>
@@ -62,7 +62,7 @@ export function PhaseProtectedPreview({ uri, className, chainVerified, viewerAdd
           "pointer-events-none absolute bottom-1.5 right-1.5 z-[4] max-w-[calc(100%-0.75rem)] border px-1.5 py-0.5 font-mono text-[6px] font-bold uppercase leading-tight tracking-tighter shadow-md sm:text-[7px]",
           chainVerified
             ? "border-emerald-500/55 bg-emerald-950/90 text-emerald-200/95"
-            : "border-orange-500/50 bg-black/85 text-orange-300/90",
+            : "border-violet-500/50 bg-black/85 text-violet-300/90",
         )}
       >
         {chainVerified ? (

@@ -372,9 +372,6 @@ export default function DashboardPage() {
       {/* ── Header ── */}
       <header className="relative z-10 flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-950/90 px-4 py-3 backdrop-blur-sm md:px-6">
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={goBack} className={navLinkClass}>
-            {d.back}
-          </button>
           <Link href="/" className={navLinkClass}>{n.home}</Link>
           <Link href="/explore" className={navLinkClass}>
             {lang === "es" ? "Explorar" : "Explore"}
@@ -384,8 +381,6 @@ export default function DashboardPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <LangToggle variant="phosphor" />
-
           {/* Global refresh */}
           <button
             type="button"
@@ -410,18 +405,19 @@ export default function DashboardPage() {
               {connecting ? d.connecting : d.connect}
             </button>
           ) : (
-            <div className="group flex items-center gap-2 rounded-sm border border-emerald-700/40 bg-emerald-950/30 px-3 py-1.5">
-              <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
-              <span className="text-[10px] font-medium text-emerald-300">{truncateAddress(address)}</span>
+            <div className="group flex items-center gap-2 rounded-sm border border-violet-700/40 bg-violet-950/30 px-3 py-1.5">
+              <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" />
+              <span className="text-[10px] font-medium text-violet-300">{truncateAddress(address)}</span>
               <button
                 type="button"
                 onClick={() => { disconnect(); void refresh().catch(() => {}) }}
-                className="ml-1 text-[9px] font-bold uppercase text-zinc-600 opacity-0 transition-all group-hover:opacity-100 hover:text-red-400"
+                className="ml-1 text-[9px] font-bold uppercase text-zinc-500 transition-colors hover:text-red-400"
               >
                 {d.disconnect}
               </button>
             </div>
           )}
+          <LangToggle variant="phosphor" />
         </div>
       </header>
 
@@ -588,7 +584,7 @@ export default function DashboardPage() {
                               type="button"
                               disabled={transferBusy}
                               onClick={() => void delist(l.id).catch(() => {})}
-                              className="w-full border border-orange-700/50 bg-orange-950/20 py-2 text-[9px] font-bold uppercase tracking-widest text-orange-300 transition-colors hover:bg-orange-900/30 disabled:opacity-40"
+                              className="w-full border border-violet-700/50 bg-violet-950/20 py-2 text-[9px] font-bold uppercase tracking-widest text-violet-300 transition-colors hover:bg-violet-900/30 disabled:opacity-40"
                             >
                               {d.cancelListing}
                             </button>
@@ -809,7 +805,7 @@ export default function DashboardPage() {
             </label>
             <p className="mt-2 text-[8px] text-zinc-600">{d.listingHint}</p>
             {sellFeedback ? (
-              <p className="mt-3 text-[10px] text-orange-300">{sellFeedback}</p>
+              <p className="mt-3 text-[10px] text-violet-300">{sellFeedback}</p>
             ) : null}
             <div className="mt-4 flex flex-col gap-2">
               <button

@@ -1795,6 +1795,24 @@ export async function fetchCreatorCollectionId(creatorAddress: string): Promise<
   }
 }
 
+/** Returns all collection IDs created by this address (may be multiple). */
+export async function fetchCreatorCollectionIds(creatorAddress: string): Promise<number[]> {
+  try {
+    const native = await simulateContractCall(
+      CONTRACT_ID,
+      "get_creator_collection_ids",
+      [Address.fromString(creatorAddress).toScVal()],
+      READONLY_SIM_SOURCE_G,
+    )
+    if (!Array.isArray(native)) return []
+    return (native as unknown[])
+      .map((v) => numLikeToNumber(v))
+      .filter((n) => Number.isFinite(n) && n > 0)
+  } catch {
+    return []
+  }
+}
+
 export async function fetchCollectionInfo(
   collectionId: number,
   protocolContractId: string = CONTRACT_ID,

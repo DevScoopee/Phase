@@ -94,8 +94,8 @@ export const metadata: Metadata = {
     images: [ogImageUrl()],
   },
   icons: {
-    icon: [{ url: "/icon-sphere.png", type: "image/png" }],
-    apple: [{ url: "/icon-sphere.png", type: "image/png" }],
+    icon: [{ url: "/icon-sphere.png", type: "image/png", sizes: "512x512" }],
+    apple: [{ url: "/apple-icon.png", type: "image/png", sizes: "180x180" }],
     shortcut: "/icon-sphere.png",
   },
 }

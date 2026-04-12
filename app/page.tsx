@@ -4,18 +4,17 @@ import { WorkSection } from "@/components/work-section"
 import { PrinciplesSection } from "@/components/principles-section"
 import { ColophonSection } from "@/components/colophon-section"
 import { SideNav } from "@/components/side-nav"
-import { FreighterConnect } from "@/components/freighter-connect"
-import { LangToggle } from "@/components/lang-toggle"
 import { LandingLangShell } from "@/components/landing-lang-shell"
 import { LandingBuildStamp } from "@/components/landing-build-stamp"
+import { SystemTicker } from "@/components/system-ticker"
+import { FloatingHeader } from "@/components/floating-header"
 
 export default function Page() {
   return (
     <LandingLangShell>
       <main className="relative min-h-screen">
-        <div className="fixed top-4 right-4 z-50 max-w-[calc(100vw-1.5rem)] md:top-6 md:right-6 md:max-w-none pointer-events-none">
-          <FreighterConnect trailing={<LangToggle />} />
-        </div>
+        <SystemTicker />
+        <FloatingHeader />
         <SideNav />
         <div className="grid-bg fixed inset-0 z-0" aria-hidden="true" />
         <div className="hero-spotlight" aria-hidden="true" />

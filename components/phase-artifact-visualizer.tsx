@@ -146,6 +146,10 @@ type Props = {
   showPublicMetaPanel?: boolean
   /** Mostrar panel privado (private channel/secret/power/signature) debajo del arte. */
   showPrivateMetaPanel?: boolean
+  /** Cámara: un solo panel limpio, sin ASCII ni banner ruidoso cuando el dueño está verificado. */
+  chamberPresentation?: boolean
+  /** Marco exterior lo aporta el padre (split preview cian); sin tarjeta esmeralda duplicada. */
+  chamberFrameless?: boolean
 }
 
 function truncateContractMid(id: string) {
@@ -181,6 +185,8 @@ export function PhaseArtifactVisualizer({
   compact = false,
   showPublicMetaPanel = true,
   showPrivateMetaPanel = true,
+  chamberPresentation = false,
+  chamberFrameless = false,
 }: Props) {
   void ownerTruncated
 
@@ -190,6 +196,7 @@ export function PhaseArtifactVisualizer({
     return `║ ${t.padEnd(asciiInner, " ")} ║`
   }
   const isVerified = mode === "verified"
+  const isVerifying = mode === "verifying"
   const isRestricted = mode === "locked" || mode === "verifying"
 
   const head =
@@ -231,6 +238,10 @@ export function PhaseArtifactVisualizer({
 
   const protectArt = Boolean(rawImgUri) && (!isVerified || authenticityPending || !isOwner)
   const ownerUnlocked = isVerified && isOwner && !authenticityPending
+  const chamberMinimal = Boolean(chamberPresentation) && ownerUnlocked
+  const chamberDockFrameless = Boolean(chamberFrameless) && chamberMinimal
+  const stripBannerForChamber = chamberMinimal
+  const showAsciiBlock = !chamberPresentation
   const eligibleForDecrypt = ownerUnlocked && Boolean(rawImgUri)
 
   const [lightboxOpen, setLightboxOpen] = useState(false)
@@ -330,8 +341,10 @@ export function PhaseArtifactVisualizer({
   const frameClass = isVerified
     ? ownerUnlocked
       ? "border-cyan-500/40 bg-gradient-to-b from-cyan-950/40 to-black/80 shadow-[0_0_32px_rgba(34,211,238,0.22)]"
-      : "border-orange-600/30 bg-gradient-to-b from-orange-950/25 to-black/85 shadow-[0_0_20px_rgba(234,88,12,0.1)]"
-    : "border-orange-600/25 bg-gradient-to-b from-orange-950/20 to-black/85 shadow-[0_0_20px_rgba(234,88,12,0.08)]"
+      : "border-violet-600/30 bg-transparent shadow-[0_0_20px_rgba(139,92,246,0.08)]"
+    : isVerifying
+      ? "border-cyan-500/40 bg-gradient-to-b from-cyan-950/35 via-violet-950/15 to-black/90 shadow-[0_0_36px_rgba(34,211,238,0.16)]"
+      : "border-violet-600/25 bg-transparent shadow-[0_0_20px_rgba(139,92,246,0.06)]"
 
   const preClass =
     "text-left text-[11px] sm:text-[12px] leading-snug tracking-tight select-all font-mono text-zinc-400/95"
@@ -339,8 +352,10 @@ export function PhaseArtifactVisualizer({
   const bannerClass = isVerified
     ? ownerUnlocked
       ? "border-cyan-500/50 bg-cyan-950/55 text-cyan-200/95 tactical-phosphor shadow-[0_0_14px_rgba(34,211,238,0.15)]"
-      : "border-orange-500/40 bg-orange-950/45 text-orange-200/90"
-    : "border-orange-500/35 bg-orange-950/40 text-orange-200/90"
+      : "border-violet-500/40 bg-violet-950/45 text-violet-200/90"
+    : isVerifying
+      ? "border-cyan-400/55 bg-gradient-to-r from-cyan-950/65 via-violet-950/40 to-cyan-950/65 text-cyan-100 tactical-phosphor shadow-[0_0_22px_rgba(34,211,238,0.22)]"
+      : "border-violet-500/35 bg-violet-950/40 text-violet-200/90"
 
   const showArtFirst = isRestricted && Boolean(rawImgUri)
   const renderedImgSrc = shouldUseBakedWatermark ? watermarkedImgSrc : activeDisplaySrc
@@ -357,10 +372,18 @@ export function PhaseArtifactVisualizer({
           compact
             ? "max-w-[min(100%,28rem)] min-h-[190px] max-h-[300px] px-2 py-2 sm:min-h-[210px] sm:max-h-[320px] sm:px-3.5 sm:py-3"
             : "min-h-[min(48vw,260px)] max-h-[min(62svh,520px)] sm:min-h-[280px] sm:max-h-[min(58svh,540px)]",
-          !rawImgUri && "min-h-[72px] max-h-[120px]",
-          (isRestricted || protectArt || (eligibleForDecrypt && decrypting)) && "phase-artifact-monitor--locked",
-          ownerUnlocked && "border-cyan-500/45",
-          protectArt && !ownerUnlocked && "border-orange-500/35",
+          chamberDockFrameless &&
+            "!mx-0 !max-h-[min(38svh,300px)] !min-h-[min(22svh,200px)] !max-w-none !w-full rounded-lg !border-cyan-500/40 !bg-transparent !px-2 !py-3 shadow-[inset_0_0_48px_rgba(34,211,238,0.07),0_0_20px_rgba(34,211,238,0.08)] sm:!min-h-[min(26svh,220px)] sm:!max-h-[min(40svh,320px)] sm:!px-3 sm:!py-3.5",
+          chamberMinimal &&
+            !chamberDockFrameless &&
+            "!max-h-[min(42svh,340px)] !min-h-[min(28svh,220px)] rounded-xl !border-zinc-600/40 !bg-transparent !py-4 shadow-[inset_0_0_0_1px_rgba(63,63,70,0.35)] sm:!min-h-[min(30svh,240px)]",
+          !rawImgUri && !chamberMinimal && "min-h-[72px] max-h-[120px]",
+          !rawImgUri && chamberMinimal && !chamberDockFrameless && "min-h-[min(24svh,200px)] max-h-[min(36svh,280px)]",
+          (isRestricted || protectArt || (eligibleForDecrypt && decrypting)) &&
+            (isVerifying ? "phase-artifact-monitor--verifying" : "phase-artifact-monitor--locked"),
+          ownerUnlocked && !chamberMinimal && "border-cyan-500/45",
+          ownerUnlocked && chamberMinimal && !chamberDockFrameless && "!border-emerald-500/30",
+          protectArt && !ownerUnlocked && "border-violet-500/35",
         )}
       >
         {renderedImgSrc && !mainImgFailed ? (
@@ -369,14 +392,16 @@ export function PhaseArtifactVisualizer({
             onClick={() => setLightboxOpen(true)}
             className={cn(
               "group relative z-[2] mx-auto flex max-h-full w-full cursor-zoom-in flex-col items-center gap-2 border-0 bg-transparent p-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-black",
-              protectArt ? "focus-visible:ring-orange-400/70" : "focus-visible:ring-cyan-400/70",
+              protectArt && !isVerifying
+                ? "focus-visible:ring-violet-400/70"
+                : "focus-visible:ring-cyan-400/70",
             )}
             aria-label={labels.expandPreview}
           >
             <div
               className={cn(
                 "phase-artifact-preview-clean tactical-holo-wrap relative w-full max-w-full justify-center overflow-hidden rounded-sm",
-                protectArt && "phase-artifact-holo-locked",
+                protectArt && (isVerifying ? "phase-artifact-holo-verifying" : "phase-artifact-holo-locked"),
               )}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -423,8 +448,8 @@ export function PhaseArtifactVisualizer({
             <span
               className={cn(
                 "font-mono text-[8px] uppercase tracking-[0.35em] opacity-80 group-hover:opacity-100 sm:text-[9px]",
-                protectArt
-                  ? "text-orange-400/75 group-hover:text-orange-200"
+                protectArt && !isVerifying
+                  ? "text-violet-400/75 group-hover:text-violet-200"
                   : "text-cyan-400/85 group-hover:text-cyan-200",
               )}
             >
@@ -439,7 +464,7 @@ export function PhaseArtifactVisualizer({
           </div>
         ) : renderedImgSrc && mainImgFailed ? (
           <div className="relative z-[3] flex min-h-[160px] w-full max-w-md flex-col items-center justify-center gap-2 px-4 py-6 text-center">
-            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-orange-300/90">{labels.noVisual}</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-violet-300/90">{labels.noVisual}</p>
             <p className="max-w-[20rem] text-[9px] leading-relaxed text-zinc-500">{labels.imageLoadHint}</p>
             <a
               href={renderedImgSrc}
@@ -450,11 +475,45 @@ export function PhaseArtifactVisualizer({
               {labels.openImageUrl}
             </a>
           </div>
+        ) : isVerifying ? (
+          <div
+            className="phase-artifact-verify-placeholder relative z-[3] flex min-h-[150px] w-full max-w-md flex-col items-center justify-center gap-4 px-4 py-6 sm:min-h-[170px] sm:gap-5"
+            aria-busy="true"
+            aria-live="polite"
+          >
+            <div className="pointer-events-none absolute inset-2 rounded-sm opacity-[0.45] [background:repeating-linear-gradient(0deg,transparent,transparent_2px,rgba(34,211,238,0.06)_2px,rgba(34,211,238,0.06)_3px)]" />
+            <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-sm">
+              <div className="phase-artifact-verify-sweep absolute inset-x-0 top-0 h-[42%] bg-gradient-to-b from-cyan-400/12 via-transparent to-transparent" />
+            </div>
+            <div className="relative flex h-[5.5rem] w-[5.5rem] items-center justify-center sm:h-24 sm:w-24">
+              <span
+                className="absolute inset-0 rounded-full border border-cyan-500/25 shadow-[0_0_20px_rgba(34,211,238,0.12)]"
+                aria-hidden
+              />
+              <span
+                className="phase-artifact-verify-orbit absolute inset-[6px] rounded-full border border-violet-400/35"
+                aria-hidden
+              />
+              <span
+                className="absolute inset-[14px] rounded-full border border-dashed border-cyan-400/30"
+                aria-hidden
+              />
+              <span className="relative flex h-2.5 w-2.5 rounded-full bg-cyan-300 shadow-[0_0_14px_rgba(34,211,238,0.95)]" />
+            </div>
+            <div className="relative w-[min(100%,16rem)] space-y-2">
+              <div className="h-1 overflow-hidden rounded-full bg-cyan-950/90 ring-1 ring-cyan-500/20">
+                <div className="phase-artifact-verify-shimmer-bar h-full w-[38%] rounded-full bg-gradient-to-r from-transparent via-cyan-400/55 to-transparent" />
+              </div>
+              <p className="text-center font-mono text-[8px] uppercase tracking-[0.2em] text-cyan-400/80 sm:text-[9px]">
+                {labels.verifying}
+              </p>
+            </div>
+          </div>
         ) : (
           <span
             className={cn(
               "relative z-[3] px-2 text-center font-mono text-[9px] uppercase tracking-[0.35em]",
-              ownerUnlocked ? "tactical-phosphor text-cyan-400/70" : "text-orange-400/55",
+              ownerUnlocked ? "tactical-phosphor text-cyan-400/70" : "text-violet-400/55",
             )}
           >
             {labels.noVisual}
@@ -469,9 +528,14 @@ export function PhaseArtifactVisualizer({
       <p className={cn("border px-2 py-1.5 text-center font-mono text-[10px] uppercase tracking-[0.24em]", bannerClass)}>
         {bannerText}
       </p>
-      {isRestricted && (
-        <p className="mt-1.5 text-center font-mono text-[9px] uppercase leading-snug tracking-[0.12em] text-orange-300/85">
+      {mode === "locked" && (
+        <p className="mt-1.5 text-center font-mono text-[9px] uppercase leading-snug tracking-[0.12em] text-violet-300/85">
           {labels.accessDeniedLine}
+        </p>
+      )}
+      {isVerifying && (
+        <p className="mt-1.5 text-center font-mono text-[9px] uppercase leading-snug tracking-[0.14em] text-cyan-300/90">
+          {labels.verifyingHint}
         </p>
       )}
     </div>
@@ -598,6 +662,28 @@ export function PhaseArtifactVisualizer({
     </div>
   )
 
+  const chamberCaptionEl =
+    chamberMinimal && publicCollectionLine !== "—" ? (
+      <div
+        className={cn(
+          "relative z-[2] mt-2 max-w-[min(100%,22rem)]",
+          chamberDockFrameless ? "mx-0 text-left" : "mx-auto text-center",
+        )}
+      >
+        <p className="text-[13px] font-medium leading-snug text-zinc-200">{publicCollectionLine}</p>
+        <p className="mt-1 font-mono text-[10px] tracking-wide text-zinc-500">#{Math.max(0, Math.floor(serial))}</p>
+      </div>
+    ) : chamberMinimal ? (
+      <div
+        className={cn(
+          "relative z-[2] mt-2 max-w-[min(100%,22rem)]",
+          chamberDockFrameless ? "mx-0 text-left" : "mx-auto text-center",
+        )}
+      >
+        <p className="font-mono text-[10px] tracking-wide text-zinc-500">#{Math.max(0, Math.floor(serial))}</p>
+      </div>
+    ) : null
+
   const footerOwnerActions = ownerUnlocked && (onDownloadCertificate || expertUrl) && (
     <div className="relative z-[2] mt-3 flex flex-col gap-2 sm:flex-row sm:justify-center sm:gap-3">
       {onDownloadCertificate && (
@@ -644,7 +730,7 @@ export function PhaseArtifactVisualizer({
           <button
             type="button"
             onClick={closeLightbox}
-            className="tactical-phosphor absolute -top-1 right-0 z-[2] border border-orange-500/50 bg-orange-950/80 px-3 py-1.5 font-mono text-[9px] font-bold uppercase tracking-widest text-orange-200 hover:bg-orange-900/90 sm:right-1"
+            className="tactical-phosphor absolute -top-1 right-0 z-[2] border border-violet-500/50 bg-violet-950/80 px-3 py-1.5 font-mono text-[9px] font-bold uppercase tracking-widest text-violet-200 hover:bg-violet-900/90 sm:right-1"
           >
             {labels.closePreview}
           </button>
@@ -654,7 +740,7 @@ export function PhaseArtifactVisualizer({
               src={renderedImgSrc}
               alt=""
               className={cn(
-                "max-h-[min(88vh,900px)] max-w-full object-contain shadow-[0_0_40px_rgba(251,146,60,0.15)] transition-[filter] duration-500",
+                "max-h-[min(88vh,900px)] max-w-full object-contain shadow-[0_0_40px_rgba(139,92,246,0.12)] transition-[filter] duration-500",
                 usePixelTreatment && "phase-artifact-img-pixel",
                 useBlurOnArt && "blur-[7px] sm:blur-[6px]",
                 eligibleForDecrypt && !decrypting && "blur-0",
@@ -692,8 +778,12 @@ export function PhaseArtifactVisualizer({
   return (
     <div
       className={cn(
-        "tactical-frame relative overflow-hidden rounded-sm border-2 px-3 py-3 sm:px-4",
-        frameClass,
+        chamberDockFrameless
+          ? "relative overflow-visible rounded-lg border-0 bg-transparent p-0 shadow-none"
+          : chamberMinimal
+            ? "relative overflow-visible rounded-xl border border-violet-500/20 bg-transparent px-3 py-4 sm:px-4 sm:py-5"
+            : "tactical-frame relative overflow-hidden rounded-sm border-2 px-3 py-3 sm:px-4",
+        !chamberMinimal && frameClass,
         className,
       )}
       aria-label={labels.ariaLabel}
@@ -704,14 +794,20 @@ export function PhaseArtifactVisualizer({
       {showArtFirst ? (
         <>
           {holoBlock}
-          {bannerEl}
-          {asciiBlock}
+          {!stripBannerForChamber && bannerEl}
+          {showAsciiBlock && asciiBlock}
+        </>
+      ) : stripBannerForChamber ? (
+        <>
+          {holoBlock}
+          {chamberCaptionEl}
+          {footerOwnerActions}
         </>
       ) : (
         <>
           {bannerEl}
           {holoBlock}
-          {asciiBlock}
+          {showAsciiBlock && asciiBlock}
           {footerOwnerActions}
         </>
       )}
