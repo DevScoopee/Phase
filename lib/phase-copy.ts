@@ -93,6 +93,12 @@ export type ArtifactLabelsCopy = {
   /** Imagen remota no carga (CORS, gateway IPFS, URL caída). */
   imageLoadHint: string
   openImageUrl: string
+  /** Cámara / preview: dirección del contrato de colección (copiar). */
+  chamberPreviewCollectionAddress: string
+  /** Cámara / preview: botón copiar valor. */
+  chamberPreviewCopy: string
+  /** Cámara / preview: fila Token ID (copiar entero para Freighter). */
+  chamberPreviewTokenId: string
 }
 
 /** PhaseError 1..13; índice 0 sin usar. Misma lista para forja y cámara. */
@@ -433,6 +439,8 @@ export const phaseCopy: Record<
       solidStateStandby: string
       /** THE_REACTOR: un solo CTA para enviar el NFT desde custodia del emisor a la wallet conectada. */
       reactorClaimNftCta: string
+      /** Preview cámara (split izquierda): CTA corto para custodia → wallet. */
+      chamberPreviewCollectCta: string
       /** NFT ya en la wallet conectada — reactor en espera (enlace opcional al dashboard). */
       reactorNftSecuredHint: string
       /** `owner_of` no es el emisor ni la wallet: no se puede COLECTAR desde reactor. */
@@ -880,6 +888,7 @@ export const phaseCopy: Record<
       manualPhase: "Manual phase transition",
       solidStateStandby: "Artifact minted — ready to collect",
       reactorClaimNftCta: "Collect to wallet",
+      chamberPreviewCollectCta: "Collect",
       reactorNftSecuredHint: "Your artifact is in your wallet. View it in the Dashboard.",
       reactorClaimUnavailableHint:
         "Your artifact is on-chain but cannot be collected from here — it is not in issuer custody.",
@@ -1070,6 +1079,9 @@ export const phaseCopy: Record<
         imageLoadHint:
           "The preview URL did not load (blocked, slow IPFS gateway, or bad link). Open the URL in a new tab or try another gateway.",
         openImageUrl: "Open image URL",
+        chamberPreviewCollectionAddress: "Collection address",
+        chamberPreviewCopy: "Copy",
+        chamberPreviewTokenId: "Token ID",
       },
     },
   },
@@ -1380,6 +1392,7 @@ export const phaseCopy: Record<
       manualPhase: "Transición de fase manual",
       solidStateStandby: "Artefacto acuñado — listo para recoger",
       reactorClaimNftCta: "Recoger en mi wallet",
+      chamberPreviewCollectCta: "Recoger",
       reactorNftSecuredHint: "Tu artefacto está en tu wallet. Podés verlo en el Dashboard.",
       reactorClaimUnavailableHint:
         "Tu artefacto está on-chain pero no se puede recoger desde aquí — no está en custodia del emisor.",
@@ -1571,6 +1584,9 @@ export const phaseCopy: Record<
         imageLoadHint:
           "La imagen no cargó (CORS, gateway IPFS lento o enlace inválido). Abrí la URL en otra pestaña o probá otro gateway.",
         openImageUrl: "Abrir URL de imagen",
+        chamberPreviewCollectionAddress: "Dirección de colección",
+        chamberPreviewCopy: "Copiar",
+        chamberPreviewTokenId: "ID de token",
       },
     },
   },

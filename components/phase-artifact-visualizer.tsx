@@ -150,6 +150,16 @@ type Props = {
   chamberPresentation?: boolean
   /** Marco exterior lo aporta el padre (split preview cian); sin tarjeta esmeralda duplicada. */
   chamberFrameless?: boolean
+  /** Cámara: preview clicable sin la fila «EXPAND» bajo la imagen. */
+  suppressExpandLabel?: boolean
+  /** Token ID exacto para copiar (p. ej. Freighter); por defecto entero derivado de `serial`. */
+  dockCopyTokenId?: string
+  /** NFT en custodia del emisor: mismo dock que owner pero con CTA collect. */
+  chamberCollectMode?: boolean
+  onCollectNft?: () => void | Promise<void>
+  collectNftBusy?: boolean
+  collectLabel?: string
+  collectBusyLabel?: string
 }
 
 function truncateContractMid(id: string) {
@@ -187,6 +197,13 @@ export function PhaseArtifactVisualizer({
   showPrivateMetaPanel = true,
   chamberPresentation = false,
   chamberFrameless = false,
+  suppressExpandLabel = false,
+  dockCopyTokenId,
+  chamberCollectMode = false,
+  onCollectNft,
+  collectNftBusy = false,
+  collectLabel,
+  collectBusyLabel,
 }: Props) {
   void ownerTruncated
 
@@ -238,7 +255,9 @@ export function PhaseArtifactVisualizer({
 
   const protectArt = Boolean(rawImgUri) && (!isVerified || authenticityPending || !isOwner)
   const ownerUnlocked = isVerified && isOwner && !authenticityPending
-  const chamberMinimal = Boolean(chamberPresentation) && ownerUnlocked
+  const chamberDockEligible =
+    Boolean(chamberPresentation) && isVerified && !authenticityPending && (isOwner || Boolean(chamberCollectMode))
+  const chamberMinimal = chamberDockEligible
   const chamberDockFrameless = Boolean(chamberFrameless) && chamberMinimal
   const stripBannerForChamber = chamberMinimal
   const showAsciiBlock = !chamberPresentation
@@ -248,6 +267,7 @@ export function PhaseArtifactVisualizer({
   const [mounted, setMounted] = useState(false)
   const [decrypting, setDecrypting] = useState(false)
   const [copiedContract, setCopiedContract] = useState(false)
+  const [copiedDock, setCopiedDock] = useState<null | "contract" | "token">(null)
   const [mainImgFailed, setMainImgFailed] = useState(false)
   const [watermarkedImgSrc, setWatermarkedImgSrc] = useState<string | null>(null)
   const [watermarkBusy, setWatermarkBusy] = useState(false)
@@ -328,6 +348,19 @@ export function PhaseArtifactVisualizer({
       setCopiedContract(false)
     }
   }, [contractId])
+
+  const copyDockField = useCallback(async (kind: "contract" | "token", value: string) => {
+    if (typeof navigator === "undefined" || !value.trim()) return
+    try {
+      await navigator.clipboard.writeText(value.trim())
+      setCopiedDock(kind)
+      window.setTimeout(() => {
+        setCopiedDock((c) => (c === kind ? null : c))
+      }, 1200)
+    } catch {
+      setCopiedDock(null)
+    }
+  }, [])
 
   useEffect(() => {
     if (!lightboxOpen) return
@@ -445,16 +478,18 @@ export function PhaseArtifactVisualizer({
                 </div>
               )}
             </div>
-            <span
-              className={cn(
-                "font-mono text-[8px] uppercase tracking-[0.35em] opacity-80 group-hover:opacity-100 sm:text-[9px]",
-                protectArt && !isVerifying
-                  ? "text-violet-400/75 group-hover:text-violet-200"
-                  : "text-cyan-400/85 group-hover:text-cyan-200",
-              )}
-            >
-              {labels.expandPreview}
-            </span>
+            {!suppressExpandLabel ? (
+              <span
+                className={cn(
+                  "font-mono text-[8px] uppercase tracking-[0.35em] opacity-80 group-hover:opacity-100 sm:text-[9px]",
+                  protectArt && !isVerifying
+                    ? "text-violet-400/75 group-hover:text-violet-200"
+                    : "text-cyan-400/85 group-hover:text-cyan-200",
+                )}
+              >
+                {labels.expandPreview}
+              </span>
+            ) : null}
           </button>
         ) : watermarkBusy ? (
           <div className="relative z-[3] flex min-h-[160px] w-full max-w-md flex-col items-center justify-center gap-2 px-4 py-6 text-center">
@@ -684,29 +719,82 @@ export function PhaseArtifactVisualizer({
       </div>
     ) : null
 
-  const footerOwnerActions = ownerUnlocked && (onDownloadCertificate || expertUrl) && (
-    <div className="relative z-[2] mt-3 flex flex-col gap-2 sm:flex-row sm:justify-center sm:gap-3">
-      {onDownloadCertificate && (
-        <button
-          type="button"
-          onClick={onDownloadCertificate}
-          className="tactical-phosphor border-2 border-cyan-400/55 bg-cyan-950/40 px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.2)] transition-colors hover:border-cyan-300 hover:bg-cyan-900/45 hover:text-white"
-        >
-          {labels.downloadCertificate}
-        </button>
-      )}
-      {expertUrl && expertLabel && (
-        <a
-          href={expertUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="tactical-phosphor inline-flex items-center justify-center border-2 border-cyan-400/55 bg-cyan-950/35 px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.2)] transition-colors hover:border-cyan-300 hover:bg-cyan-900/40 hover:text-white"
-        >
-          {expertLabel}
-        </a>
-      )}
-    </div>
-  )
+  const dockTokenNumeric = Number.isFinite(Number(serial)) ? Math.max(0, Math.floor(Number(serial))) : 0
+  const dockTokenCopyValue = dockCopyTokenId?.trim() || String(dockTokenNumeric)
+
+  const footerOwnerActions =
+    chamberDockFrameless && chamberDockEligible ? (
+      <div className="relative z-[2] mt-3 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
+        <div className="min-w-0 flex-1 space-y-2.5">
+          {contractId ? (
+            <div className="border-b border-cyan-500/20 pb-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-[8px] uppercase tracking-wider text-zinc-500 sm:text-[9px]">
+                  {labels.chamberPreviewCollectionAddress}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void copyDockField("contract", contractId)}
+                  className="shrink-0 rounded-sm px-2 py-0.5 font-mono text-[8px] font-semibold uppercase tracking-wider text-cyan-400/90 transition-colors hover:text-cyan-200 sm:text-[9px]"
+                >
+                  {copiedDock === "contract" ? "OK" : labels.chamberPreviewCopy}
+                </button>
+              </div>
+              <p className="mt-1 break-all font-mono text-[9px] leading-relaxed text-cyan-100/90 sm:text-[10px]">{contractId}</p>
+            </div>
+          ) : null}
+          <div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-mono text-[8px] uppercase tracking-wider text-zinc-500 sm:text-[9px]">
+                {labels.chamberPreviewTokenId}
+              </span>
+              <button
+                type="button"
+                onClick={() => void copyDockField("token", dockTokenCopyValue)}
+                className="shrink-0 rounded-sm px-2 py-0.5 font-mono text-[8px] font-semibold uppercase tracking-wider text-cyan-400/90 transition-colors hover:text-cyan-200 sm:text-[9px]"
+              >
+                {copiedDock === "token" ? "OK" : labels.chamberPreviewCopy}
+              </button>
+            </div>
+            <p className="mt-1 font-mono text-[9px] tabular-nums tracking-wide text-cyan-100/90 sm:text-[10px]">
+              {dockTokenCopyValue.trim() ? `#${dockTokenCopyValue}` : "—"}
+            </p>
+          </div>
+        </div>
+        {chamberCollectMode && onCollectNft ? (
+          <button
+            type="button"
+            disabled={collectNftBusy}
+            onClick={() => void Promise.resolve(onCollectNft())}
+            className="tactical-interactive-glitch inline-flex shrink-0 items-center justify-center self-end border border-violet-500/55 bg-violet-950/35 px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-violet-100 shadow-[inset_0_0_0_1px_rgba(167,139,250,0.12)] transition-colors hover:border-violet-400 hover:bg-violet-900/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-45 sm:self-auto"
+          >
+            {collectNftBusy ? collectBusyLabel ?? "…" : collectLabel ?? "Collect"}
+          </button>
+        ) : null}
+      </div>
+    ) : ownerUnlocked && (onDownloadCertificate || expertUrl) ? (
+      <div className="relative z-[2] mt-3 flex flex-col gap-2 sm:flex-row sm:justify-center sm:gap-3">
+        {onDownloadCertificate && (
+          <button
+            type="button"
+            onClick={onDownloadCertificate}
+            className="tactical-phosphor border-2 border-cyan-400/55 bg-cyan-950/40 px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.2)] transition-colors hover:border-cyan-300 hover:bg-cyan-900/45 hover:text-white"
+          >
+            {labels.downloadCertificate}
+          </button>
+        )}
+        {expertUrl && expertLabel && (
+          <a
+            href={expertUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="tactical-phosphor inline-flex items-center justify-center border-2 border-cyan-400/55 bg-cyan-950/35 px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.2)] transition-colors hover:border-cyan-300 hover:bg-cyan-900/40 hover:text-white"
+          >
+            {expertLabel}
+          </a>
+        )}
+      </div>
+    ) : null
 
   const lightbox =
     mounted &&
@@ -779,7 +867,7 @@ export function PhaseArtifactVisualizer({
     <div
       className={cn(
         chamberDockFrameless
-          ? "relative overflow-visible rounded-lg border-0 bg-transparent p-0 shadow-none"
+          ? "relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-visible rounded-lg border-0 bg-transparent p-0 shadow-none"
           : chamberMinimal
             ? "relative overflow-visible rounded-xl border border-violet-500/20 bg-transparent px-3 py-4 sm:px-4 sm:py-5"
             : "tactical-frame relative overflow-hidden rounded-sm border-2 px-3 py-3 sm:px-4",

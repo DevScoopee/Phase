@@ -1835,12 +1835,12 @@ export function FusionChamber() {
                 </div>
               ) : phased && phaseId != null && address ? (
                 <div className="grid w-full max-h-full min-h-0 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:items-stretch lg:gap-5">
-                  <div className="ch-chamber-split-preview relative flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl">
+                  <div className="ch-chamber-split-preview relative flex min-h-0 min-w-0 flex-col overflow-y-auto overflow-x-hidden rounded-xl sm:mx-auto sm:aspect-square sm:w-full sm:max-w-[min(22rem,calc(100vw-2rem))] lg:max-w-[22rem]">
                     <div
                       className="pointer-events-none absolute inset-0 z-[1] rounded-xl opacity-[0.34] [background:repeating-linear-gradient(0deg,transparent,transparent_3px,rgba(0,0,0,0.12)_3px,rgba(0,0,0,0.12)_4px)]"
                       aria-hidden
                     />
-                    <div className="relative z-[2] flex min-h-0 min-w-0 flex-1 flex-col">
+                    <div className="relative z-[2] flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
                       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-cyan-500/35 bg-black/50 px-2.5 py-1.5 sm:px-3">
                         <p className="min-w-0 truncate font-mono text-[8px] font-semibold uppercase tracking-[0.2em] text-cyan-200/95 sm:text-[9px]">
                           {ch.chamberDockPreviewTicker}
@@ -1849,7 +1849,7 @@ export function FusionChamber() {
                           {ch.chamberColumnPreview}
                         </span>
                       </div>
-                      <div className="flex min-h-0 w-full min-w-0 flex-1 items-start justify-start p-2.5 sm:p-3">
+                      <div className="flex min-h-0 w-full min-w-0 flex-1 items-stretch justify-stretch overflow-y-auto p-2.5 sm:p-3">
                         <PhaseArtifactVisualizer
                           mode="verified"
                           contractId={CONTRACT_ID}
@@ -1870,10 +1870,25 @@ export function FusionChamber() {
                           compact
                           showPublicMetaPanel={false}
                           showPrivateMetaPanel={false}
-                          chamberPresentation={isOwnerOnChain}
-                          chamberFrameless={isOwnerOnChain}
-                          expertUrl={stellarExpertTestnetContractUrl(CONTRACT_ID)}
-                          expertLabel={ch.stellarExpert}
+                          chamberPresentation={isOwnerOnChain || issuerCustodyForCollect}
+                          chamberFrameless={isOwnerOnChain || issuerCustodyForCollect}
+                          chamberCollectMode={issuerCustodyForCollect}
+                          onCollectNft={
+                            issuerCustodyForCollect
+                              ? () =>
+                                  void (
+                                    (address?.trim()
+                                      ? handleClaimNftToWallet()
+                                      : handleCollectWithWalletKit()
+                                    ).catch(() => {})
+                                  )
+                              : undefined
+                          }
+                          collectNftBusy={claimToWalletBusy}
+                          collectLabel={ch.chamberPreviewCollectCta}
+                          collectBusyLabel={ch.rewardsNftCollectSending}
+                          suppressExpandLabel={Boolean(phased && phaseId != null && address)}
+                          dockCopyTokenId={nftNumericTokenIdStr}
                           className="w-full max-w-lg lg:max-w-[min(100%,22rem)]"
                           onAccessPrivateMetadata={
                             isOwnerOnChain ? () => void handleAccessPrivateMetadata().catch(() => {}) : undefined
@@ -1892,7 +1907,7 @@ export function FusionChamber() {
                           {ch.chamberColumnInfo}
                         </span>
                       </div>
-                      <p className="rounded border border-violet-600/20 bg-black/55 px-2.5 py-1.5 font-mono text-[7px] uppercase leading-relaxed tracking-[0.14em] text-violet-200/65 sm:px-3 sm:text-[8px]">
+                      <p className="rounded border border-zinc-700/60 bg-black/40 px-2.5 py-1.5 font-mono text-[7px] uppercase leading-relaxed tracking-[0.14em] text-zinc-500 sm:px-3 sm:text-[8px]">
                         {ch.chamberDockInfoSubline}
                       </p>
                     </div>
@@ -1942,40 +1957,41 @@ export function FusionChamber() {
                         </button>
                       </div>
                     ) : null}
-                    <details className="overflow-hidden rounded-lg border border-violet-500/20 bg-zinc-950/50 [&_summary::-webkit-details-marker]:hidden">
-                      <summary className="cursor-pointer list-none px-4 py-3 text-center text-[10px] font-semibold uppercase tracking-widest text-violet-300/70 transition hover:bg-violet-950/30 hover:text-violet-200 lg:text-left">
+                    <details className="overflow-hidden rounded-lg border border-violet-500/40 bg-black/70 shadow-[0_0_22px_rgba(139,92,246,0.12)] [&[open]]:border-violet-400/55 [&[open]]:shadow-[0_0_28px_rgba(167,139,250,0.16)] [&_summary::-webkit-details-marker]:hidden">
+                      <summary className="cursor-pointer list-none border-b border-violet-500/20 bg-violet-950/10 px-3 py-2.5 text-center font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-100 transition hover:bg-violet-950/25 hover:text-white sm:px-4 sm:py-3 lg:text-left">
                         {ch.chamberTechnicalDetails}
-                        <span className="ml-1.5 text-violet-500/70" aria-hidden>
+                        <span className="ml-1.5 text-violet-400/90" aria-hidden>
                           ▾
                         </span>
                       </summary>
-                      <div className="space-y-4 border-t border-violet-500/15 px-4 pb-4 pt-3">
-                    <div className="w-full rounded-lg border border-zinc-800/60 bg-black/25 p-3">
-                      <h3 className="mb-3 text-[9px] font-semibold uppercase tracking-[0.18em] text-zinc-600">
+                      <div className="max-h-[min(50dvh,22rem)] overflow-y-auto overscroll-y-contain border-t border-violet-500/20 px-3 pb-3 pt-3 [scrollbar-gutter:stable] sm:max-h-[min(52dvh,26rem)] sm:px-4 sm:pb-4 sm:pt-3.5 custom-scrollbar">
+                    <div className="space-y-4">
+                    <div className="w-full rounded-md border border-zinc-800/70 bg-zinc-950/40 p-3 sm:p-3.5">
+                      <h3 className="mb-3 text-[9px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
                         {lang === "es" ? "Cadena" : "On-chain"}
                       </h3>
-                      <dl className="divide-y divide-zinc-800/90">
-                        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1 py-2.5 first:pt-0">
+                      <dl className="divide-y divide-zinc-800/80">
+                        <div className="space-y-1 py-2.5 first:pt-0">
                           <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{lang === "es" ? "Colección" : "Collection"}</dt>
-                          <dd className="max-w-[min(100%,14rem)] text-right text-[12px] font-medium leading-snug text-zinc-200 sm:max-w-[70%]">
+                          <dd className="break-words text-left text-[11px] font-medium leading-snug text-zinc-100 sm:text-[12px]">
                             {artifactPublicCollectionName}
                           </dd>
                         </div>
                         <div className="space-y-1 py-2.5">
                           <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{ch.onChainMetaNftContractLabel}</dt>
-                          <dd className="break-all font-mono text-[10px] leading-relaxed text-zinc-300" title={CONTRACT_ID}>
+                          <dd className="hyphens-auto break-all font-mono text-[9px] leading-relaxed text-zinc-200 sm:text-[10px]" title={CONTRACT_ID}>
                             {CONTRACT_ID}
                           </dd>
                         </div>
                         <div className="space-y-1 py-2.5">
                           <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{ch.onChainMetaPhaselqSacLabel}</dt>
-                          <dd className="break-all font-mono text-[10px] leading-relaxed text-zinc-400" title={TOKEN_ADDRESS}>
+                          <dd className="hyphens-auto break-all font-mono text-[9px] leading-relaxed text-zinc-300 sm:text-[10px]" title={TOKEN_ADDRESS}>
                             {TOKEN_ADDRESS}
                           </dd>
                         </div>
                         <div className="flex flex-wrap items-center justify-between gap-2 py-2.5">
                           <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{lang === "es" ? "Emisión" : "Supply"}</dt>
-                          <dd className="font-mono text-[12px] text-zinc-200">
+                          <dd className="shrink-0 font-mono text-[12px] tabular-nums text-zinc-100">
                             {collectionSupply?.minted ?? "—"} / {collectionSupply?.cap ?? "—"}
                           </dd>
                         </div>
@@ -2141,6 +2157,7 @@ export function FusionChamber() {
                         </div>
                       </div>
                     ) : null}
+                    </div>
                       </div>
                     </details>
                   </div>
@@ -2181,10 +2198,19 @@ export function FusionChamber() {
           </div>
             </div>
 
+            {phased && address && phaseId != null && isOwnerOnChain && !authenticityPending ? null : (
             <div className="relative z-10 shrink-0 border-t border-zinc-800/70 pt-1.5">
+          {!(
+            phased &&
+            address &&
+            phaseId != null &&
+            isOwnerOnChain &&
+            authenticityPending
+          ) ? (
           <p className="mb-0.5 shrink-0 text-center text-[10px] font-bold uppercase tracking-[0.28em] text-zinc-500 sm:text-[11px]">
             {ch.theReactor}
           </p>
+          ) : null}
 
           {!phased ? (
             <div
@@ -2261,21 +2287,9 @@ export function FusionChamber() {
                   </span>
                 </button>
               ) : isOwnerOnChain ? (
-                <div className="rounded-lg border border-emerald-500/40 bg-emerald-950/20 px-3 py-3 text-center shadow-[inset_0_0_0_1px_rgba(16,185,129,0.12)]">
-                  <p className="tactical-phosphor-green text-[10px] uppercase tracking-[0.22em] text-[#39ff14]/95">
-                    ● {ch.solidStateStandby}
-                  </p>
-                  <p className="mt-1.5 text-[9px] uppercase tracking-[0.12em] text-emerald-200/85">
-                    {ch.reactorNftSecuredHint}
-                  </p>
-                  <Link
-                    href="/dashboard"
-                    onClick={() => playTacticalUiClick()}
-                    className="tactical-interactive-glitch mt-2 inline-flex border border-emerald-400/50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-100 hover:border-emerald-300 hover:text-white"
-                  >
-                    {lang === "es" ? "Dashboard →" : "Dashboard →"}
-                  </Link>
-                </div>
+                <p className="tactical-phosphor-green text-center text-[10px] uppercase tracking-widest text-[#39ff14]/90">
+                  ● {ch.solidStateStandby}
+                </p>
               ) : tokenOwnerLookupDone && phaseId != null ? (
                 <p className="text-center text-[9px] leading-relaxed uppercase tracking-[0.18em] text-violet-300/80">
                   {ch.reactorClaimUnavailableHint}
@@ -2288,6 +2302,7 @@ export function FusionChamber() {
             </div>
           )}
             </div>
+            )}
 
           </div>
           </div>
