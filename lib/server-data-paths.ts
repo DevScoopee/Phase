@@ -7,6 +7,8 @@ const FILES = {
   faucetClaims: "faucet-claims.json",
   classicLiqClaims: "classic-liq-claims.json",
   artistProfiles: "artist-profiles.json",
+  worldCollections: "world-collections.json",
+  worldNarratives: "world-narratives.json",
 } as const
 
 export type ServerDataFile = keyof typeof FILES
