@@ -2293,7 +2293,29 @@ export function FusionChamber() {
                   {ch.syncingMeta}
                 </p>
               ) : (
-                <div className="flex w-full max-h-full min-h-0 flex-col items-center gap-1.5 overflow-hidden sm:gap-2">
+                <div className="flex w-full max-h-full min-h-0 flex-col items-center gap-2 overflow-hidden sm:gap-3">
+                  {/* Collection image preview — shown pre-mint when imageUri is available */}
+                  {effectiveArtifactImage && (
+                    <div className="relative w-full max-w-[14rem] overflow-hidden rounded-sm border border-zinc-700/60 bg-black/60 sm:max-w-[16rem]">
+                      <IpfsDisplayImg
+                        uri={effectiveArtifactImage}
+                        className="w-full object-cover opacity-60 blur-[2px] [image-rendering:auto]"
+                        loading="lazy"
+                      />
+                      {/* scanlines */}
+                      <div
+                        className="pointer-events-none absolute inset-0"
+                        style={{ background: "repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.13) 2px,rgba(0,0,0,0.13) 4px)" }}
+                        aria-hidden
+                      />
+                      {/* PREVIEW_ONLY badge */}
+                      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                        <span className="border border-violet-500/50 bg-violet-950/80 px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.2em] text-violet-200/95 shadow-[0_0_16px_rgba(139,92,246,0.2)]">
+                          [ PREVIEW_ONLY ]
+                        </span>
+                      </div>
+                    </div>
+                  )}
                   <div className="w-full shrink-0 rounded-sm border border-zinc-700 bg-zinc-950/50 px-3 py-2.5 text-center shadow-[inset_0_0_0_1px_rgba(63,63,70,0.25)]">
                     <p className="text-[8px] uppercase tracking-[0.35em] text-zinc-500">{ch.x402MintPrice}</p>
                     <p className="tactical-phosphor mt-0.5 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xl tracking-wider text-cyan-200 sm:text-2xl">
