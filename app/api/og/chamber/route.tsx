@@ -3,7 +3,7 @@ import { type NextRequest } from "next/server"
 import { fetchCollectionInfo, extractIpfsGatewaySubpath } from "@/lib/phase-protocol"
 import { publicPhaseSiteBaseUrl } from "@/lib/phase-nft-metadata-build"
 
-export const runtime = "edge"
+export const runtime = "nodejs"
 
 export async function GET(request: NextRequest) {
   const base = publicPhaseSiteBaseUrl()
