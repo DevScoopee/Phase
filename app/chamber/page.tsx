@@ -5,21 +5,11 @@ import { FusionChamber } from "@/components/fusion-chamber"
 import { fetchCollectionInfo } from "@/lib/phase-protocol"
 import { publicPhaseSiteBaseUrl } from "@/lib/phase-nft-metadata-build"
 import { getWorldForCollection } from "@/lib/narrative-world-store"
-import { extractIpfsGatewaySubpath } from "@/lib/phase-protocol"
 
 type Props = {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }
 
-function resolveOgImage(imageUri: string, base: string): string {
-  const t = imageUri.trim()
-  if (!t) return `${base}/og-phase.png`
-  if (/^https?:\/\//i.test(t)) return t
-  const ipfsPath = extractIpfsGatewaySubpath(t)
-  if (ipfsPath) return `${base}/api/ipfs/${ipfsPath}`
-  if (t.startsWith("/")) return `${base}${t}`
-  return `${base}/og-phase.png`
-}
 
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
   const base = publicPhaseSiteBaseUrl()
@@ -50,7 +40,7 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
     ? world.world_prompt.slice(0, 160)
     : `PHASE Protocol artifact — collection #${collectionId} on Soroban testnet.`
 
-  const ogImage = resolveOgImage(collection.imageUri, base)
+  const ogImage = `${base}/api/og/chamber?collection=${collectionId}`
   const pageUrl = `${base}/chamber?collection=${collectionId}`
 
   return {
@@ -65,8 +55,8 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
       images: [
         {
           url: ogImage,
-          width: 1024,
-          height: 1024,
+          width: 1200,
+          height: 630,
           alt: title,
         },
       ],
