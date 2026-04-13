@@ -1,24 +1,33 @@
-import { ImageResponse } from "next/og"
-import { type NextRequest } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 import { readFile } from "node:fs/promises"
 import path from "node:path"
+import sharp from "sharp"
 import { fetchCollectionInfo, extractIpfsGatewaySubpath } from "@/lib/phase-protocol"
 import { publicPhaseSiteBaseUrl } from "@/lib/phase-nft-metadata-build"
 
 export const runtime = "nodejs"
 
-async function fileToDataUrl(filePath: string): Promise<string> {
-  const buf = await readFile(filePath)
-  return `data:image/png;base64,${buf.toString("base64")}`
-}
+const OG_W = 1200
+const OG_H = 630
 
-async function fetchToDataUrl(url: string): Promise<string | null> {
+// Black square position in the 2752x1536 CRT template (pixel-analysed):
+// x: 963–1787  y: 230–1151
+// Scaled to 1200x630 with objectFit:cover (template is 1.79:1, OG is 1.90:1 → scale by width, crop top/bottom):
+//   scaleX = 1200/2752 = 0.4359  → height becomes 669px → crop (669-630)/2 = 19.5px top & bottom
+//   left  = 963  * 0.4359         = 420px
+//   top   = (230 - 19.5) * 0.4359 = 91px   ← corrected for crop
+//   width = (1787-963) * 0.4359  = 359px
+//   height= (1151-230) * 0.4359  = 401px
+const NFT_LEFT   = 420
+const NFT_TOP    = 91
+const NFT_WIDTH  = 359
+const NFT_HEIGHT = 401
+
+async function fetchImageBuffer(url: string): Promise<Buffer | null> {
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(6000) })
+    const res = await fetch(url, { signal: AbortSignal.timeout(7000) })
     if (!res.ok) return null
-    const buf = await res.arrayBuffer()
-    const ct = res.headers.get("content-type") ?? "image/png"
-    return `data:${ct};base64,${Buffer.from(buf).toString("base64")}`
+    return Buffer.from(await res.arrayBuffer())
   } catch {
     return null
   }
@@ -30,122 +39,49 @@ export async function GET(request: NextRequest) {
   const rawCollection = searchParams.get("collection")
   const collectionId = rawCollection ? parseInt(rawCollection, 10) : NaN
 
-  // Read CRT frame from filesystem — avoids Satori HTTP fetch issues
-  const crtFramePath = path.join(process.cwd(), "public", "og-crt-frame.png")
-  const crtFrameDataUrl = await fileToDataUrl(crtFramePath)
+  // 1. Load and resize CRT frame to OG dimensions
+  const crtPath = path.join(process.cwd(), "public", "og-crt-frame.png")
+  const crtBuf = await readFile(crtPath)
+  let composite = sharp(crtBuf).resize(OG_W, OG_H, { fit: "cover", position: "centre" })
 
-  if (!Number.isFinite(collectionId) || collectionId <= 0) {
-    return new ImageResponse(
-      // eslint-disable-next-line @next/next/no-img-element
-      <img src={crtFrameDataUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} />,
-      { width: 1200, height: 630 },
-    )
-  }
+  // 2. If we have a collection, fetch the NFT image and composite it into the screen
+  if (Number.isFinite(collectionId) && collectionId > 0) {
+    try {
+      const collection = await fetchCollectionInfo(collectionId)
+      const uri = collection?.imageUri?.trim() ?? ""
+      if (uri) {
+        let nftUrl: string | null = null
+        if (/^https?:\/\//i.test(uri)) {
+          nftUrl = uri
+        } else {
+          const ipfsPath = extractIpfsGatewaySubpath(uri)
+          if (ipfsPath) nftUrl = `${base}/api/ipfs/${ipfsPath}`
+        }
+        if (nftUrl) {
+          const nftBuf = await fetchImageBuffer(nftUrl)
+          if (nftBuf) {
+            // Resize NFT to fit the black square, then composite
+            const nftResized = await sharp(nftBuf)
+              .resize(NFT_WIDTH, NFT_HEIGHT, { fit: "cover", position: "centre" })
+              .toBuffer()
 
-  // Resolve NFT image URL → base64 data URL
-  let nftDataUrl: string | null = null
-  let collectionName = ""
-  try {
-    const collection = await fetchCollectionInfo(collectionId)
-    collectionName = collection?.name ?? ""
-    const uri = collection?.imageUri?.trim() ?? ""
-    if (uri) {
-      let nftUrl: string | null = null
-      if (/^https?:\/\//i.test(uri)) {
-        nftUrl = uri
-      } else {
-        const ipfsPath = extractIpfsGatewaySubpath(uri)
-        if (ipfsPath) nftUrl = `${base}/api/ipfs/${ipfsPath}`
+            composite = sharp(await composite.toBuffer()).composite([
+              { input: nftResized, left: NFT_LEFT, top: NFT_TOP },
+            ])
+          }
+        }
       }
-      if (nftUrl) nftDataUrl = await fetchToDataUrl(nftUrl)
+    } catch {
+      // Render without NFT overlay
     }
-  } catch {
-    // render without NFT overlay
   }
 
-  return new ImageResponse(
-    (
-      <div
-        style={{
-          position: "relative",
-          width: "1200px",
-          height: "630px",
-          display: "flex",
-          overflow: "hidden",
-          background: "#000",
-        }}
-      >
-        {/* CRT monitor frame */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={crtFrameDataUrl}
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-          }}
-        />
+  const png = await composite.png().toBuffer()
 
-        {/* NFT composited into the black screen square.
-            Black region: x 35-65%, y 15-75% in the 2752x1536 template.
-            Scaled to 1200x630 with cover (≈3% vertical crop):
-            left=420 top=76 width=360 height=378 */}
-        {nftDataUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={nftDataUrl}
-            style={{
-              position: "absolute",
-              left: "420px",
-              top: "76px",
-              width: "360px",
-              height: "378px",
-              objectFit: "cover",
-            }}
-          />
-        )}
-
-        {/* Collection name bottom-left, styled as CRT text */}
-        {collectionName && (
-          <div
-            style={{
-              position: "absolute",
-              bottom: "28px",
-              left: "52px",
-              display: "flex",
-              flexDirection: "column",
-              gap: "2px",
-            }}
-          >
-            <span
-              style={{
-                fontFamily: "monospace",
-                fontSize: "11px",
-                letterSpacing: "0.22em",
-                textTransform: "uppercase",
-                color: "rgba(167,139,250,0.55)",
-              }}
-            >
-              PHASE: COLLECTION PREVIEW
-            </span>
-            <span
-              style={{
-                fontFamily: "monospace",
-                fontSize: "13px",
-                letterSpacing: "0.18em",
-                textTransform: "uppercase",
-                color: "rgba(196,181,253,0.80)",
-              }}
-            >
-              {collectionName}
-            </span>
-          </div>
-        )}
-      </div>
-    ),
-    { width: 1200, height: 630 },
-  )
+  return new NextResponse(png, {
+    headers: {
+      "Content-Type": "image/png",
+      "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
+    },
+  })
 }
