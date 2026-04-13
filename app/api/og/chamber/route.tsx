@@ -10,15 +10,16 @@ export const runtime = "nodejs"
 const OG_W = 1200
 const OG_H = 630
 
-// NFT image position — calibrated to fill the inner black rectangle of the purple neon frame.
-// Derived by pixel-analyzing the CRT frame at 2752x1536, then scaling to OG output (1200x630 cover).
+// NFT image position — fills the upper portion of the inner black rectangle.
+// The frame inner area is left=532 top=219 w=136 h=132 (bottom=351).
+// NFT takes the top ~68% leaving ~42px at the bottom for the collection name.
 const NFT_LEFT   = 532
 const NFT_TOP    = 219
 const NFT_WIDTH  = 136
-const NFT_HEIGHT = 132
+const NFT_HEIGHT = 90
 
-// Text is placed below the NFT frame (NFT_TOP + NFT_HEIGHT + gap)
-const TEXT_TOP_OFFSET = 10
+// Text sits inside the frame, immediately below the NFT image
+const TEXT_TOP_OFFSET = 6
 
 async function fetchImageBuffer(url: string): Promise<Buffer | null> {
   try {
@@ -41,7 +42,7 @@ async function nameTextLayer(name: string): Promise<sharp.OverlayOptions | null>
       text: {
         text: `<span foreground="white" weight="bold">${escaped}</span>`,
         font: "sans",
-        fontSize: 42,
+        fontSize: 32,
         dpi: 200,
         rgba: true,
       },
