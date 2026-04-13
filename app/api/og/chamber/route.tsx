@@ -10,18 +10,17 @@ export const runtime = "nodejs"
 const OG_W = 1200
 const OG_H = 630
 
-// Black square position in the 2752x1536 CRT template (pixel-analysed):
-// x: 963–1787  y: 230–1151
-// Scaled to 1200x630 with objectFit:cover (template is 1.79:1, OG is 1.90:1 → scale by width, crop top/bottom):
-//   scaleX = 1200/2752 = 0.4359  → height becomes 669px → crop (669-630)/2 = 19.5px top & bottom
-//   left  = 963  * 0.4359         = 420px
-//   top   = (230 - 19.5) * 0.4359 = 91px   ← corrected for crop
-//   width = (1787-963) * 0.4359  = 359px
-//   height= (1151-230) * 0.4359  = 401px
-const NFT_LEFT   = 420
-const NFT_TOP    = 91
-const NFT_WIDTH  = 359
-const NFT_HEIGHT = 401
+// Inner black frame position in the 2752x1536 CRT template (pixel-analysed via purple glow border):
+// Inner content area: x=884–1553  y=440–1194  (669×754px in template)
+// Scaled to 1200x630 with cover (scaleX=1200/2752=0.4359, crop_top=(H*scaleX-630)/2=19.5px):
+//   left  = 884  * 0.4359        = 385px
+//   top   = 440  * 0.4359 - 19.5 = 172px
+//   width = 669  * 0.4359        = 292px
+//   height= 754  * 0.4359        = 329px
+const NFT_LEFT   = 385
+const NFT_TOP    = 172
+const NFT_WIDTH  = 292
+const NFT_HEIGHT = 329
 
 async function fetchImageBuffer(url: string): Promise<Buffer | null> {
   try {
