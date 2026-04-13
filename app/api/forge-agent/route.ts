@@ -1,6 +1,10 @@
 import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from "@google/generative-ai"
 import { NextRequest, NextResponse } from "next/server"
-import { getWorldForCollection } from "@/lib/narrative-world-store"
+import {
+  getWorldForCollection,
+  getRecentNarrativesForCollection,
+  type WorldNarrativeData,
+} from "@/lib/narrative-world-store"
 import {
   Address,
   extractBaseAddress,
@@ -79,6 +83,7 @@ function buildLoreSystemInstruction(
   styleMode: ForgeImageStyleMode,
   worldPrompt: string | undefined,
   outputLang: "en" | "es",
+  recentLores: WorldNarrativeData[] = [],
 ): string {
   const worldPrefix =
     outputLang === "es"
@@ -89,15 +94,24 @@ function buildLoreSystemInstruction(
         ? `Narrative world context: ${worldPrompt}\n\n`
         : ""
 
+  const loresBlock =
+    recentLores.length > 0
+      ? outputLang === "es"
+        ? `Artefactos previos forjados en este mundo (para mantener coherencia narrativa):\n${recentLores.map((l, i) => `${i + 1}. ${l.narrative}`).join("\n")}\n\n`
+        : `Previously forged artifacts in this world (for narrative continuity):\n${recentLores.map((l, i) => `${i + 1}. ${l.narrative}`).join("\n")}\n\n`
+      : ""
+
+  const contextBlock = worldPrefix + loresBlock
+
   const cyber =
     outputLang === "es"
-      ? `${worldPrefix}Eres el Arquitecto del Protocolo PHASE. Escribe una descripción de máximo 2 oraciones técnicas, oscuras, ciberpunk y enigmáticas sobre el siguiente artefacto forjado por el usuario: ${userPromptTrimmed}`
-      : `${worldPrefix}You are the PHASE Protocol Architect. Write at most 2 sentences — technical, dark, cyberpunk, and enigmatic — describing the following user-forged artifact: ${userPromptTrimmed}`
+      ? `${contextBlock}Eres el Arquitecto del Protocolo PHASE. Escribe una descripción de máximo 2 oraciones técnicas, oscuras, ciberpunk y enigmáticas sobre el siguiente artefacto forjado por el usuario: ${userPromptTrimmed}`
+      : `${contextBlock}You are the PHASE Protocol Architect. Write at most 2 sentences — technical, dark, cyberpunk, and enigmatic — describing the following user-forged artifact: ${userPromptTrimmed}`
 
   const adaptive =
     outputLang === "es"
-      ? `${worldPrefix}Eres el Arquitecto del Protocolo PHASE. Escribe una descripción breve (máximo 2 oraciones) alineada a la idea exacta del usuario, sin imponer estética cyber por defecto: ${userPromptTrimmed}`
-      : `${worldPrefix}You are the PHASE Protocol Architect. Write a brief description (at most 2 sentences) aligned with the user's exact idea, without imposing a cyber aesthetic by default: ${userPromptTrimmed}`
+      ? `${contextBlock}Eres el Arquitecto del Protocolo PHASE. Escribe una descripción breve (máximo 2 oraciones) alineada a la idea exacta del usuario, sin imponer estética cyber por defecto: ${userPromptTrimmed}`
+      : `${contextBlock}You are the PHASE Protocol Architect. Write a brief description (at most 2 sentences) aligned with the user's exact idea, without imposing a cyber aesthetic by default: ${userPromptTrimmed}`
 
   const base = styleMode === "cyber" ? cyber : adaptive
   const langLine =
@@ -800,6 +814,7 @@ async function runForgeAgentCore(
   nanobananaCallBackUrl: string,
   worldPrompt: string | undefined,
   outputLang: "en" | "es",
+  recentLores: WorldNarrativeData[] = [],
 ): Promise<ForgeAgentSuccessResponse> {
   const trimmed = userPrompt.trim()
   if (!trimmed) {
@@ -813,7 +828,7 @@ async function runForgeAgentCore(
   const genAI = new GoogleGenerativeAI(apiKey)
   const candidates = geminiModelCandidates()
 
-  const systemInstruction = buildLoreSystemInstruction(trimmed, styleMode, worldPrompt, outputLang)
+  const systemInstruction = buildLoreSystemInstruction(trimmed, styleMode, worldPrompt, outputLang, recentLores)
 
   type GeminiGenerateResult = Awaited<
     ReturnType<ReturnType<GoogleGenerativeAI["getGenerativeModel"]>["generateContent"]>
@@ -985,18 +1000,23 @@ export async function POST(request: NextRequest): Promise<NextResponse<ForgeAgen
     const styleMode = normalizeForgeImageStyleMode(body.imageStyleMode)
 
     let worldPrompt: string | undefined
+    let recentLores: WorldNarrativeData[] = []
     const collectionId = body.collection_id
     if (typeof collectionId === "number" && collectionId > 0) {
       try {
-        const world = await getWorldForCollection(collectionId)
+        const [world, lores] = await Promise.all([
+          getWorldForCollection(collectionId),
+          getRecentNarrativesForCollection(collectionId, 3),
+        ])
         if (world?.world_prompt) worldPrompt = world.world_prompt
+        recentLores = lores
       } catch (e) {
-        console.warn("[forge-agent] Could not read world prompt for collection", collectionId, e)
+        console.warn("[forge-agent] Could not read world data for collection", collectionId, e)
       }
     }
 
     const outputLang = normalizeForgeOutputLang(body.lang)
-    const payload = await runForgeAgentCore(body.prompt, styleMode, nanobananaCallBackUrl, worldPrompt, outputLang)
+    const payload = await runForgeAgentCore(body.prompt, styleMode, nanobananaCallBackUrl, worldPrompt, outputLang, recentLores)
     return NextResponse.json(payload)
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)

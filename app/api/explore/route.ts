@@ -57,7 +57,13 @@ async function mapConcurrent<T, R>(
 export async function GET(request: NextRequest) {
   const contractId = phaseProtocolContractIdForServer()
   const page = Math.max(1, parseInt(request.nextUrl.searchParams.get("page") ?? "1", 10))
-  const perPage = Math.min(50, Math.max(1, parseInt(request.nextUrl.searchParams.get("perPage") ?? "24", 10)))
+  const perPage = Math.min(500, Math.max(1, parseInt(request.nextUrl.searchParams.get("perPage") ?? "24", 10)))
+  const collectionIdFilter = (() => {
+    const raw = request.nextUrl.searchParams.get("collectionId")
+    if (!raw) return null
+    const n = parseInt(raw, 10)
+    return Number.isFinite(n) && n > 0 ? n : null
+  })()
 
   const scanCap = Math.min(
     500,
@@ -86,16 +92,14 @@ export async function GET(request: NextRequest) {
   })
   const found = owners.filter((x): x is { id: number; owner: string } => x !== null)
 
-  // Paginate found tokens
-  const totalFound = found.length
-  const slice = found.slice((page - 1) * perPage, page * perPage)
-
   // Read world sidecar once — O(1) per request, not per item.
   const worldCollections = await getAllWorldCollections().catch(() => ({} as Record<string, { world_name: string }>))
 
-  // Build metadata for this page only
-  const items = await mapConcurrent(slice, 6, async ({ id, owner }) => {
-    const meta = await buildPhaseTokenMetadataJson(contractId, id)
+  function buildItem(
+    id: number,
+    owner: string,
+    meta: Awaited<ReturnType<typeof buildPhaseTokenMetadataJson>>,
+  ): ExploreItem {
     let ownerBase = owner
     try { ownerBase = extractBaseAddress(owner) } catch { /* keep raw */ }
     const collectionId = meta?.collectionId ?? null
@@ -110,8 +114,32 @@ export async function GET(request: NextRequest) {
       collectionId,
       ownerTruncated: truncateAddress(ownerBase),
       worldName,
-    } satisfies ExploreItem
-  })
+    }
+  }
+
+  let items: ExploreItem[]
+  let totalFound: number
+
+  if (collectionIdFilter != null) {
+    // Filtered path: must build metadata for all tokens to filter by collectionId.
+    // Single metadata pass — no double fetch.
+    const allWithMeta = await mapConcurrent(found, 12, async ({ id, owner }) => {
+      const meta = await buildPhaseTokenMetadataJson(contractId, id).catch(() => null)
+      return { id, owner, meta }
+    })
+    const filtered = allWithMeta.filter((x) => (x.meta?.collectionId ?? null) === collectionIdFilter)
+    totalFound = filtered.length
+    const slice = filtered.slice((page - 1) * perPage, page * perPage)
+    items = slice.map(({ id, owner, meta }) => buildItem(id, owner, meta))
+  } else {
+    // Normal path: paginate first, then fetch metadata for this page only.
+    totalFound = found.length
+    const slice = found.slice((page - 1) * perPage, page * perPage)
+    items = await mapConcurrent(slice, 6, async ({ id, owner }) => {
+      const meta = await buildPhaseTokenMetadataJson(contractId, id)
+      return buildItem(id, owner, meta)
+    })
+  }
 
   return NextResponse.json(
     { items, total: totalFound, page, perPage },

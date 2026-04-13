@@ -2118,9 +2118,12 @@ export function FusionChamber() {
                     {/* ── Narrative World connection ── */}
                     {worldData && (
                       <div className="shrink-0 border border-cyan-400/20 bg-cyan-950/15 p-3">
-                        <p className="mb-1.5 font-mono text-[9px] uppercase tracking-widest text-cyan-500">
-                          {`[ MUNDO: ${worldData.world_name} ]`}
-                        </p>
+                        <Link
+                          href={`/world/${collectionId}`}
+                          className="mb-1.5 block font-mono text-[9px] uppercase tracking-widest text-cyan-500 transition-colors hover:text-cyan-300"
+                        >
+                          {`[ MUNDO: ${worldData.world_name} ]`} ↗
+                        </Link>
                         {narrativeLoading ? (
                           <p className="animate-pulse font-mono text-[10px] italic text-cyan-400/50">
                             [ NARRADOR: generando conexión... ]
