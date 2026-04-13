@@ -18,8 +18,12 @@ const NFT_TOP    = 219
 const NFT_WIDTH  = 136
 const NFT_HEIGHT = 90
 
-// Text sits inside the frame, immediately below the NFT image
-const TEXT_TOP_OFFSET = 6
+// Collection name text area — inside the frame's inner black rectangle
+// Frame inner area: left=532 top=219 w=136 h=132 (bottom=351)
+// NFT takes top 90px, so text goes in the remaining ~42px at the bottom
+const TEXT_AREA_LEFT = 532
+const TEXT_AREA_WIDTH = 136
+const TEXT_AREA_TOP = 315  // NFT_TOP(219) + NFT_HEIGHT(90) + offset(6)
 
 async function fetchImageBuffer(url: string): Promise<Buffer | null> {
   try {
@@ -33,25 +37,37 @@ async function fetchImageBuffer(url: string): Promise<Buffer | null> {
 
 async function nameTextLayer(name: string): Promise<sharp.OverlayOptions | null> {
   try {
-    const escaped = name
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
+    // Truncate long names
+    const displayName = name.length > 20 ? name.slice(0, 18) + ".." : name
+
+    // Create text image with exact dimensions to fit in the frame
+    // sharp text API: font includes size, use simple text without Pango markup
     const buf = await sharp({
-      text: {
-        text: `<span foreground="white" weight="bold">${escaped}</span>`,
-        font: "sans",
-        fontSize: 32,
-        dpi: 200,
-        rgba: true,
+      create: {
+        width: TEXT_AREA_WIDTH,
+        height: 32,
+        channels: 4,
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
       },
-    }).png().toBuffer()
-    const meta = await sharp(buf).metadata()
-    const tw = meta.width ?? 0
-    const left = Math.max(0, Math.round((OG_W - tw) / 2))
-    const top = NFT_TOP + NFT_HEIGHT + TEXT_TOP_OFFSET
-    return { input: buf, left, top }
+    })
+      .composite([
+        {
+          input: await sharp({
+            text: {
+              text: displayName,
+              font: "Inter-Bold 14px",
+              rgba: true,
+              width: TEXT_AREA_WIDTH,
+              align: "center",
+            },
+          }).png().toBuffer(),
+          gravity: "center",
+        },
+      ])
+      .png()
+      .toBuffer()
+
+    return { input: buf, left: TEXT_AREA_LEFT, top: TEXT_AREA_TOP }
   } catch {
     return null
   }
@@ -71,8 +87,8 @@ export async function GET(request: NextRequest) {
     .toBuffer()
 
   if (!Number.isFinite(collectionId) || collectionId <= 0) {
-    const png = await sharp(baseBuf).png().toBuffer()
-    return new NextResponse(png, {
+    const pngBuffer = await sharp(baseBuf).png().toBuffer()
+    return new NextResponse(new Uint8Array(pngBuffer), {
       headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400" },
     })
   }
@@ -113,9 +129,9 @@ export async function GET(request: NextRequest) {
     // Render frame-only if something fails
   }
 
-  const png = await sharp(baseBuf).composite(layers).png().toBuffer()
+  const pngBuffer = await sharp(baseBuf).composite(layers).png().toBuffer()
 
-  return new NextResponse(png, {
+  return new NextResponse(new Uint8Array(pngBuffer), {
     headers: {
       "Content-Type": "image/png",
       "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
