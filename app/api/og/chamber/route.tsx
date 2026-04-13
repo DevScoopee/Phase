@@ -10,15 +10,15 @@ export const runtime = "nodejs"
 const OG_W = 1200
 const OG_H = 630
 
-// NFT image position — calibrated visually to fit inside the purple neon frame:
-// Centered in screen, slightly above middle. Reference: /collection/[id] CrtCollectionPreview.
-const NFT_LEFT   = 505
-const NFT_TOP    = 142
-const NFT_WIDTH  = 190
-const NFT_HEIGHT = 195
+// NFT image position — calibrated to fit inside the purple neon frame (inner content only).
+// Frame is narrow and slightly left-of-center in the OG output.
+const NFT_LEFT   = 532
+const NFT_TOP    = 152
+const NFT_WIDTH  = 140
+const NFT_HEIGHT = 155
 
 // Collection name text position (centered, below the image frame)
-const TEXT_Y = 390
+const TEXT_Y = 355
 
 async function fetchImageBuffer(url: string): Promise<Buffer | null> {
   try {
