@@ -17,8 +17,8 @@ const NFT_TOP    = 219
 const NFT_WIDTH  = 136
 const NFT_HEIGHT = 132
 
-// Collection name text position (centered, below the image frame)
-const TEXT_Y = 390
+// Text is placed below the NFT frame (NFT_TOP + NFT_HEIGHT + gap)
+const TEXT_TOP_OFFSET = 10
 
 async function fetchImageBuffer(url: string): Promise<Buffer | null> {
   try {
@@ -30,22 +30,30 @@ async function fetchImageBuffer(url: string): Promise<Buffer | null> {
   }
 }
 
-function nameSvg(name: string): Buffer {
-  const escaped = name.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${OG_W}" height="${OG_H}">
-    <text
-      x="${OG_W / 2}"
-      y="${TEXT_Y}"
-      text-anchor="middle"
-      font-family="monospace"
-      font-size="30"
-      font-weight="bold"
-      letter-spacing="3"
-      fill="white"
-      opacity="0.92"
-    >${escaped}</text>
-  </svg>`
-  return Buffer.from(svg)
+async function nameTextLayer(name: string): Promise<sharp.OverlayOptions | null> {
+  try {
+    const escaped = name
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+    const buf = await sharp({
+      text: {
+        text: `<span foreground="white" weight="bold">${escaped}</span>`,
+        font: "sans",
+        fontSize: 42,
+        dpi: 200,
+        rgba: true,
+      },
+    }).png().toBuffer()
+    const meta = await sharp(buf).metadata()
+    const tw = meta.width ?? 0
+    const left = Math.max(0, Math.round((OG_W - tw) / 2))
+    const top = NFT_TOP + NFT_HEIGHT + TEXT_TOP_OFFSET
+    return { input: buf, left, top }
+  } catch {
+    return null
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -97,7 +105,8 @@ export async function GET(request: NextRequest) {
 
     // Name text layer
     if (collectionName) {
-      layers.push({ input: nameSvg(collectionName), top: 0, left: 0 })
+      const textLayer = await nameTextLayer(collectionName)
+      if (textLayer) layers.push(textLayer)
     }
   } catch {
     // Render frame-only if something fails
