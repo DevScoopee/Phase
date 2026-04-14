@@ -43,19 +43,24 @@ function escapeMarkup(s: string): string {
 }
 
 /**
- * Sharp renders unicode outside Basic Latin/Latin-1 as □ because the default
- * monospace font has no CJK/extended glyphs. Detect and replace with a safe fallback.
+ * Strip every character outside printable ASCII (0x20–0x7E).
+ * Keeps any ASCII portion of mixed names (e.g. "日本語 ARTIFACT" → "ARTIFACT").
+ * Falls back when the stripped result is too short to be meaningful.
  */
 function sanitizeForSharp(name: string, fallback: string): string {
-  // Allow ASCII printable + Latin Extended (U+0000–U+024F) + common punctuation
-  const isSafe = /^[\u0000-\u024F\s\d#\-_.,!?()[\]{}'"/:;@+*%=<>~`|\\^]+$/.test(name)
-  return isSafe ? name : fallback
+  const clean = name.replace(/[^\x20-\x7E]/g, "").trim()
+  return clean.length > 2 ? clean : fallback
 }
 
+/** Absolute path to the bundled NotoSans TTF — used by sharp's Pango renderer. */
+const NOTO_SANS_TTF = path.join(process.cwd(), "public", "fonts", "NotoSans-Regular.ttf")
+
 /**
- * Renderiza texto sobre el monitor usando SVG — garantiza centrado correcto.
- * `align: "center"` usa text-anchor="middle" en x = width/2, así el buffer
- * de width px cubre toda la fila y queda centrado con left=0.
+ * Renders text as a PNG overlay using sharp's native Pango text input and the
+ * bundled NotoSans TTF. Works on Vercel (Amazon Linux 2) without any system font.
+ *
+ * Centering: renders at natural width, measures the result, then computes left
+ * offset — avoids SVG @font-face issues with librsvg on Lambda.
  */
 async function monitorTextLayer(
   text: string,
@@ -72,19 +77,33 @@ async function monitorTextLayer(
 ): Promise<sharp.OverlayOptions | null> {
   try {
     const align = opts.align ?? "left"
-    const x = align === "center" ? opts.width / 2 : align === "right" ? opts.width : 0
-    const anchor = align === "center" ? "middle" : align === "right" ? "end" : "start"
-    const ls = opts.letterSpacing ?? 2
 
-    const svg = Buffer.from(
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${opts.width}" height="${opts.height}">` +
-      `<text x="${x}" y="${opts.fontSize}" text-anchor="${anchor}" ` +
-      `font-family="monospace" font-size="${opts.fontSize}px" fill="${opts.color}" ` +
-      `letter-spacing="${ls}">${escapeMarkup(text)}</text></svg>`,
-    )
+    // Pango markup: escape XML special chars, wrap in <span> for color
+    const escaped = escapeMarkup(text)
+    const pango = `<span foreground="${opts.color}">${escaped}</span>`
 
-    const buf = await sharp(svg).png().toBuffer()
-    return { input: buf, left: opts.left, top: opts.top }
+    const textBuf = await sharp({
+      text: {
+        text: pango,
+        fontfile: NOTO_SANS_TTF,
+        font: `Noto Sans ${opts.fontSize}`,
+        rgba: true,
+        dpi: 144,
+      },
+    })
+      .png()
+      .toBuffer()
+
+    let finalLeft = opts.left
+    if (align === "center") {
+      const { width: textW = 0 } = await sharp(textBuf).metadata()
+      finalLeft = Math.max(0, Math.round((opts.width - textW) / 2))
+    } else if (align === "right") {
+      const { width: textW = 0 } = await sharp(textBuf).metadata()
+      finalLeft = Math.max(0, opts.left + opts.width - textW)
+    }
+
+    return { input: textBuf, left: finalLeft, top: opts.top }
   } catch {
     return null
   }
