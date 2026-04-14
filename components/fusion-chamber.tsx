@@ -2171,7 +2171,7 @@ export function FusionChamber() {
                         <dl className="space-y-3">
                           <div className="flex items-baseline justify-between gap-3">
                             <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{ch.artifact.metadataStandard}</dt>
-                            <dd className="font-mono text-[12px] text-zinc-200">SEP-20</dd>
+                            <dd className="font-mono text-[12px] text-zinc-200">SEP-41/50</dd>
                           </div>
                           <div className="flex flex-wrap items-baseline justify-between gap-3">
                             <dt className="text-[9px] uppercase tracking-wider text-zinc-500">{ch.artifact.powerLevel}</dt>

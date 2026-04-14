@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation"
 import type { Metadata } from "next"
 import Link from "next/link"
+import { LangToggle } from "@/components/lang-toggle"
 import {
   getWorldForCollection,
   getNarrativeForToken,
@@ -14,6 +15,9 @@ import {
   buildPhaseTokenMetadataJson,
   publicPhaseSiteBaseUrl,
 } from "@/lib/phase-nft-metadata-build"
+
+const navLink =
+  "inline-flex min-h-[36px] items-center border border-zinc-700 bg-zinc-900/60 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-400 transition-colors hover:border-violet-500/50 hover:text-violet-300"
 
 type Props = {
   params: Promise<{ collection_id: string }>
@@ -77,6 +81,7 @@ type WorldNFT = {
   name: string
   image: string
   narrative: string | null
+  narrativeTimestamp: number | null
 }
 
 export default async function WorldGalleryPage({ params }: Props) {
@@ -126,6 +131,7 @@ export default async function WorldGalleryPage({ params }: Props) {
         name: meta.name,
         image: meta.image,
         narrative: narrativeData?.narrative ?? null,
+        narrativeTimestamp: narrativeData?.generated_at ?? null,
       } satisfies WorldNFT
     })
 
@@ -137,108 +143,155 @@ export default async function WorldGalleryPage({ params }: Props) {
       <div className="grid-bg pointer-events-none fixed inset-0 opacity-40" aria-hidden />
 
       {/* Header */}
-      <header className="relative z-10 flex flex-wrap items-center justify-between gap-3 border-b-4 border-double border-violet-500/55 px-4 py-3 md:px-6">
-        <Link
-          href="/explore"
-          className="inline-flex min-h-[36px] items-center border-2 border-violet-400/50 bg-violet-950/50 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-violet-100 shadow-[0_0_14px_rgba(139,92,246,0.12)] transition-colors hover:border-violet-300 hover:bg-violet-900/40 hover:text-white"
-        >
-          ← EXPLORE
-        </Link>
+      <header className="relative z-10 flex flex-wrap items-center justify-between gap-3 border-b border-violet-800/40 bg-zinc-950/90 px-4 py-3 backdrop-blur-sm md:px-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href="/world" className={navLink}>← Worlds</Link>
+          <Link href="/explore" className={navLink}>Explore</Link>
+        </div>
         <span className="text-center text-[10px] font-bold uppercase tracking-[0.28em] text-violet-200">
-          ◈ PHASE · WORLD ARCHIVE
+          ◈ {world.world_name.toUpperCase()}
         </span>
-        <Link
-          href={`/chamber?collection=${collectionId}`}
-          className="inline-flex min-h-[36px] items-center border-2 border-violet-400/50 bg-violet-950/50 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-violet-100 shadow-[0_0_14px_rgba(139,92,246,0.12)] transition-colors hover:border-violet-300 hover:bg-violet-900/40 hover:text-white"
-        >
-          CHAMBER →
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <LangToggle variant="phosphor" />
+          <Link href="/forge" className={navLink}>Forge</Link>
+          <Link href="/chamber" className={navLink}>Chamber</Link>
+          <Link href="/dashboard" className={navLink}>Market</Link>
+        </div>
       </header>
 
       <main className="relative z-10 mx-auto max-w-7xl px-4 py-10 md:py-12">
+        <div className="border-4 border-double border-violet-400/55 bg-[oklch(0.05_0_0)] shadow-[0_0_32px_rgba(139,92,246,0.06)]">
 
-        {/* World header card */}
-        <div className="mb-8 border-4 border-double border-violet-500/55 bg-[oklch(0.05_0_0)] p-6 shadow-[0_0_32px_rgba(139,92,246,0.08)] md:p-8">
-          <p className="mb-1 text-[9px] uppercase tracking-[0.3em] text-violet-400/60">
-            // NARRATIVE WORLD · COLLECTION #{collectionId}
-          </p>
-          <h1 className="text-[18px] font-bold uppercase tracking-[0.18em] text-violet-100 md:text-[22px]">
-            {world.world_name}
-          </h1>
-          <p className="mt-3 max-w-2xl text-[11px] leading-relaxed text-violet-200/70">
-            {world.world_prompt}
-          </p>
-          <p className="mt-4 text-[9px] uppercase tracking-[0.2em] text-violet-400/50">
-            ARTIFACTS_INDEXED · <span className="text-violet-300/80">{nfts.length}</span>
-          </p>
-        </div>
-
-        {/* NFT grid */}
-        {nfts.length === 0 ? (
-          <div className="border-2 border-violet-500/20 bg-black/40 py-20 text-center">
-            <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-violet-400/50">
-              // NO_ARTIFACTS_FORGED_IN_THIS_WORLD_YET
-            </p>
-          </div>
-        ) : (
-          <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {nfts.map((nft) => (
-              <li
-                key={nft.tokenId}
-                className="flex flex-col border-2 border-violet-500/35 bg-black/55 shadow-[inset_0_1px_0_rgba(139,92,246,0.08)] shadow-[0_0_18px_rgba(139,92,246,0.05)]"
-              >
-                {/* Image */}
-                <div className="relative aspect-square overflow-hidden border-b border-violet-500/25 bg-violet-950/10">
-                  {nft.image ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={nft.image}
-                      alt={nft.name}
-                      className="h-full w-full object-cover opacity-80"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center">
-                      <span className="text-[9px] uppercase tracking-widest text-violet-400/30">
-                        NO_IMAGE
-                      </span>
-                    </div>
-                  )}
-                  {/* Token ID badge */}
-                  <span className="absolute left-2 top-2 border border-violet-400/40 bg-black/70 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-widest text-violet-300/80">
-                    #{nft.tokenId}
-                  </span>
-                  {/* Collection link */}
-                  <Link
-                    href={`/collection/${nft.tokenId}`}
-                    className="absolute inset-0"
-                    aria-label={`Ver ${nft.name}`}
-                  />
+          {/* ── Section 1: World header ── */}
+          <div className="border-b border-violet-400/30 px-6 py-6 md:px-8">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex max-w-2xl flex-col gap-2">
+                <span className="w-fit border border-violet-400/50 bg-violet-950/50 px-2 py-0.5 text-[8px] uppercase tracking-widest text-violet-300">
+                  [ COLLECTION_#{collectionId} ]
+                </span>
+                <h1 className="text-[24px] font-medium leading-tight tracking-wide text-violet-100">
+                  {world.world_name}
+                </h1>
+                <p className="line-clamp-3 text-[13px] leading-relaxed text-violet-300/70">
+                  {world.world_prompt}
+                </p>
+              </div>
+              <div className="flex flex-col items-end gap-2">
+                <div className="text-[11px] uppercase tracking-[0.15em] text-violet-500/70">
+                  ARTIFACTS · {nfts.length} &nbsp;·&nbsp; NARRATIVES ·{" "}
+                  {nfts.filter((n) => n.narrative !== null).length}
                 </div>
+                <Link
+                  href={`/chamber?collection=${collectionId}`}
+                  className="inline-flex min-h-[36px] items-center border border-violet-500/50 bg-violet-950/30 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-violet-300 transition-colors hover:border-violet-400 hover:bg-violet-900/40 hover:text-violet-100"
+                >
+                  [ MINT_IN_THIS_WORLD ]
+                </Link>
+              </div>
+            </div>
+          </div>
 
-                {/* Info */}
-                <div className="flex flex-1 flex-col gap-2 p-3">
-                  <p className="line-clamp-2 text-[11px] font-semibold uppercase tracking-wide text-violet-50">
-                    {nft.name}
-                  </p>
+          {/* ── Section 2: Artifact archive ── */}
+          <div className="border-b border-violet-400/20 px-6 py-6 md:px-8">
+            <h2 className="mb-5 text-[11px] font-bold uppercase tracking-[0.28em] text-violet-400">
+              ◈ [ ARTIFACT_ARCHIVE ]
+            </h2>
+            {nfts.length === 0 ? (
+              <p className="py-12 text-center text-[10px] uppercase tracking-widest text-violet-500/50">
+                [ AWAITING_FIRST_MINT ]
+              </p>
+            ) : (
+              <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {nfts.map((nft) => (
+                  <li
+                    key={nft.tokenId}
+                    className="group flex flex-col border border-violet-500/30 bg-black/50 transition-all duration-200 hover:border-violet-400/60 hover:shadow-[0_0_14px_rgba(139,92,246,0.08)]"
+                  >
+                    <div className="relative border-b border-violet-500/20">
+                      {nft.image ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={nft.image}
+                          alt={nft.name}
+                          className="aspect-square w-full object-cover opacity-80 transition-opacity group-hover:opacity-95"
+                        />
+                      ) : (
+                        <div className="flex aspect-square w-full items-center justify-center bg-violet-950/20">
+                          <span className="text-[9px] uppercase tracking-widest text-violet-400/30">
+                            NO_IMAGE
+                          </span>
+                        </div>
+                      )}
+                      <span className="absolute left-2 top-2 border border-violet-400/40 bg-black/70 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-widest text-violet-300/80">
+                        #{nft.tokenId}
+                      </span>
+                      {nft.narrative && (
+                        <span className="absolute bottom-1.5 left-1.5 border border-violet-400/60 bg-black/80 px-1.5 py-0.5 text-[8px] uppercase tracking-widest text-violet-300">
+                          [ NARRATED ]
+                        </span>
+                      )}
+                      <Link
+                        href={`/chamber?collection=${collectionId}`}
+                        className="absolute inset-0"
+                        aria-label={`Open Chamber for ${nft.name}`}
+                      />
+                    </div>
+                    <div className="flex flex-1 flex-col gap-1.5 p-3">
+                      <p className="line-clamp-2 text-[11px] font-semibold uppercase tracking-wide text-violet-50">
+                        {nft.name}
+                      </p>
+                      {!nft.narrative && (
+                        <p className="text-[9px] uppercase tracking-widest text-violet-400/30">
+                          // LORE_PENDING
+                        </p>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
 
-                  {nft.narrative && (
-                    <blockquote className="border-l-2 border-violet-500/40 pl-2.5">
-                      <p className="text-[10px] italic leading-relaxed text-violet-200/65">
+          {/* ── Section 3: Narrator feed ── */}
+          <div className="px-6 py-6 md:px-8">
+            <h2 className="mb-5 text-[11px] font-bold uppercase tracking-[0.28em] text-violet-400">
+              ◈ [ NARRATOR_FEED ]
+            </h2>
+            {nfts.filter((n) => n.narrative !== null).length === 0 ? (
+              <p className="py-10 text-center text-[10px] uppercase tracking-widest text-violet-500/50">
+                [ AWAITING_FIRST_MINT ]
+              </p>
+            ) : (
+              <ol className="flex flex-col divide-y divide-violet-400/10">
+                {nfts
+                  .filter((n): n is WorldNFT & { narrative: string } => n.narrative !== null)
+                  .sort((a, b) => (b.narrativeTimestamp ?? 0) - (a.narrativeTimestamp ?? 0))
+                  .map((nft) => (
+                    <li key={nft.tokenId} className="flex flex-col gap-2 py-4 first:pt-0 last:pb-0">
+                      <div className="flex flex-wrap items-center gap-3">
+                        {nft.narrativeTimestamp && (
+                          <span className="text-[9px] uppercase tracking-widest text-violet-500/60">
+                            {new Date(nft.narrativeTimestamp)
+                              .toISOString()
+                              .replace("T", " ")
+                              .slice(0, 19)}{" "}
+                            UTC
+                          </span>
+                        )}
+                        <span className="border border-violet-500/30 bg-violet-950/40 px-1.5 py-0.5 text-[8px] uppercase tracking-widest text-violet-400">
+                          TOKEN_#{nft.tokenId}
+                        </span>
+                      </div>
+                      <p className="text-[12px] italic leading-relaxed text-violet-200/80">
                         {nft.narrative}
                       </p>
-                    </blockquote>
-                  )}
+                    </li>
+                  ))}
+              </ol>
+            )}
+          </div>
 
-                  {!nft.narrative && (
-                    <p className="text-[9px] uppercase tracking-widest text-violet-400/30">
-                      // LORE_PENDING
-                    </p>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+        </div>
       </main>
     </div>
   )

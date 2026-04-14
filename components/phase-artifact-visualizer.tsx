@@ -654,7 +654,7 @@ export function PhaseArtifactVisualizer({
         <div className="flex items-start justify-between gap-2 border-b border-cyan-500/15 pb-2">
           <span className="shrink-0 pt-0.5 font-mono text-[8px] text-cyan-600/95 sm:text-[9px]">{labels.metadataStandard}</span>
           <span className="text-right font-mono text-[9px] font-bold tracking-wide text-cyan-200 tactical-phosphor sm:text-[10px]">
-            SEP-20
+            SEP-41/50
           </span>
         </div>
         <div className="flex items-start justify-between gap-2 border-b border-cyan-500/15 pb-2">

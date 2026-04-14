@@ -194,6 +194,34 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
         ],
       },
       {
+        id: "world",
+        title: "06 / World Mode (opcional)",
+        blocks: [
+          {
+            type: "p",
+            text: "Las colecciones pueden activar un mundo narrativo — una capa opcional que le da al conjunto un contexto de universo persistente.",
+          },
+          {
+            type: "ul",
+            items: [
+              "world_name y world_prompt se guardan off-chain (JSON sidecar)",
+              "Cada mint en esa colección inyecta el contexto del mundo en la instrucción de sistema de Gemini",
+              "Un agente narrador autónomo genera una conexión narrativa de 2-3 oraciones después de cada mint",
+              "Las narrativas son idempotentes — una segunda llamada devuelve el resultado en caché sin llamar a Gemini",
+            ],
+          },
+          {
+            type: "table",
+            headers: ["Aspecto", "Detalle"],
+            rows: [
+              ["Activación", "Toggle en la UI de Forge al registrar una colección"],
+              ["Almacenamiento", "JSON sidecars off-chain (worldCollections.json, worldNarratives.json)"],
+              ["Agente narrador", "POST /api/narrator — activado lazily desde el Chamber al primer cargado"],
+            ],
+          },
+        ],
+      },
+      {
         id: "api",
         title: "Superficie de API",
         blocks: [
@@ -214,6 +242,11 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
               ["/api/phase-nft/custodian-release", "POST", "Transfer custodia → wallet (firmado por servidor)"],
               ["/api/soroban-rpc", "POST", "Proxy RPC con URLs de fallback"],
               ["/api/nft-listings", "GET / POST", "Listados de mercado (JSON store)"],
+              ["/api/world", "POST", "Guardar configuración de mundo narrativo para una colección"],
+              ["/api/world/[id]", "GET", "Obtener configuración de mundo o null"],
+              ["/api/world/narrative/[token_id]", "GET", "Obtener narrativa guardada para un token"],
+              ["/api/narrator", "POST", "Generar narrativa vía Gemini + guardar (idempotente)"],
+              ["/api/og/chamber", "GET", "Imagen Open Graph dinámica para URLs del Chamber"],
             ],
           },
         ],
@@ -454,6 +487,34 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
         ],
       },
       {
+        id: "world",
+        title: "06 / World Mode (optional)",
+        blocks: [
+          {
+            type: "p",
+            text: "Collections can activate a narrative world — an optional layer that gives the collection a persistent universe context.",
+          },
+          {
+            type: "ul",
+            items: [
+              "world_name and world_prompt are saved off-chain (JSON sidecar)",
+              "Every mint in that collection injects the world context into Gemini's system instruction",
+              "An autonomous narrator agent generates a 2-3 sentence narrative connection after each mint",
+              "Narratives are idempotent — a second call returns the cached result without hitting Gemini",
+            ],
+          },
+          {
+            type: "table",
+            headers: ["Aspect", "Detail"],
+            rows: [
+              ["Activation", "Toggle in the Forge UI when registering a collection"],
+              ["Storage", "Off-chain JSON sidecars (worldCollections.json, worldNarratives.json)"],
+              ["Narrator agent", "POST /api/narrator — triggered lazily from the Chamber on first load"],
+            ],
+          },
+        ],
+      },
+      {
         id: "api",
         title: "API surface",
         blocks: [
@@ -474,6 +535,11 @@ const projectDocs: Record<LandingLang, ProjectDocsPage> = {
               ["/api/phase-nft/custodian-release", "POST", "Transfer custody → wallet (server-signed)"],
               ["/api/soroban-rpc", "POST", "Proxied RPC with fallback URLs"],
               ["/api/nft-listings", "GET / POST", "Market listings (JSON store)"],
+              ["/api/world", "POST", "Save narrative world config for a collection"],
+              ["/api/world/[id]", "GET", "Fetch world config or null"],
+              ["/api/world/narrative/[token_id]", "GET", "Fetch saved narrative for a token"],
+              ["/api/narrator", "POST", "Generate narrative via Gemini + save (idempotent)"],
+              ["/api/og/chamber", "GET", "Dynamic Open Graph image for Chamber URLs"],
             ],
           },
         ],

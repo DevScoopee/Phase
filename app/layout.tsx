@@ -38,7 +38,7 @@ const orbitron = Orbitron({
 
 const defaultTitle = "P H A S E   P R O T O C O L"
 const defaultDescription =
-  "Transform liquid energy into solid-state artifacts. The definitive x402 settlement engine for creators on the Soroban network. Connect your terminal."
+  "PHASE is a cryptographic paywall for AI-generated NFTs on Stellar Soroban. Pay with PHASELQ via x402. The ledger confirms. Your artifact is minted."
 
 const metadataBaseResolved = siteMetadataBase()
 const canonicalUrl = new URL("/", metadataBaseResolved).href
@@ -63,8 +63,8 @@ export const metadata: Metadata = {
     "x402",
     "NFT",
     "Digital Artifacts",
-    "SEP-20",
     "SEP-41",
+    "SEP-50",
     "creators",
     "PHASE Protocol",
   ],
@@ -111,6 +111,20 @@ export default function RootLayout({
         className={`${ibmPlexSans.variable} ${bebasNeue.variable} ${ibmPlexMono.variable} ${orbitron.variable} font-sans antialiased overflow-x-hidden`}
       >
         <div className="noise-overlay" aria-hidden="true" />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "SoftwareApplication",
+              "name": "PHASE Protocol",
+              "description": "Cryptographic paywall for AI-generated NFTs on Stellar Soroban",
+              "url": "https://www.phasee.xyz",
+              "applicationCategory": "BlockchainApplication",
+              "operatingSystem": "Web",
+            }),
+          }}
+        />
         <SmoothScroll>
           <AppProviders>{children}</AppProviders>
         </SmoothScroll>

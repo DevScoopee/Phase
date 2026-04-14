@@ -72,6 +72,31 @@ const landingCopy: Record<LandingLang, LandingCopy> = {
       sectionTitle: "TRANSICIONES DE ESTADO",
       items: [
         {
+          date: "2026.04.13",
+          title: "Open Graph Dinámico",
+          note: "Cada URL del Chamber genera ahora una imagen de vista previa retro única con el NFT dentro. Compartible en cualquier plataforma.",
+        },
+        {
+          date: "2026.04.12",
+          title: "Narrative World Mode",
+          note: "Las colecciones pueden activar un mundo narrativo — un universo persistente inyectado en cada generación de Gemini. Un agente narrador autónomo conecta artefactos después de cada mint.",
+        },
+        {
+          date: "2026.04.10",
+          title: "PageSpeed 98 Performance",
+          note: "Optimización de Core Web Vitals: 0.6s FCP, 0.8s LCP, 98/100 Performance score en escritorio.",
+        },
+        {
+          date: "2026.04.10",
+          title: "Narrative Mode",
+          note: "El Chamber ahora genera historias únicas. Cada NFT incluye lore generado por IA basado en atributos del artefacto.",
+        },
+        {
+          date: "2026.04.05",
+          title: "Chamber Open Graph",
+          note: "Previsualización social del NFT antes de mintear. Comparte en X/Twitter antes de confirmar.",
+        },
+        {
           date: "2026.04.03",
           title: "Despliegue x402",
           note: "Lanzamiento oficial del motor de liquidez dual en Soroban Testnet.",
@@ -80,11 +105,6 @@ const landingCopy: Record<LandingLang, LandingCopy> = {
           date: "2026.03.28",
           title: "Integración multimedia",
           note: "Activación de la Suite Multimodal (Paint, Upload, URL) para la creación de arte.",
-        },
-        {
-          date: "2026.03.15",
-          title: "NFT Utility SEP-20",
-          note: "Implementación de NFTs dinámicos/coleccionables en Soroban con metadatos evolucionables.",
         },
         {
           date: "2026.02.20",
@@ -97,41 +117,35 @@ const landingCopy: Record<LandingLang, LandingCopy> = {
       sectionEyebrow: "02 / Módulos Principales (Core Modules)",
       sectionTitle: "ARQUITECTURA x402",
       intro:
-        "Capas de liquidez, identidad y ejecución en Soroban: diseño del protocolo y la experiencia de creación.",
+        "Crea, mintea y comercia NFTs con IA. Todo en Soroban, sin middlemen.",
       modules: [
         {
-          title: "Esencia fraccionada",
-          medium: "Liquidez",
+          title: "Forge",
+          medium: "Crear",
           description:
-            "Opera con activos digitales como tokens estándar. Tu inversión es líquida y negociable en cualquier momento.",
+            "Crea una colección. Define tu mundo. Establece el precio en PHASELQ. Cada mint activa el pipeline de IA — Gemini genera el lore, la imagen es única, el metadata queda sellado en IPFS.",
           span: "col-span-1 row-span-1 sm:col-span-2 sm:row-span-2",
         },
         {
-          title: "Motor nativo Soroban",
-          medium: "Ejecución",
+          title: "Chamber",
+          medium: "Mintear",
           description:
-            "Smart Contracts de alta velocidad con costos de transacción cercanos a cero.",
+            "Paga con PHASELQ vía x402. El servidor verifica tu transacción en el ledger de Stellar antes de ejecutar una sola línea de IA. Tu artefacto se mintea en el momento en que el ledger confirma.",
           span: "col-span-1 row-span-1",
         },
         {
-          title: "Identidad soberana",
-          medium: "Metadatos",
+          title: "Dashboard",
+          medium: "Mercado",
           description:
-            "Tus activos llevan metadatos dinámicos. Tu historial en la cadena evoluciona con cada interacción.",
+            "Explora colecciones activas. Consulta tu vault. Lista tu NFT en el mercado secundario.",
           span: "col-span-1 row-span-1 sm:row-span-2",
         },
         {
-          title: "Fusión de liquidez",
-          medium: "Umbral",
+          title: "Explore",
+          medium: "Galería",
           description:
-            "Al alcanzar el umbral de fusión, el protocolo sintetiza automáticamente un identificador de estado sólido (NFT).",
+            "Galería pública de todos los artefactos minteados. Sin wallet. Cada NFT aquí fue pagado on-chain — el txHash es la prueba de creación.",
           span: "col-span-1 row-span-1",
-        },
-        {
-          title: "Cristalización de activos",
-          medium: "Estado",
-          description: "Representación gráfica única en la cadena de tu proceso de consolidación de valor.",
-          span: "col-span-1 sm:col-span-2 row-span-1",
         },
       ],
     },
@@ -141,35 +155,35 @@ const landingCopy: Record<LandingLang, LandingCopy> = {
       items: [
         {
           number: "01",
-          category: "LIQUIDEZ",
+          category: "PAGO",
           titleParts: [
-            { text: "ENTRADA ", highlight: false },
-            { text: "FRACCIONADA", highlight: true },
+            { text: "SIN PAGO, ", highlight: false },
+            { text: "SIN OUTPUT", highlight: true },
           ],
           description:
-            "Sin barreras. Usa tokens para comprar, vender o proveer liquidez en DEXs con máxima eficiencia.",
+            "El servidor nunca ejecuta el pipeline de IA de forma especulativa. El hash de transacción de Stellar es el único recibo que importa.",
           align: "left",
         },
         {
           number: "02",
-          category: "IDENTIDAD",
+          category: "PROPIEDAD",
           titleParts: [
-            { text: "TRANSICIÓN ", highlight: false },
-            { text: "DE ESTADO", highlight: true },
+            { text: "EL LEDGER ES ", highlight: false },
+            { text: "LA FUENTE DE VERDAD", highlight: true },
           ],
           description:
-            "La liquidez es el flujo; el artefacto sólido es la permanencia. Fusiona fracciones para estabilizar tu presencia en la red.",
+            "La propiedad, las colecciones y el estado de liquidación siempre se leen desde el contrato Soroban — nunca desde el store del servidor.",
           align: "right",
         },
         {
           number: "03",
-          category: "RED",
+          category: "PERMANENCIA",
           titleParts: [
-            { text: "SISTEMAS ", highlight: false },
-            { text: "SOBRE PANTALLAS", highlight: true },
+            { text: "IPFS ", highlight: false },
+            { text: "ES PARA SIEMPRE", highlight: true },
           ],
           description:
-            "Diseñamos comportamientos de red inteligentes. Ejecución instantánea con finalidad garantizada.",
+            "El metadata de cada artefacto queda sellado en IPFS en el momento del mint. Ningún servidor puede alterar ni eliminar lo que el ledger ha confirmado.",
           align: "left",
         },
       ],
@@ -180,7 +194,7 @@ const landingCopy: Record<LandingLang, LandingCopy> = {
       networkLabel: "Red",
       networkLines: ["Stellar // Soroban (Testnet)"],
       standardLabel: "Estándar",
-      standardLines: ["x402 Híbrido / NFT Utility SEP-20 (+ SEP-0020 para validadores)"],
+      standardLines: ["x402 Híbrido / NFT Utility SEP-41 + SEP-50"],
       docLabel: "Documentación",
       docButton: "[ DOC ]",
       docHref: "/docs",
@@ -205,6 +219,31 @@ const landingCopy: Record<LandingLang, LandingCopy> = {
       sectionTitle: "STATE TRANSITIONS",
       items: [
         {
+          date: "2026.04.13",
+          title: "Dynamic Open Graph",
+          note: "Each Chamber URL now generates a unique retro monitor preview image with the NFT inside. Shareable on any platform.",
+        },
+        {
+          date: "2026.04.12",
+          title: "Narrative World Mode",
+          note: "Collections can now activate a narrative world — a persistent universe context injected into every Gemini generation. An autonomous narrator agent connects artifacts after each mint.",
+        },
+        {
+          date: "2026.04.10",
+          title: "PageSpeed 98 Performance",
+          note: "Core Web Vitals optimization: 0.6s FCP, 0.8s LCP, 98/100 Performance score on desktop.",
+        },
+        {
+          date: "2026.04.10",
+          title: "Narrative Mode",
+          note: "The Chamber now generates unique stories. Each NFT includes AI-generated lore based on artifact attributes.",
+        },
+        {
+          date: "2026.04.05",
+          title: "Chamber Open Graph",
+          note: "Social preview before minting. Share on X/Twitter before confirming.",
+        },
+        {
           date: "2026.04.03",
           title: "x402 deployment",
           note: "Official launch of the dual-state liquidity engine on Soroban Testnet.",
@@ -216,7 +255,7 @@ const landingCopy: Record<LandingLang, LandingCopy> = {
         },
         {
           date: "2026.03.15",
-          title: "SEP-20 utility NFTs",
+          title: "SEP-41/SEP-50 NFTs",
           note: "Implementation of dynamic Soroban collectibles with evolvable metadata.",
         },
         {
@@ -229,41 +268,35 @@ const landingCopy: Record<LandingLang, LandingCopy> = {
     work: {
       sectionEyebrow: "02 / Core Modules",
       sectionTitle: "x402 ARCHITECTURE",
-      intro:
-        "Liquidity, identity, and execution on Soroban — protocol design and the creator experience.",
+      intro: "Create, mint, and trade AI-generated NFTs on Soroban. No middlemen.",
       modules: [
         {
-          title: "Fractionalized essence",
-          medium: "Liquidity",
+          title: "Forge",
+          medium: "Create",
           description:
-            "Operate with digital assets as standard tokens. Your investment remains liquid and tradable at all times.",
+            "Create a collection. Define your world. Set the price in PHASELQ. Every mint triggers the AI pipeline — Gemini generates the lore, the image is unique, the metadata is sealed on IPFS.",
           span: "col-span-1 row-span-1 sm:col-span-2 sm:row-span-2",
         },
         {
-          title: "Soroban native engine",
-          medium: "Execution",
-          description: "High-speed Smart Contract execution with near-zero transaction costs.",
+          title: "Chamber",
+          medium: "Mint",
+          description:
+            "Pay with PHASELQ via x402. The server verifies your transaction on the Stellar ledger before running a single line of AI. Your artifact is minted the moment the ledger confirms.",
           span: "col-span-1 row-span-1",
         },
         {
-          title: "Sovereign identity",
-          medium: "Metadata",
+          title: "Dashboard",
+          medium: "Market",
           description:
-            "Your assets carry dynamic metadata. Your on-chain history evolves with every interaction.",
+            "Browse active collections. View your vault. List your NFT on the secondary market.",
           span: "col-span-1 row-span-1 sm:row-span-2",
         },
         {
-          title: "Liquidity fusion",
-          medium: "Threshold",
+          title: "Explore",
+          medium: "Gallery",
           description:
-            "Once the fusion threshold is met, the protocol automatically synthesizes a solid-state identifier (NFT).",
+            "Public gallery of all minted artifacts. No wallet needed. Every NFT here was paid for on-chain — the txHash is the proof of creation.",
           span: "col-span-1 row-span-1",
-        },
-        {
-          title: "Asset crystallization",
-          medium: "State",
-          description: "Unique on-chain graphical representation of your value consolidation process.",
-          span: "col-span-1 sm:col-span-2 row-span-1",
         },
       ],
     },
@@ -273,35 +306,35 @@ const landingCopy: Record<LandingLang, LandingCopy> = {
       items: [
         {
           number: "01",
-          category: "LIQUIDITY",
+          category: "PAYMENT",
           titleParts: [
-            { text: "FRACTIONAL ", highlight: false },
-            { text: "ENTRY", highlight: true },
+            { text: "NO PAYMENT, ", highlight: false },
+            { text: "NO OUTPUT", highlight: true },
           ],
           description:
-            "Zero friction. Use tokens to buy, sell, or provide liquidity in DEXs with maximum efficiency.",
+            "The server never runs the AI pipeline speculatively. The Stellar transaction hash is the only receipt that matters.",
           align: "left",
         },
         {
           number: "02",
-          category: "IDENTITY",
+          category: "OWNERSHIP",
           titleParts: [
-            { text: "STATE ", highlight: false },
-            { text: "TRANSITION", highlight: true },
+            { text: "THE LEDGER IS ", highlight: false },
+            { text: "THE SOURCE OF TRUTH", highlight: true },
           ],
           description:
-            "Liquidity is the flow; the solid artifact is the permanence. Fuse fractions to stabilize your network presence.",
+            "Ownership, collections, and settlement state are always read from the Soroban contract — never from the server's store.",
           align: "right",
         },
         {
           number: "03",
-          category: "NETWORK",
+          category: "PERMANENCE",
           titleParts: [
-            { text: "SYSTEMS ", highlight: false },
-            { text: "OVER SCREENS", highlight: true },
+            { text: "IPFS ", highlight: false },
+            { text: "IS FOREVER", highlight: true },
           ],
           description:
-            "We design intelligent network behaviors. Instant execution with guaranteed finality.",
+            "Every artifact's metadata is sealed on IPFS at mint time. No server can alter or delete what the ledger has confirmed.",
           align: "left",
         },
       ],
@@ -312,7 +345,7 @@ const landingCopy: Record<LandingLang, LandingCopy> = {
       networkLabel: "Network",
       networkLines: ["Stellar // Soroban (Testnet)"],
       standardLabel: "Standard",
-      standardLines: ["x402 Hybrid / SEP-20 utility NFTs (+ SEP-0020 for validators)"],
+      standardLines: ["x402 Hybrid / NFT Utility SEP-41 + SEP-50"],
       docLabel: "Documentation",
       docButton: "[ DOC ]",
       docHref: "/docs",

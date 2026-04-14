@@ -377,6 +377,9 @@ export default function DashboardPage() {
           <Link href="/explore" className={navLinkClass}>
             {lang === "es" ? "Explorar" : "Explore"}
           </Link>
+          <Link href="/world" className={navLinkClass}>
+            {lang === "es" ? "Mundos" : "World"}
+          </Link>
           <Link href="/forge" className={navLinkClass}>{n.forge}</Link>
           <Link href="/chamber" className={navLinkClass}>{n.chamber}</Link>
         </div>

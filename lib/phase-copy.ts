@@ -77,7 +77,7 @@ export type ArtifactLabelsCopy = {
   accessPrivateMetadata: string
   /** Línea bajo el panel público cuando el canal privado está abierto. */
   privateChannelUnlocked: string
-  /** Artefacto verificado: estándar de metadata (SEP-20). */
+  /** Artefacto verificado: estándar de metadata (SEP-41/SEP-50). */
   metadataStandard: string
   /** Vista verificada pero wallet ≠ owner_of(token) — overlay + blur. */
   previewOnly: string
@@ -567,7 +567,7 @@ export const phaseCopy: Record<
       freighterSep50CheckFailToast: string
       /** Pedestal: ya sos owner on-chain; Freighter no lista solo — Add manually. */
       freighterOwnerOnChainAddBody: string
-      /** Meta pedestal: contrato PHASE (NFT SEP-20), no el SAC PHASELQ. */
+      /** Meta pedestal: contrato PHASE (NFT SEP-41/SEP-50), no el SAC PHASELQ. */
       onChainMetaNftContractLabel: string
       /** Meta pedestal: contrato SAC del token fungible PHASELQ (liquidez). */
       onChainMetaPhaselqSacLabel: string
@@ -932,7 +932,7 @@ export const phaseCopy: Record<
       chamberColumnInfo: "Info & collect",
       chamberDockPreviewTicker: "Artifact preview",
       chamberDockInfoTicker: "Ownership verified",
-      chamberDockInfoSubline: "NFT metadata on-chain (SEP-20)",
+      chamberDockInfoSubline: "NFT metadata on-chain (SEP-41/SEP-50)",
       mintingTitle: "Minting artifact…",
       committingLedger: "Recording on the Stellar ledger…",
       solidState: "On-chain",
@@ -988,7 +988,7 @@ export const phaseCopy: Record<
       rewardsQuestProgress: "QUEST PROGRESS",
       rewardsNftInWalletTitle: "In your wallet",
       rewardsNftStellarExpertLink: "[ VIEW ON STELLAR EXPERT ]",
-      rewardsNftCollectPanelTitle: "COLLECT · UTILITY NFT (SEP-20)",
+      rewardsNftCollectPanelTitle: "COLLECT · UTILITY NFT (SEP-41/50)",
       rewardsNftCollectPanelBody:
         "Token #{tokenId}: the NFT is held by the classic PHASELQ issuer ({issuerShort}…). Collect sends transfer(issuer → your wallet), signed by the server — no wallet signature needed. Works with Albedo, Freighter, xBull, etc.",
       rewardsNftNotIssuerCustodyBody:
@@ -1004,7 +1004,7 @@ export const phaseCopy: Record<
       pedestalIssuerCustodyScrollLink: "Jump to COLLECT panel ↓",
       walletNftVisibilityTitle: "NFT NOT SHOWING IN YOUR WALLET?",
       walletNftVisibilityBody:
-        "If your transaction history shows a successful settlement (invoke settle → true), the protocol already minted your NFT on-chain—that is the proof. Many wallets show Soroban transactions in history but do not display SEP-20 NFTs in the main balance view. This does not mean the NFT is lost.\n\n• Your PHASE utility NFT lives on testnet: verified by owner_of = your address on the PHASE contract.\n• Tap COPY · CONTRACT + TOKEN ID below to paste into your wallet's \"add NFT manually\" (works with Freighter, Albedo, xBull, etc.).\n• PHASE Dashboard → Vault scans Soroban RPC and lists every PHASE NFT for your wallet (source of truth).\n• Stellar Expert (contract link) helps verify owner_of, token_uri, and transfers on-chain.",
+        "If your transaction history shows a successful settlement (invoke settle → true), the protocol already minted your NFT on-chain—that is the proof. Many wallets show Soroban transactions in history but do not display SEP-41/SEP-50 NFTs in the main balance view. This does not mean the NFT is lost.\n\n• Your PHASE utility NFT lives on testnet: verified by owner_of = your address on the PHASE contract.\n• Tap COPY · CONTRACT + TOKEN ID below to paste into your wallet's \"add NFT manually\" (works with Freighter, Albedo, xBull, etc.).\n• PHASE Dashboard → Vault scans Soroban RPC and lists every PHASE NFT for your wallet (source of truth).\n• Stellar Expert (contract link) helps verify owner_of, token_uri, and transfers on-chain.",
       creatorCanMint: "CREATOR_MINT_ENABLED",
       creatorMintRule: "Creator can mint this collection too (one utility NFT per wallet per collection).",
       creatorAlreadyMinted: "Creator already minted this collection with this wallet.",
@@ -1115,7 +1115,7 @@ export const phaseCopy: Record<
         readonly: "Read-only view",
         noVisual: "No image",
         ariaLabel: "Phase utility NFT artifact",
-        sepSuffix: "· SEP-20",
+        sepSuffix: "· SEP-41/50",
         dataLocked: "Locked",
         contract: "Contract",
         terminalRestricted: "Connect wallet to verify ownership",
@@ -1464,7 +1464,7 @@ export const phaseCopy: Record<
       chamberColumnInfo: "Info y recoger",
       chamberDockPreviewTicker: "Vista previa del artefacto",
       chamberDockInfoTicker: "Propiedad verificada",
-      chamberDockInfoSubline: "Metadata NFT on-chain (SEP-20)",
+      chamberDockInfoSubline: "Metadata NFT on-chain (SEP-41/SEP-50)",
       mintingTitle: "Acuñando artefacto…",
       committingLedger: "Registrando en el ledger de Stellar…",
       solidState: "On-chain",
@@ -1520,7 +1520,7 @@ export const phaseCopy: Record<
       rewardsQuestProgress: "PROGRESO QUESTS",
       rewardsNftInWalletTitle: "En tu wallet",
       rewardsNftStellarExpertLink: "[ VER EN STELLAR EXPERT ]",
-      rewardsNftCollectPanelTitle: "COLECTAR · NFT DE UTILIDAD (SEP-20)",
+      rewardsNftCollectPanelTitle: "COLECTAR · NFT DE UTILIDAD (SEP-41/50)",
       rewardsNftCollectPanelBody:
         "Token #{tokenId}: el NFT está en custodia del emisor clásico PHASELQ ({issuerShort}…). Colectar envía transfer(emisor → tu wallet) firmado por el servidor — no hace falta firmar en la wallet. Sirve con Albedo, Freighter, xBull, etc.",
       rewardsNftNotIssuerCustodyBody:
@@ -1536,7 +1536,7 @@ export const phaseCopy: Record<
       pedestalIssuerCustodyScrollLink: "Ir al panel COLECTAR ↓",
       walletNftVisibilityTitle: "¿NO VES EL NFT EN TU WALLET?",
       walletNftVisibilityBody:
-        "Si tu historial de transacciones muestra un settlement exitoso (invoke settle → true), el protocolo ya minteó tu NFT en el ledger—esa es la prueba. Muchas wallets muestran transacciones Soroban en el historial pero no exhiben NFTs SEP-20 en la vista principal de balance. Esto no significa que el NFT se haya perdido.\n\n• Tu NFT de utilidad PHASE vive en testnet: verificado por owner_of = tu dirección en el contrato PHASE.\n• Tocá COPIAR · CONTRATO + ID abajo para pegar en \"añadir NFT manualmente\" de tu wallet (funciona con Freighter, Albedo, xBull, etc.).\n• **Dashboard PHASE → Bóveda** escanea RPC Soroban y lista todos los NFT PHASE de tu wallet (fuente de verdad).\n• **Stellar Expert** sirve para verificar owner_of, token_uri y transferencias on-chain.",
+        "Si tu historial de transacciones muestra un settlement exitoso (invoke settle → true), el protocolo ya minteó tu NFT en el ledger—esa es la prueba. Muchas wallets muestran transacciones Soroban en el historial pero no exhiben NFTs SEP-41/50 en la vista principal de balance. Esto no significa que el NFT se haya perdido.\n\n• Tu NFT de utilidad PHASE vive en testnet: verificado por owner_of = tu dirección en el contrato PHASE.\n• Tocá COPIAR · CONTRATO + ID abajo para pegar en \"añadir NFT manualmente\" de tu wallet (funciona con Freighter, Albedo, xBull, etc.).\n• **Dashboard PHASE → Bóveda** escanea RPC Soroban y lista todos los NFT PHASE de tu wallet (fuente de verdad).\n• **Stellar Expert** sirve para verificar owner_of, token_uri y transferencias on-chain.",
       creatorCanMint: "Creador puede mintear",
       creatorMintRule: "El creador también puede mintear esta colección (1 NFT de utilidad por wallet por colección).",
       creatorAlreadyMinted: "El creador ya minteó esta colección con esta wallet.",
@@ -1648,7 +1648,7 @@ export const phaseCopy: Record<
         readonly: "Vista de solo lectura",
         noVisual: "Sin imagen",
         ariaLabel: "Artefacto NFT de utilidad PHASE",
-        sepSuffix: "· SEP-20",
+        sepSuffix: "· SEP-41/50",
         dataLocked: "Bloqueado",
         contract: "Contrato",
         terminalRestricted: "Conectá tu wallet para verificar la propiedad",

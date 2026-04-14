@@ -26,23 +26,23 @@ const copy: Record<
   }
 > = {
   en: {
-    body: "The x402 standard powers SEP-20 utility artifact metadata for immutable on-chain identity. Maintain pure liquidity through token fractions; when the fusion threshold is reached, the protocol automatically synthesizes a solid-state identifier on Soroban.",
-    accessProtocol: "[ ACCESS_PROTOCOL ]",
+    body: "PHASE is a cryptographic paywall for AI-generated NFTs on Stellar.\nPay once with PHASELQ. The ledger confirms. Your artifact is minted — permanently sealed on IPFS, owned on Soroban.",
+    accessProtocol: "[ MINT_NFT ]",
     connectWallet: "[ CONNECT_WALLET ]",
     connectingWallet: "[ CONNECTING... ]",
     protocolLogs: "Protocol Logs",
-    walletHint: "Connect your wallet to enter the fusion chamber.",
-    creatorForge: "Creator Forge",
+    walletHint: "Connect your wallet to mint your first PHASE NFT.",
+    creatorForge: "Forge",
     viewMarket: "[ VIEW_MARKET ]",
   },
   es: {
-    body: "El estándar x402 impulsa metadata de artefactos utilitarios SEP-20 para identidad on-chain inmutable. Mantén liquidez pura mediante fracciones de tokens; al alcanzar el umbral de fusión, el protocolo sintetiza automáticamente un identificador de estado sólido en Soroban.",
-    accessProtocol: "[ ACCEDER_AL_PROTOCOLO ]",
+    body: "PHASE es un sistema de pago criptográfico para NFTs generados por IA en Stellar.\nPaga una vez con PHASELQ. El ledger confirma. Tu artefacto se mintea — sellado para siempre en IPFS, propiedad en Soroban.",
+    accessProtocol: "[ MINTEAR ]",
     connectWallet: "[ CONECTAR_BILLETERA ]",
     connectingWallet: "[ CONECTANDO... ]",
     protocolLogs: "Registros del protocolo",
-    walletHint: "Conecta tu billetera para acceder a la cámara de fusión.",
-    creatorForge: "La Forja",
+    walletHint: "Conecta tu billetera para mintear tu primer NFT PHASE.",
+    creatorForge: "Forja",
     viewMarket: "[ VER_MERCADO ]",
   },
 }
@@ -100,10 +100,10 @@ export function HeroSection() {
           {landing.studioBrand}
         </p>
         <h2 className="font-[var(--font-bebas)] text-muted-foreground/88 text-center text-[clamp(1.2rem,2.8vw,2rem)] mt-3 md:mt-4 tracking-[0.09em] leading-tight">
-          Standard x402 // SEP-20 Native
+          AI generation. On-chain proof. No subscriptions.
         </h2>
 
-        <p className="mt-6 md:mt-10 max-w-2xl mx-auto text-center font-mono text-sm text-muted-foreground/90 leading-relaxed">
+        <p className="mt-6 md:mt-10 max-w-2xl mx-auto text-center font-mono text-sm text-muted-foreground/90 leading-relaxed whitespace-pre-line">
           {t.body}
         </p>
 

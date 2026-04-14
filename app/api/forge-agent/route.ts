@@ -612,7 +612,7 @@ type ForgeAgentSuccessResponse = {
   imageUrl: string
   image_url: string
   lore: string
-  metadataStandard: "SEP-20"
+  metadataStandard: "SEP-41/50"
   /**
    * `nanobanana_api` = imagen vía api.nanobananaapi.ai;
    * `gemini` = imagen vía Google Gemini;
@@ -939,7 +939,7 @@ async function runForgeAgentCore(
     imageUrl,
     image_url: imageUrl,
     lore,
-    metadataStandard: "SEP-20",
+    metadataStandard: "SEP-41/50",
     image_source,
   }
 }

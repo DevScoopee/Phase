@@ -89,6 +89,9 @@ export default function ExplorePage() {
         </span>
         <div className="flex flex-wrap items-center gap-2">
           <LangToggle variant="phosphor" />
+          <Link href="/world" className={navLink}>
+            {isEs ? "Mundos" : "World"}
+          </Link>
           <Link href="/forge" className={navLink}>
             {isEs ? "Forja" : "Forge"}
           </Link>

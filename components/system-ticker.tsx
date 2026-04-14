@@ -3,37 +3,37 @@
 import { useEffect, useState } from "react"
 import { useLang } from "@/components/lang-context"
 
-// ── Santiago time via timeapi.io ──────────────────────────────────────────────
-// Fetch once to get the SCL↔device offset, tick locally, re-sync every 5 min.
-let sclOffsetMs    = 0
-let sclOffsetReady = false
+// ── EST time via timeapi.io ────────────────────────────────────────────────────
+// Fetch once to get the EST↔device offset, tick locally, re-sync every 5 min.
+let estOffsetMs    = 0
+let estOffsetReady = false
 
 type TimeApiResponse = {
   hour: number; minute: number; seconds: number
   year: number; month: number; day: number
 }
 
-async function syncSantiagoOffset(): Promise<void> {
+async function syncEstOffset(): Promise<void> {
   try {
     const before = Date.now()
     const res = await fetch(
-      "https://timeapi.io/api/Time/current/zone?timeZone=America/Santiago",
+      "https://timeapi.io/api/Time/current/zone?timeZone=America/New_York",
       { cache: "no-store" },
     )
     const after = Date.now()
     if (!res.ok) return
     const data: TimeApiResponse = await res.json()
     const mid   = Math.round((before + after) / 2)
-    const sclMs = Date.UTC(data.year, data.month - 1, data.day, data.hour, data.minute, data.seconds)
-    sclOffsetMs    = sclMs - mid
-    sclOffsetReady = true
+    const estMs = Date.UTC(data.year, data.month - 1, data.day, data.hour, data.minute, data.seconds)
+    estOffsetMs    = estMs - mid
+    estOffsetReady = true
   } catch { /* keep previous offset */ }
 }
 
 function pad2(n: number) { return String(n).padStart(2, "0") }
 
-function computeSclTime(): string {
-  const d = new Date(Date.now() + sclOffsetMs)
+function computeEstTime(): string {
+  const d = new Date(Date.now() + estOffsetMs)
   return `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}:${pad2(d.getUTCSeconds())}`
 }
 
@@ -169,7 +169,7 @@ function buildEntries(s: LiveStats, lang: "en" | "es"): Entry[] {
       ],
     },
     {
-      title: "SANTIAGO CL",
+      title: "EST",
       pairs: [
         { k: es ? "HORA" : "TIME", v: "__LIVE__" },
       ],
@@ -238,21 +238,21 @@ export function SystemTicker() {
   const [liveTime, setLiveTime] = useState("")
   const [stats,    setStats]    = useState<LiveStats>(INIT)
 
-  // Santiago time: initial API sync + tick every second + re-sync every 5 min
+  // EST time: initial API sync + tick every second + re-sync every 5 min
   useEffect(() => {
     let tickId: ReturnType<typeof setInterval>
     let syncId: ReturnType<typeof setInterval>
 
-    syncSantiagoOffset()
-      .then(() => { if (sclOffsetReady) setLiveTime(computeSclTime()) })
+    syncEstOffset()
+      .then(() => { if (estOffsetReady) setLiveTime(computeEstTime()) })
       .catch(() => {})
-    syncId = setInterval(() => { syncSantiagoOffset().catch(() => {}) }, 5 * 60_000)
-    tickId = setInterval(() => { if (sclOffsetReady) setLiveTime(computeSclTime()) }, 1_000)
+    syncId = setInterval(() => { syncEstOffset().catch(() => {}) }, 5 * 60_000)
+    tickId = setInterval(() => { if (estOffsetReady) setLiveTime(computeEstTime()) }, 1_000)
 
     return () => { clearInterval(tickId); clearInterval(syncId) }
   }, [])
 
-  // All other live stats — every 15 s
+  // Live stats — every 15 s
   useEffect(() => {
     let alive = true
     const run = () => {

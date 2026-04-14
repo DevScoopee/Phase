@@ -101,7 +101,7 @@ The server calls Google Gemini with the user's prompt to generate lore text (nam
 
 ### Step 8 — IPFS seal
 
-The server builds the NFT metadata JSON (SEP-20-compatible format) from the Gemini and image outputs. It uploads the JSON to IPFS via Pinata using `PINATA_JWT`. The resulting IPFS CID becomes the canonical metadata URI for the token.
+The server builds the NFT metadata JSON (SEP-41/50-compatible format) from the Gemini and image outputs. It uploads the JSON to IPFS via Pinata using `PINATA_JWT`. The resulting IPFS CID becomes the canonical metadata URI for the token.
 
 ### Step 9 — Soroban mint
 

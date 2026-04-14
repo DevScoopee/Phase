@@ -45,7 +45,7 @@ The server never issues the AI output speculatively. The Soroban ledger proof is
 
 ### 1. Collection registration
 
-Before minting, a creator registers a collection on the PHASE Soroban contract (`create_collection`). One wallet, one collection — enforced at the contract level. The collection stores a price in PHASELQ stroops, the creator's address, and the metadata URI.
+Before minting, a creator registers a collection on the PHASE Soroban contract (`create_collection`). Multiple collections per wallet are supported — the contract enforces no limit. Each collection stores a price in PHASELQ stroops, the creator's address, and the metadata URI.
 
 ### 2. x402 payment challenge
 
@@ -87,7 +87,7 @@ The minted token follows SEP-50 draft patterns:
 - `token_uri(token_id: u32)` → IPFS metadata URI
 - `token_metadata(token_id: u32)` → on-chain attribute map
 
-Metadata JSON is SEP-20-compatible and readable by wallets and explorers.
+Metadata JSON is SEP-41/50-compatible and readable by wallets and explorers.
 
 ---
 
@@ -140,12 +140,13 @@ The PHASE protocol contract lives under `contracts/phase-protocol/`. It is a Rus
 
 | Function | Description |
 |---|---|
-| `create_collection(creator, price, uri)` | Registers a collection. One per creator address. |
+| `create_collection(creator, price, uri)` | Registers a collection. Multiple per wallet allowed. |
 | `initiate_phase(collection_id, minter, uri)` | Mints an NFT after settlement verification. |
 | `owner_of(token_id)` | Returns the current owner of a token. |
 | `token_uri(token_id)` | Returns the IPFS metadata URI. |
 | `token_metadata(token_id)` | Returns the on-chain attribute map. |
-| `get_creator_collection_id(creator)` | Returns the collection ID for a given creator. |
+| `get_creator_collection_ids(creator)` | Returns all collection IDs for a given creator (`Vec<u64>`). |
+| `get_creator_collection_id(creator)` | Returns the first collection ID (backward compatibility). |
 | `get_user_phase(wallet, collection_id)` | Returns the phase token ID minted for a wallet in a collection. |
 
 The fungible token (PHASELQ) is a Stellar Asset Contract (SAC) derived from a Classic asset, making it SEP-41 compatible and accessible via Horizon as well as Soroban.
