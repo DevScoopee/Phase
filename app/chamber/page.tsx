@@ -14,6 +14,36 @@ type Props = {
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
   const base = publicPhaseSiteBaseUrl()
   const params = await searchParams
+
+  // Per-token OG — takes priority when token_id is present
+  const rawToken = params.token_id ?? params.token
+  const tokenId = typeof rawToken === "string" ? parseInt(rawToken, 10) : NaN
+  if (Number.isFinite(tokenId) && tokenId > 0) {
+    const title = `Token #${tokenId} — P H A S E`
+    const description = "Artifact sealed on PHASE Protocol"
+    const ogImage = `${base}/api/og/chamber?token_id=${tokenId}`
+    const pageUrl = `${base}/chamber?token_id=${tokenId}`
+    return {
+      title,
+      description,
+      alternates: { canonical: pageUrl },
+      openGraph: {
+        title,
+        description,
+        url: pageUrl,
+        type: "website",
+        images: [{ url: ogImage, width: 1200, height: 630, alt: title }],
+      },
+      twitter: {
+        card: "summary_large_image",
+        title,
+        description,
+        images: [ogImage],
+      },
+    }
+  }
+
+  // Collection-level OG (existing behavior)
   const rawCollection = params.collection
   const collectionId = typeof rawCollection === "string" ? parseInt(rawCollection, 10) : NaN
 
