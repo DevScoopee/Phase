@@ -20,6 +20,8 @@ export const metadata: Metadata = {
 
 const navLink =
   "inline-flex min-h-[36px] items-center border border-zinc-700 bg-zinc-900/60 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-400 transition-colors hover:border-violet-500/50 hover:text-violet-300"
+const navLinkActive =
+  "inline-flex min-h-[36px] items-center border border-violet-600/50 bg-violet-950/50 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-violet-300"
 
 type WorldEntry = {
   collectionId: number
@@ -54,6 +56,7 @@ export default async function WorldHubPage() {
         <div className="flex flex-wrap items-center gap-2">
           <Link href="/" className={navLink}>← Home</Link>
           <Link href="/explore" className={navLink}>Explore</Link>
+          <span className={navLinkActive} aria-current="page">[ WORLD ]</span>
         </div>
         <span className="text-center text-[10px] font-bold uppercase tracking-[0.28em] text-violet-200">
           ◈ PHASE · WORLDS
@@ -92,15 +95,26 @@ export default async function WorldHubPage() {
           {/* Content */}
           <div className="p-6 md:p-8">
             {worlds.length === 0 ? (
-              <div className="flex flex-col items-center justify-center gap-4 py-20">
-                <p className="text-[10px] uppercase tracking-widest text-violet-500/60">
+              <div className="flex flex-col items-center justify-center gap-5 py-24">
+                <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-violet-400/80">
                   [ NO_WORLDS_ACTIVE ]
                 </p>
-                <p className="max-w-sm text-center text-[10px] leading-relaxed text-violet-400/50">
-                  No collections have activated a narrative world yet. Create one in the Forge.
-                </p>
-                <Link href="/forge" className={navLink}>
-                  Open Forge
+                <div className="max-w-sm space-y-1 text-center">
+                  <p className="text-[11px] leading-relaxed text-violet-300/60">
+                    No narrative worlds exist yet.
+                  </p>
+                  <p className="text-[11px] leading-relaxed text-violet-300/50">
+                    A world is a collection with a persistent universe —
+                  </p>
+                  <p className="text-[11px] leading-relaxed text-violet-300/50">
+                    every mint adds a new artifact to the story.
+                  </p>
+                </div>
+                <Link
+                  href="/forge"
+                  className="mt-2 inline-flex min-h-[36px] items-center border border-violet-500/50 bg-violet-950/30 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-violet-300 transition-colors hover:border-violet-400 hover:bg-violet-900/40 hover:text-violet-100"
+                >
+                  [ CREATE_WORLD → FORGE ]
                 </Link>
               </div>
             ) : (

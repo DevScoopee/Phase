@@ -1,5 +1,37 @@
 import { NextRequest, NextResponse } from "next/server"
-import { saveWorldForCollection } from "@/lib/narrative-world-store"
+import {
+  getAllWorldCollections,
+  getRecentNarrativesForCollection,
+  saveWorldForCollection,
+} from "@/lib/narrative-world-store"
+
+export type WorldsListItem = {
+  collectionId: number
+  world_name: string
+  world_prompt: string
+  created_at: number
+  narrativeCount: number
+  latestNarrative: string | null
+}
+
+export async function GET() {
+  const store = await getAllWorldCollections()
+  const items: WorldsListItem[] = await Promise.all(
+    Object.entries(store).map(async ([id, data]) => {
+      const narratives = await getRecentNarrativesForCollection(Number(id), 50)
+      return {
+        collectionId: Number(id),
+        world_name: data.world_name,
+        world_prompt: data.world_prompt,
+        created_at: data.created_at,
+        narrativeCount: narratives.length,
+        latestNarrative: narratives[0]?.narrative ?? null,
+      }
+    }),
+  )
+  items.sort((a, b) => b.collectionId - a.collectionId)
+  return NextResponse.json({ items })
+}
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"

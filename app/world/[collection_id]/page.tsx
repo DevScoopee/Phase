@@ -18,6 +18,8 @@ import {
 
 const navLink =
   "inline-flex min-h-[36px] items-center border border-zinc-700 bg-zinc-900/60 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-400 transition-colors hover:border-violet-500/50 hover:text-violet-300"
+const navLinkActive =
+  "inline-flex min-h-[36px] items-center border border-violet-600/50 bg-violet-950/50 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-violet-300"
 
 type Props = {
   params: Promise<{ collection_id: string }>
@@ -146,6 +148,7 @@ export default async function WorldGalleryPage({ params }: Props) {
       <header className="relative z-10 flex flex-wrap items-center justify-between gap-3 border-b border-violet-800/40 bg-zinc-950/90 px-4 py-3 backdrop-blur-sm md:px-6">
         <div className="flex flex-wrap items-center gap-2">
           <Link href="/world" className={navLink}>← Worlds</Link>
+          <span className={navLinkActive} aria-current="page">[ WORLD ]</span>
           <Link href="/explore" className={navLink}>Explore</Link>
         </div>
         <span className="text-center text-[10px] font-bold uppercase tracking-[0.28em] text-violet-200">

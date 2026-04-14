@@ -1532,6 +1532,9 @@ export function FusionChamber() {
           <Link href="/explore" className={chamberChromeNav} onClick={() => playTacticalUiClick()}>
             {lang === "es" ? "Explorar" : "Explore"}
           </Link>
+          <Link href="/world" className={chamberChromeNav} onClick={() => playTacticalUiClick()}>
+            {lang === "es" ? "Mundos" : "World"}
+          </Link>
           <Link href="/forge" className={chamberChromeNav} onClick={() => playTacticalUiClick()}>
             {nav.forge}
           </Link>

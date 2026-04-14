@@ -1106,6 +1106,9 @@ export default function ForgePage() {
         </span>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <LangToggle variant="phosphor" />
+          <Link href="/world" className={forgeNavBtn} onClick={() => playTacticalUiClick()}>
+            {lang === "es" ? "Mundos" : "World"}
+          </Link>
           <Link href="/dashboard" className={forgeNavBtn} onClick={() => playTacticalUiClick()}>
             {n.market}
           </Link>
