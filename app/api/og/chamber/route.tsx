@@ -205,6 +205,9 @@ async function renderCollectionOg(
     // Fall through with whatever we resolved so far
   }
 
+  // DEBUG — remove after confirming output
+  console.log("[og/chamber collection]", { collectionId, displayName, imageUri: imageUri.slice(0, 80) })
+
   // NFT image layer — same screen coordinates as the token flow
   if (imageUri) {
     const nftUrl = resolveImageUrl(imageUri, base)
@@ -219,19 +222,33 @@ async function renderCollectionOg(
     }
   }
 
-  // Name — only if resolved; centered at MON_NAME_TOP, same as token flow
+  // Badge #collectionId
+  const badgeLayer = await monitorTextLayer(`#${collectionId}`, {
+    left: MON_BADGE_LEFT,
+    top: MON_BADGE_TOP,
+    width: 160,
+    height: MON_BADGE_FONT_SIZE + 6,
+    fontSize: MON_BADGE_FONT_SIZE,
+    color: "#c4b5fd",
+    align: "left",
+  })
+  console.log("[og/chamber collection] badgeLayer:", badgeLayer ? "OK" : "NULL")
+  if (badgeLayer) layers.push(badgeLayer)
+
+  // Name — centered at MON_NAME_TOP; only if resolved
   if (displayName) {
     const truncated = displayName.length > 30 ? displayName.slice(0, 30) + "…" : displayName
     const nameLayer = await monitorTextLayer(truncated.toUpperCase(), {
       left: 0,
       top: MON_NAME_TOP,
       width: OG_W,
-      height: 28,
+      height: 32,
       fontSize: 18,
       color: "#e2e8f0",
       align: "center",
       letterSpacing: 3,
     })
+    console.log("[og/chamber collection] nameLayer:", nameLayer ? "OK" : "NULL")
     if (nameLayer) layers.push(nameLayer)
   }
 
