@@ -43,6 +43,16 @@ function escapeMarkup(s: string): string {
 }
 
 /**
+ * Sharp renders unicode outside Basic Latin/Latin-1 as □ because the default
+ * monospace font has no CJK/extended glyphs. Detect and replace with a safe fallback.
+ */
+function sanitizeForSharp(name: string, fallback: string): string {
+  // Allow ASCII printable + Latin Extended (U+0000–U+024F) + common punctuation
+  const isSafe = /^[\u0000-\u024F\s\d#\-_.,!?()[\]{}'"/:;@+*%=<>~`|\\^]+$/.test(name)
+  return isSafe ? name : fallback
+}
+
+/**
  * Renderiza texto sobre el monitor usando SVG — garantiza centrado correcto.
  * `align: "center"` usa text-anchor="middle" en x = width/2, así el buffer
  * de width px cubre toda la fila y queda centrado con left=0.
@@ -139,7 +149,8 @@ async function renderTokenOg(
   if (badgeLayer) layers.push(badgeLayer)
 
   // NFT name — centered horizontally in the full 1200px canvas
-  const displayName = nftName.length > 30 ? nftName.slice(0, 30) + "…" : nftName
+  const rawName = nftName.length > 30 ? nftName.slice(0, 30) + "…" : nftName
+  const displayName = sanitizeForSharp(rawName, `PHASE ARTIFACT #${tokenId}`)
   const nameLayer = await monitorTextLayer(displayName.toUpperCase(), {
     left: 0,
     top: MON_NAME_TOP,
@@ -237,8 +248,9 @@ async function renderCollectionOg(
 
   // Name — centered at MON_NAME_TOP; only if resolved
   if (displayName) {
-    const truncated = displayName.length > 30 ? displayName.slice(0, 30) + "…" : displayName
-    const nameLayer = await monitorTextLayer(truncated.toUpperCase(), {
+    const rawTrunc = displayName.length > 30 ? displayName.slice(0, 30) + "…" : displayName
+    const safeName = sanitizeForSharp(rawTrunc, `PHASE COLLECTION #${collectionId}`)
+    const nameLayer = await monitorTextLayer(safeName.toUpperCase(), {
       left: 0,
       top: MON_NAME_TOP,
       width: OG_W,
