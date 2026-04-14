@@ -26,7 +26,8 @@ const MON_NFT_TOP    = 199
 const MON_NFT_WIDTH  = 150
 const MON_NFT_HEIGHT = 210
 // NFT name — centered horizontally in the full 1200px canvas
-const MON_NAME_TOP = 473
+const MON_NAME_TOP       = 473
+const MON_NAME_FONT_SIZE = 16
 
 async function fetchImageBuffer(url: string): Promise<Buffer | null> {
   try {
@@ -88,7 +89,7 @@ async function monitorTextLayer(
         fontfile: NOTO_SANS_TTF,
         font: `Noto Sans ${opts.fontSize}`,
         rgba: true,
-        dpi: 144,
+        dpi: 72,
       },
     })
       .png()
@@ -175,7 +176,7 @@ async function renderTokenOg(
     top: MON_NAME_TOP,
     width: OG_W,
     height: 28,
-    fontSize: 18,
+    fontSize: MON_NAME_FONT_SIZE,
     color: "#e2e8f0",
     align: "center",
     letterSpacing: 3,
@@ -265,7 +266,7 @@ async function renderCollectionOg(
       top: MON_NAME_TOP,
       width: OG_W,
       height: 32,
-      fontSize: 18,
+      fontSize: MON_NAME_FONT_SIZE,
       color: "#e2e8f0",
       align: "center",
       letterSpacing: 3,
