@@ -200,18 +200,9 @@ async function renderCollectionOg(
 
   try {
     const collection = await fetchCollectionInfo(collectionId)
+    console.log("[og/chamber fetchCollectionInfo raw]", JSON.stringify(collection))
     imageUri = collection?.imageUri?.trim() ?? ""
     displayName = collection?.name?.trim() || null
-
-    // Try fetching token_uri for collectionId as a cheap first guess —
-    // in many collections the tokenId correlates with the collectionId.
-    // If it resolves, prefer its metadata (name + image) over the collection-level data.
-    const tokenUri = await fetchTokenUriString(collectionId).catch(() => null)
-    if (tokenUri) {
-      const meta = await fetchTokenMetadataDisplay(tokenUri).catch(() => ({ image: undefined, name: undefined }))
-      if (meta.name) displayName = meta.name
-      if (meta.image) imageUri = meta.image
-    }
   } catch {
     // Fall through with whatever we resolved so far
   }
