@@ -119,7 +119,7 @@ const C = {
   bg:     "oklch(0.065 0.014 222)",
   border: "oklch(0.22 0.04 220 / 0.35)",
   accent: "#4ecece",
-  label:  "#304d62",
+  label:  "#6b9ab8",
   colon:  "#243d52",
   value:  "#7aaec8",
   sep:    "#1a2e3d",

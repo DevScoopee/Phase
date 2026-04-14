@@ -113,12 +113,12 @@ export function ColophonSection() {
           className="mx-auto grid max-w-5xl grid-cols-1 gap-5 sm:grid-cols-2 lg:max-w-none lg:grid-cols-4 lg:gap-5 xl:gap-6"
         >
           <div className={cn(colophonPanel, "col-span-1")}>
-            <h4 className={colophonLabel}>
+            <h3 className={colophonLabel}>
               <span className="text-violet-400/80" aria-hidden>
                 ◈
               </span>
               {c.networkLabel}
-            </h4>
+            </h3>
             <ul className="space-y-2.5">
               {c.networkLines.map((line) => (
                 <li
@@ -132,12 +132,12 @@ export function ColophonSection() {
           </div>
 
           <div className={cn(colophonPanel, "col-span-1")}>
-            <h4 className={colophonLabel}>
+            <h3 className={colophonLabel}>
               <span className="text-violet-400/80" aria-hidden>
                 ◈
               </span>
               {c.standardLabel}
-            </h4>
+            </h3>
             <ul className="space-y-2.5">
               {c.standardLines.map((line) => (
                 <li
@@ -151,12 +151,12 @@ export function ColophonSection() {
           </div>
 
           <div className={cn(colophonPanel, "col-span-1 lg:col-span-1")}>
-            <h4 className={colophonLabel}>
+            <h3 className={colophonLabel}>
               <span className="text-violet-400/80" aria-hidden>
                 ▣
               </span>
               {c.docLabel}
-            </h4>
+            </h3>
             <p className="mb-5 font-mono text-[10px] leading-relaxed text-zinc-400/90">
               {lang === "es" ? "Especificación, recompensas y API." : "Spec, rewards, and API reference."}
             </p>
@@ -169,12 +169,12 @@ export function ColophonSection() {
           </div>
 
           <div className={cn(colophonPanel, "col-span-1")}>
-            <h4 className={colophonLabel}>
+            <h3 className={colophonLabel}>
               <span className="text-violet-400/80" aria-hidden>
                 ◈
               </span>
               {c.developerLabel}
-            </h4>
+            </h3>
             <ul className="flex flex-col gap-2">
               <li>
                 <a

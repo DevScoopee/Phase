@@ -92,5 +92,11 @@
     "tsx": "^4.21.0",
     "tw-animate-css": "1.3.3",
     "typescript": "^5"
-  }
+  },
+  "browserslist": [
+    "chrome >= 105",
+    "firefox >= 104",
+    "safari >= 16",
+    "edge >= 105"
+  ]
 }

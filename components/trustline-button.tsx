@@ -241,6 +241,13 @@ export function TrustlineButton({ address, onRequestConnect, onReady, className,
       setUiState("READY")
       setMessage(ff.trustline_msg_protocol_ready)
       await onReadyRef.current?.()
+
+      // Auto-claim quest_connect_wallet — fire-and-forget, silent on error or if already claimed
+      void fetch("/api/faucet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ walletAddress: addr, reward: "quest_connect_wallet" }),
+      }).catch(() => {})
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       setUiState("STANDBY")

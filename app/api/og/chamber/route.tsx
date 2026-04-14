@@ -15,17 +15,7 @@ export const runtime = "nodejs"
 const OG_W = 1200
 const OG_H = 630
 
-// ─── Collection-level layout (og-crt-frame.png) ───────────────────────────────
-const NFT_LEFT   = 532
-const NFT_TOP    = 219
-const NFT_WIDTH  = 136
-const NFT_HEIGHT = 90
-
-const TEXT_AREA_LEFT  = 532
-const TEXT_AREA_WIDTH = 136
-const TEXT_AREA_TOP   = 315  // NFT_TOP(219) + NFT_HEIGHT(90) + offset(6)
-
-// ─── Token-level layout (og-monitor.png / ChamberOG.png) ─────────────────────
+// ─── Monitor layout (og-monitor.png) — shared by both token and collection OG ─
 // Token ID badge — a la derecha del texto "PHASE: _" en la imagen de fondo
 const MON_BADGE_LEFT      = 340
 const MON_BADGE_TOP       = 80
@@ -43,41 +33,6 @@ async function fetchImageBuffer(url: string): Promise<Buffer | null> {
     const res = await fetch(url, { signal: AbortSignal.timeout(7000) })
     if (!res.ok) return null
     return Buffer.from(await res.arrayBuffer())
-  } catch {
-    return null
-  }
-}
-
-async function nameTextLayer(name: string): Promise<sharp.OverlayOptions | null> {
-  try {
-    const displayName = name.length > 20 ? name.slice(0, 18) + ".." : name
-
-    const buf = await sharp({
-      create: {
-        width: TEXT_AREA_WIDTH,
-        height: 32,
-        channels: 4,
-        background: { r: 0, g: 0, b: 0, alpha: 0 },
-      },
-    })
-      .composite([
-        {
-          input: await sharp({
-            text: {
-              text: displayName,
-              font: "Inter-Bold 14px",
-              rgba: true,
-              width: TEXT_AREA_WIDTH,
-              align: "center",
-            },
-          }).png().toBuffer(),
-          gravity: "center",
-        },
-      ])
-      .png()
-      .toBuffer()
-
-    return { input: buf, left: TEXT_AREA_LEFT, top: TEXT_AREA_TOP }
   } catch {
     return null
   }
@@ -203,7 +158,89 @@ async function renderTokenOg(
   return new NextResponse(new Uint8Array(pngBuffer), {
     headers: {
       "Content-Type": "image/png",
-      "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
+      "Cache-Control": "no-store, must-revalidate",
+    },
+  })
+}
+
+/** Resuelve imagen y nombre para un URI de imagen o metadata. */
+function resolveImageUrl(uri: string, base: string): string | null {
+  if (!uri) return null
+  if (/^https?:\/\//i.test(uri)) return uri
+  const ipfsPath = extractIpfsGatewaySubpath(uri)
+  return ipfsPath ? `${base}/api/ipfs/${ipfsPath}` : null
+}
+
+// ─── Collection-level OG renderer (og-monitor.png) ───────────────────────────
+
+async function renderCollectionOg(
+  collectionId: number,
+  base: string,
+): Promise<NextResponse> {
+  const monitorPath = path.join(process.cwd(), "public", "og-monitor.png")
+  const monitorBuf = await readFile(monitorPath)
+  const baseBuf = await sharp(monitorBuf)
+    .resize(OG_W, OG_H, { fit: "cover", position: "centre" })
+    .toBuffer()
+
+  const layers: sharp.OverlayOptions[] = []
+  let displayName: string | null = null
+  let imageUri = ""
+
+  try {
+    const collection = await fetchCollectionInfo(collectionId)
+    imageUri = collection?.imageUri?.trim() ?? ""
+    displayName = collection?.name?.trim() || null
+
+    // Try fetching token_uri for collectionId as a cheap first guess —
+    // in many collections the tokenId correlates with the collectionId.
+    // If it resolves, prefer its metadata (name + image) over the collection-level data.
+    const tokenUri = await fetchTokenUriString(collectionId).catch(() => null)
+    if (tokenUri) {
+      const meta = await fetchTokenMetadataDisplay(tokenUri).catch(() => ({ image: undefined, name: undefined }))
+      if (meta.name) displayName = meta.name
+      if (meta.image) imageUri = meta.image
+    }
+  } catch {
+    // Fall through with whatever we resolved so far
+  }
+
+  // NFT image layer — same screen coordinates as the token flow
+  if (imageUri) {
+    const nftUrl = resolveImageUrl(imageUri, base)
+    if (nftUrl) {
+      const nftBuf = await fetchImageBuffer(nftUrl)
+      if (nftBuf) {
+        const resized = await sharp(nftBuf)
+          .resize(MON_NFT_WIDTH, MON_NFT_HEIGHT, { fit: "cover", position: "centre" })
+          .toBuffer()
+        layers.push({ input: resized, left: MON_NFT_LEFT, top: MON_NFT_TOP })
+      }
+    }
+  }
+
+  // Name — only if resolved; centered at MON_NAME_TOP, same as token flow
+  if (displayName) {
+    const truncated = displayName.length > 30 ? displayName.slice(0, 30) + "…" : displayName
+    const nameLayer = await monitorTextLayer(truncated.toUpperCase(), {
+      left: 0,
+      top: MON_NAME_TOP,
+      width: OG_W,
+      height: 28,
+      fontSize: 18,
+      color: "#e2e8f0",
+      align: "center",
+      letterSpacing: 3,
+    })
+    if (nameLayer) layers.push(nameLayer)
+  }
+
+  const pngBuffer = await sharp(baseBuf).composite(layers).png().toBuffer()
+
+  return new NextResponse(new Uint8Array(pngBuffer), {
+    headers: {
+      "Content-Type": "image/png",
+      "Cache-Control": "no-store, must-revalidate",
     },
   })
 }
@@ -221,63 +258,22 @@ export async function GET(request: NextRequest) {
     return renderTokenOg(tokenId, base)
   }
 
-  // Collection-level OG (existing behavior)
+  // Collection-level OG — monitor frame with best-effort token metadata
   const rawCollection = searchParams.get("collection")
   const collectionId = rawCollection ? parseInt(rawCollection, 10) : NaN
 
-  const crtPath = path.join(process.cwd(), "public", "og-crt-frame.png")
-  const crtBuf = await readFile(crtPath)
-  const baseBuf = await sharp(crtBuf)
-    .resize(OG_W, OG_H, { fit: "cover", position: "centre" })
-    .toBuffer()
-
   if (!Number.isFinite(collectionId) || collectionId <= 0) {
-    const pngBuffer = await sharp(baseBuf).png().toBuffer()
+    // No params — serve the bare monitor as fallback
+    const monitorPath = path.join(process.cwd(), "public", "og-monitor.png")
+    const monitorBuf = await readFile(monitorPath)
+    const pngBuffer = await sharp(monitorBuf)
+      .resize(OG_W, OG_H, { fit: "cover", position: "centre" })
+      .png()
+      .toBuffer()
     return new NextResponse(new Uint8Array(pngBuffer), {
-      headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400" },
+      headers: { "Content-Type": "image/png", "Cache-Control": "no-store, must-revalidate" },
     })
   }
 
-  const layers: sharp.OverlayOptions[] = []
-
-  try {
-    const collection = await fetchCollectionInfo(collectionId)
-    const collectionName = collection?.name ?? ""
-    const uri = collection?.imageUri?.trim() ?? ""
-
-    if (uri) {
-      let nftUrl: string | null = null
-      if (/^https?:\/\//i.test(uri)) {
-        nftUrl = uri
-      } else {
-        const ipfsPath = extractIpfsGatewaySubpath(uri)
-        if (ipfsPath) nftUrl = `${base}/api/ipfs/${ipfsPath}`
-      }
-      if (nftUrl) {
-        const nftBuf = await fetchImageBuffer(nftUrl)
-        if (nftBuf) {
-          const nftResized = await sharp(nftBuf)
-            .resize(NFT_WIDTH, NFT_HEIGHT, { fit: "cover", position: "centre" })
-            .toBuffer()
-          layers.push({ input: nftResized, left: NFT_LEFT, top: NFT_TOP })
-        }
-      }
-    }
-
-    if (collectionName) {
-      const textLayer = await nameTextLayer(collectionName)
-      if (textLayer) layers.push(textLayer)
-    }
-  } catch {
-    // Render frame-only if something fails
-  }
-
-  const pngBuffer = await sharp(baseBuf).composite(layers).png().toBuffer()
-
-  return new NextResponse(new Uint8Array(pngBuffer), {
-    headers: {
-      "Content-Type": "image/png",
-      "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
-    },
-  })
+  return renderCollectionOg(collectionId, base)
 }
