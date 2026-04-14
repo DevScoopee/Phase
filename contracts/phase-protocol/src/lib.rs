@@ -941,7 +941,7 @@ impl PhaseProtocol {
         env.current_contract_address()
     }
 
-    /// Colección (Freighter / SEP-0050 / SEP-20 metadata): lectura on-chain sin estado.
+    /// Colección (Freighter / SEP-0050 / SEP-41 metadata): lectura on-chain sin estado.
     pub fn name(env: Env) -> String {
         String::from_str(&env, "Phase Artifact")
     }
@@ -1017,7 +1017,7 @@ impl PhaseProtocol {
             .get(&DataKey::TokenCollection(token_id))
     }
 
-    /// Alias **SEP-20 / Freighter**: misma firma que suelen exponer los NFT Soroban para descubrimiento en wallet.
+    /// Alias **SEP-41 / Freighter**: misma firma que suelen exponer los NFT Soroban para descubrimiento en wallet.
     /// Si `from == to`, es un **no-op** autenticado (el token sigue en la misma cuenta) para forzar una tx visible
     /// al indexador cuando el mint existió pero la wallet no mostraba el collectible.
     pub fn transfer(env: Env, from: Address, to: Address, token_id: u64) -> Result<(), PhaseError> {
