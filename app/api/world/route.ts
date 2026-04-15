@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import {
   getAllWorldCollections,
   getAllNarrativesCount,
+  countCollectorsInWorlds,
   getRecentNarrativesForCollection,
   saveWorldForCollection,
   type NarratorTone,
@@ -21,6 +22,7 @@ export type WorldsGlobalStats = {
   worldsActive: number
   totalArtifacts: number
   narrativesGenerated: number
+  collectors: number
 }
 
 export async function GET() {
@@ -41,12 +43,17 @@ export async function GET() {
   )
   items.sort((a, b) => b.collectionId - a.collectionId)
 
-  const totalArtifacts = await getAllNarrativesCount()
+  const activeCollectionIds = items.map((w) => w.collectionId)
+  const [totalArtifacts, collectors] = await Promise.all([
+    getAllNarrativesCount(),
+    countCollectorsInWorlds(activeCollectionIds),
+  ])
   const narrativesGenerated = items.reduce((sum, w) => sum + w.narrativeCount, 0)
   const globalStats: WorldsGlobalStats = {
     worldsActive: items.length,
     totalArtifacts,
     narrativesGenerated,
+    collectors,
   }
 
   return NextResponse.json({ items, globalStats })

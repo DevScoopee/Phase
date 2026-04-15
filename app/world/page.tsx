@@ -339,7 +339,7 @@ function ExploreTab({
             { label: t.stats.worldsActive,        value: globalStats?.worldsActive        ?? "···" },
             { label: t.stats.totalArtifacts,       value: globalStats?.totalArtifacts      ?? "···" },
             { label: t.stats.narrativesGenerated,  value: globalStats?.narrativesGenerated ?? "···" },
-            { label: t.stats.collectors,           value: "—" },
+            { label: t.stats.collectors,           value: globalStats?.collectors          ?? "···" },
           ] as const
         ).map(({ label, value }) => (
           <div

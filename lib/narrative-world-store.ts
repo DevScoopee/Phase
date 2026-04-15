@@ -86,6 +86,47 @@ export async function getAllNarrativesCount(): Promise<number> {
   return Object.keys(store).length
 }
 
+type NftListingsFile = {
+  listings?: Array<{ tokenId?: number; seller?: string }>
+}
+
+/**
+ * Counts unique wallets (sellers) that own tokens with narratives in the given
+ * active-world collection IDs. Falls back to unique-token count when no listing
+ * data is available for a token.
+ */
+export async function countCollectorsInWorlds(worldCollectionIds: number[]): Promise<number> {
+  if (worldCollectionIds.length === 0) return 0
+  const activeSet = new Set(worldCollectionIds)
+
+  const narratives = await readJsonStore<WorldNarrativesStore>(serverDataJsonPath("worldNarratives"))
+  const tokenIdsWithNarratives = new Set<number>()
+  for (const [tokenId, data] of Object.entries(narratives)) {
+    if (activeSet.has(data.collection_id)) tokenIdsWithNarratives.add(Number(tokenId))
+  }
+  if (tokenIdsWithNarratives.size === 0) return 0
+
+  // Cross-reference with nft-listings to resolve wallets
+  const listingsFile = await readJsonStore<NftListingsFile>(serverDataJsonPath("nftListings"))
+  const tokenToWallet = new Map<number, string>()
+  for (const listing of listingsFile.listings ?? []) {
+    if (typeof listing.tokenId === "number" && typeof listing.seller === "string") {
+      tokenToWallet.set(listing.tokenId, listing.seller)
+    }
+  }
+
+  const uniqueWallets = new Set<string>()
+  let unknownCount = 0
+  for (const tokenId of tokenIdsWithNarratives) {
+    const wallet = tokenToWallet.get(tokenId)
+    if (wallet) uniqueWallets.add(wallet)
+    else unknownCount++
+  }
+
+  // If some tokens have no listing data, count them as 1 additional wallet each
+  return uniqueWallets.size + unknownCount
+}
+
 /** Returns narratives for a collection sorted newest-first, up to `limit`. */
 export async function getRecentNarrativesForCollection(
   collectionId: number,
