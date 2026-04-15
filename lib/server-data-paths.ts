@@ -9,6 +9,7 @@ const FILES = {
   artistProfiles: "artist-profiles.json",
   worldCollections: "world-collections.json",
   worldNarratives: "world-narratives.json",
+  profileSocials: "profile-socials.json",
 } as const
 
 export type ServerDataFile = keyof typeof FILES

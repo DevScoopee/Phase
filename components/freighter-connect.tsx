@@ -1,6 +1,7 @@
 "use client"
 
-import type { ReactNode } from "react"
+import { useState, type ReactNode } from "react"
+import { ProfilePanel } from "@/components/profile-panel"
 import { useLang } from "@/components/lang-context"
 import { useWallet } from "@/components/wallet-provider"
 
@@ -17,16 +18,16 @@ type FreighterConnectProps = {
 export function FreighterConnect({ trailing }: FreighterConnectProps) {
   const { lang } = useLang()
   const { address, connecting, hint, connect, disconnect } = useWallet()
+  const [panelOpen, setPanelOpen] = useState(false)
+
   const t =
     lang === "es"
       ? {
-          disconnectTitle: "Desconectar wallet",
           walletLabel: "WALLET",
           connecting: "Conectando...",
           connect: "Conectar Wallet",
         }
       : {
-          disconnectTitle: "Disconnect wallet",
           walletLabel: "WALLET",
           connecting: "Connecting...",
           connect: "Connect Wallet",
@@ -36,20 +37,25 @@ export function FreighterConnect({ trailing }: FreighterConnectProps) {
     <div className="flex flex-col items-end gap-1 pointer-events-auto">
       <div className="flex items-center gap-2 flex-wrap justify-end">
         {address ? (
-          <div className="group flex items-center gap-2 rounded-sm border border-violet-700/40 bg-violet-950/30 px-3 py-1.5">
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" aria-hidden />
-            <span className="max-w-[min(100vw-10rem,14rem)] truncate font-mono text-[10px] font-medium uppercase tracking-widest text-violet-300" title={address}>
-              {t.walletLabel} · {truncateAddress(address)}
-            </span>
+          <>
+            <ProfilePanel
+              open={panelOpen}
+              onOpenChange={setPanelOpen}
+              address={address}
+              disconnect={disconnect}
+            />
             <button
               type="button"
-              onClick={disconnect}
-              className="ml-1 shrink-0 font-mono text-[9px] font-bold uppercase tracking-widest text-zinc-500 transition-colors hover:text-red-400"
-              title={t.disconnectTitle}
+              onClick={() => setPanelOpen(true)}
+              className="group flex items-center gap-2 rounded-sm border border-violet-700/40 bg-violet-950/30 px-3 py-1.5 hover:border-violet-500/60 transition-colors"
+              title={address}
             >
-              {lang === "es" ? "DESCONECTAR" : "DISCONNECT"}
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" aria-hidden />
+              <span className="max-w-[min(100vw-10rem,14rem)] truncate font-mono text-[10px] font-medium uppercase tracking-widest text-violet-300">
+                {t.walletLabel} · {truncateAddress(address)}
+              </span>
             </button>
-          </div>
+          </>
         ) : (
           <button
             type="button"
