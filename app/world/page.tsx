@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { LangToggle } from "@/components/lang-toggle"
@@ -182,7 +182,7 @@ type WorldsApiResponse = {
 }
 
 // ── Main page component ────────────────────────────────────────────────────────
-export default function WorldStudioPage() {
+function WorldStudioInner() {
   const { lang } = useLang()
   const t = copy[lang]
   const router = useRouter()
@@ -306,6 +306,14 @@ export default function WorldStudioPage() {
         </div>
       </main>
     </div>
+  )
+}
+
+export default function WorldStudioPage() {
+  return (
+    <Suspense>
+      <WorldStudioInner />
+    </Suspense>
   )
 }
 
