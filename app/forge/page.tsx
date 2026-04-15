@@ -250,10 +250,6 @@ export default function ForgePage() {
   const [agentImageUrl, setAgentImageUrl] = useState<string | null>(null)
   const [lore, setLore] = useState<string | null>(null)
 
-  const [worldEnabled, setWorldEnabled] = useState(false)
-  const [worldName, setWorldName] = useState("")
-  const [worldPrompt, setWorldPrompt] = useState("")
-
   type ForgeOverlay = null | "rewards" | "protocol" | "lore" | "collection"
   const [forgeOverlay, setForgeOverlay] = useState<ForgeOverlay>(null)
   const [faucetBrief, setFaucetBrief] = useState<FaucetQuestBrief | null>(null)
@@ -542,18 +538,6 @@ export default function ForgePage() {
           const path = `/chamber?collection=${id}`
           setShareUrl(`${window.location.origin}${path}`)
         }
-        if (worldEnabled && worldName.trim() && worldPrompt.trim()) {
-          fetch("/api/world", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              collection_id: id,
-              world_name: worldName.trim(),
-              world_prompt: worldPrompt.trim(),
-            }),
-          }).catch((e) => console.warn("[forge] world save failed", e))
-        }
-
         // Cada artefacto forjado debe materializarse como NFT: auto-mint en la colección recién creada.
         try {
           const invoiceId = Math.floor(Math.random() * 1_000_000)
@@ -591,7 +575,7 @@ export default function ForgePage() {
         setIsMintingCollection(false)
       }
     },
-    [address, lang, name, priceLiq, refresh, worldEnabled, worldName, worldPrompt],
+    [address, lang, name, priceLiq, refresh],
   )
 
   const initiateAgentForge = useCallback(
@@ -1497,53 +1481,6 @@ export default function ForgePage() {
                   </PhaserLiqExpertLink>
                 </span>
               </p>
-            </div>
-
-            <div className="border border-zinc-800/60 bg-black/25 p-2">
-              <label className="flex cursor-pointer select-none items-center gap-2.5">
-                <input
-                  type="checkbox"
-                  checked={worldEnabled}
-                  onChange={(e) => setWorldEnabled(e.target.checked)}
-                  disabled={busy}
-                  className="h-4 w-4 accent-violet-500"
-                />
-                <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-                  {f.forgeNarrativeWorldTitle}
-                </span>
-              </label>
-              {worldEnabled && (
-                <div className="mt-2 space-y-2">
-                  <div>
-                    <label className="mb-1 block text-[9px] uppercase tracking-widest text-zinc-700">
-                      {f.forgeNarrativeWorldName}
-                    </label>
-                    <input
-                      type="text"
-                      value={worldName}
-                      onChange={(e) => setWorldName(e.target.value)}
-                      maxLength={80}
-                      placeholder={f.forgeNarrativeWorldNamePlaceholder}
-                      disabled={busy}
-                      className="w-full border border-zinc-800 bg-zinc-950/80 px-2 py-1.5 text-[11px] text-zinc-300 placeholder-zinc-800 outline-none focus:border-violet-500/50"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-[9px] uppercase tracking-widest text-zinc-700">
-                      {f.forgeNarrativeWorldBackstory}
-                    </label>
-                    <textarea
-                      value={worldPrompt}
-                      onChange={(e) => setWorldPrompt(e.target.value)}
-                      maxLength={1000}
-                      rows={2}
-                      placeholder={f.forgeOptionalShort}
-                      disabled={busy}
-                      className="w-full resize-none border border-zinc-800 bg-zinc-950/80 px-2 py-1.5 text-[11px] text-zinc-300 placeholder-zinc-800 outline-none focus:border-violet-500/50"
-                    />
-                  </div>
-                </div>
-              )}
             </div>
 
             {address ? (

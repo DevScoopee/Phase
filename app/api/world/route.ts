@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import {
   getAllWorldCollections,
+  getAllNarrativesCount,
   getRecentNarrativesForCollection,
   saveWorldForCollection,
+  type NarratorTone,
 } from "@/lib/narrative-world-store"
 
 export type WorldsListItem = {
@@ -12,6 +14,13 @@ export type WorldsListItem = {
   created_at: number
   narrativeCount: number
   latestNarrative: string | null
+  narrator_tone?: NarratorTone
+}
+
+export type WorldsGlobalStats = {
+  worldsActive: number
+  totalArtifacts: number
+  narrativesGenerated: number
 }
 
 export async function GET() {
@@ -26,24 +35,41 @@ export async function GET() {
         created_at: data.created_at,
         narrativeCount: narratives.length,
         latestNarrative: narratives[0]?.narrative ?? null,
+        narrator_tone: data.narrator_tone,
       }
     }),
   )
   items.sort((a, b) => b.collectionId - a.collectionId)
-  return NextResponse.json({ items })
+
+  const totalArtifacts = await getAllNarrativesCount()
+  const narrativesGenerated = items.reduce((sum, w) => sum + w.narrativeCount, 0)
+  const globalStats: WorldsGlobalStats = {
+    worldsActive: items.length,
+    totalArtifacts,
+    narrativesGenerated,
+  }
+
+  return NextResponse.json({ items, globalStats })
 }
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
+const VALID_TONES: NarratorTone[] = ["enigmatic", "epic", "scientific", "folkloric"]
+
 type WorldSaveBody = {
   collection_id?: unknown
   world_name?: unknown
   world_prompt?: unknown
+  narrator_tone?: unknown
 }
 
 function isNonEmptyString(v: unknown): v is string {
   return typeof v === "string" && v.trim().length > 0
+}
+
+function isValidTone(v: unknown): v is NarratorTone {
+  return typeof v === "string" && (VALID_TONES as string[]).includes(v)
 }
 
 export async function POST(request: NextRequest) {
@@ -73,9 +99,17 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  if (body.narrator_tone !== undefined && !isValidTone(body.narrator_tone)) {
+    return NextResponse.json(
+      { error: `narrator_tone inválido. Valores permitidos: ${VALID_TONES.join(", ")}` },
+      { status: 400 },
+    )
+  }
+
   await saveWorldForCollection(collectionId, {
     world_name: body.world_name.trim(),
     world_prompt: body.world_prompt.trim(),
+    narrator_tone: isValidTone(body.narrator_tone) ? body.narrator_tone : undefined,
   })
 
   return NextResponse.json({ ok: true, collection_id: collectionId })

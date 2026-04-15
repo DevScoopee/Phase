@@ -2,10 +2,13 @@ import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { serverDataJsonPath } from "@/lib/server-data-paths"
 
+export type NarratorTone = "enigmatic" | "epic" | "scientific" | "folkloric"
+
 export type WorldCollectionData = {
   world_name: string
   world_prompt: string
   created_at: number
+  narrator_tone?: NarratorTone
 }
 
 export type WorldNarrativeData = {
@@ -41,11 +44,18 @@ export async function getWorldForCollection(collectionId: number): Promise<World
 
 export async function saveWorldForCollection(
   collectionId: number,
-  data: Pick<WorldCollectionData, "world_name" | "world_prompt">,
+  data: Pick<WorldCollectionData, "world_name" | "world_prompt" | "narrator_tone">,
 ): Promise<void> {
   const filePath = serverDataJsonPath("worldCollections")
   const store = await readJsonStore<WorldCollectionsStore>(filePath)
-  store[String(collectionId)] = { ...data, created_at: Date.now() }
+  const existing = store[String(collectionId)]
+  store[String(collectionId)] = {
+    ...existing,
+    world_name: data.world_name,
+    world_prompt: data.world_prompt,
+    ...(data.narrator_tone !== undefined ? { narrator_tone: data.narrator_tone } : {}),
+    created_at: existing?.created_at ?? Date.now(),
+  }
   await writeJsonStore(filePath, store)
 }
 
@@ -68,6 +78,12 @@ export async function saveNarrativeForToken(
   const store = await readJsonStore<WorldNarrativesStore>(filePath)
   store[String(tokenId)] = { ...data, generated_at: Date.now() }
   await writeJsonStore(filePath, store)
+}
+
+/** Returns the total count of distinct token narratives across all world collections. */
+export async function getAllNarrativesCount(): Promise<number> {
+  const store = await readJsonStore<WorldNarrativesStore>(serverDataJsonPath("worldNarratives"))
+  return Object.keys(store).length
 }
 
 /** Returns narratives for a collection sorted newest-first, up to `limit`. */

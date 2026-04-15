@@ -78,21 +78,29 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "GOOGLE_AI_STUDIO_API_KEY no configurada" }, { status: 503 })
   }
 
+  const toneInstructions: Record<string, string> = {
+    enigmatic:  "Tone: dark, literary, mysterious. Use evocative metaphors.",
+    epic:       "Tone: heroic, grand, mythological. Use powerful declarative sentences.",
+    scientific: "Tone: analytical, precise, cold. Use clinical observation language.",
+    folkloric:  "Tone: oral tradition, poetic, ancient. Use storytelling cadence.",
+  }
+  const tone = toneInstructions[world.narrator_tone ?? "enigmatic"] ?? toneInstructions["enigmatic"]
+
   const loreInput = typeof body.lore === "string" ? body.lore.trim() : ""
   const recentNarratives = await getRecentNarrativesForCollection(collectionId, 2)
   const previousContext =
     recentNarratives.length > 0
-      ? `\n\nConexiones narrativas anteriores en este mundo:\n${recentNarratives.map((n, i) => `${i + 1}. ${n.narrative}`).join("\n")}`
+      ? `\n\nPrevious narrative connections in this world:\n${recentNarratives.map((n, i) => `${i + 1}. ${n.narrative}`).join("\n")}`
       : ""
 
   const systemPrompt =
-    `Eres el Narrador del mundo "${world.world_name}". ` +
-    `Contexto del mundo: ${world.world_prompt}` +
+    `You are the Narrator of the world "${world.world_name}". ` +
+    `World context: ${world.world_prompt}` +
     previousContext +
-    `\n\nUn nuevo artefacto acaba de ser forjado en este mundo` +
+    `\n\nA new artifact has just been forged in this world` +
     (loreInput ? `: "${loreInput}"` : ".") +
-    ` Escribe exactamente 2-3 oraciones que conecten este artefacto con el mundo narrativo. ` +
-    `Tono: enigmático, literario, coherente con el lore del mundo. Sin encabezados ni markdown.`
+    ` Write exactly 2-3 sentences connecting this artifact to the narrative world. ` +
+    `${tone} No headers or markdown.`
 
   const genAI = new GoogleGenerativeAI(apiKey)
   const model = genAI.getGenerativeModel(
