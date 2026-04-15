@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { useLang } from "@/components/lang-context"
 
@@ -257,6 +258,7 @@ type ProfilePanelProps = {
 
 export function ProfilePanel({ open, onOpenChange, address, disconnect }: ProfilePanelProps) {
   const { lang } = useLang()
+  const router = useRouter()
 
   const [tab, setTab] = useState<Tab>("artifacts")
   const [profile, setProfile] = useState<ProfileData>({})
@@ -294,6 +296,8 @@ export function ProfilePanel({ open, onOpenChange, address, disconnect }: Profil
           disconnect: "[ DESCONECTAR_WALLET ]",
           noArtifacts: "Sin artefactos en esta wallet.",
           loading: "···",
+          quickRewards: "◈ RECOMPENSAS",
+          quickSignals: "◉ SEÑALES",
           search: "BUSCAR",
           searchPlaceholder: "Buscar por nombre, @twitter, discord o wallet...",
           searchInitial: "[ INGRESAR_TÉRMINO ]",
@@ -330,6 +334,8 @@ export function ProfilePanel({ open, onOpenChange, address, disconnect }: Profil
           disconnect: "[ DISCONNECT_WALLET ]",
           noArtifacts: "No artifacts in this wallet.",
           loading: "···",
+          quickRewards: "◈ REWARDS",
+          quickSignals: "◉ SIGNALS",
           search: "SEARCH",
           searchPlaceholder: "Search by name, @twitter, discord or wallet...",
           searchInitial: "[ ENTER_SEARCH_TERM ]",
@@ -491,6 +497,24 @@ export function ProfilePanel({ open, onOpenChange, address, disconnect }: Profil
               </span>
             </div>
           ))}
+        </div>
+
+        {/* ── Quick actions ── */}
+        <div className="flex gap-px border-b border-violet-800/20">
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent("open-faucet"))}
+            className="flex-1 py-2 font-mono text-[9px] uppercase tracking-widest text-violet-400 hover:text-violet-200 hover:bg-violet-950/30 transition-colors"
+          >
+            {t.quickRewards}
+          </button>
+          <button
+            type="button"
+            onClick={() => { onOpenChange(false); router.push("/signals") }}
+            className="flex-1 py-2 font-mono text-[9px] uppercase tracking-widest text-violet-400 hover:text-violet-200 hover:bg-violet-950/30 transition-colors"
+          >
+            {t.quickSignals}
+          </button>
         </div>
 
         {/* ── Social links ── */}

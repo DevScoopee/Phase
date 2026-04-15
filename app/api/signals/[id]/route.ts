@@ -7,13 +7,14 @@ export const dynamic = "force-dynamic"
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
-  const signal = await getSignal(params.id)
+  const { id } = await params
+  const signal = await getSignal(id)
   if (!signal) {
     return NextResponse.json({ error: "Signal not found" }, { status: 404 })
   }
-  const replies = await getReplies(params.id)
+  const replies = await getReplies(id)
   return NextResponse.json({ signal, replies })
 }
 
@@ -24,8 +25,9 @@ type UpvoteBody = {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
+  const { id } = await params
   let body: UpvoteBody
   try {
     body = (await request.json()) as UpvoteBody
@@ -41,7 +43,7 @@ export async function POST(
   }
 
   try {
-    const signal = await upvoteSignal(params.id, body.wallet)
+    const signal = await upvoteSignal(id, body.wallet)
     return NextResponse.json({ signal })
   } catch {
     return NextResponse.json({ error: "Signal not found" }, { status: 404 })

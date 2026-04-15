@@ -13,8 +13,9 @@ type ReplyBody = {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
+  const { id } = await params
   let body: ReplyBody
   try {
     body = (await request.json()) as ReplyBody
@@ -35,7 +36,7 @@ export async function POST(
     return NextResponse.json({ error: "Body max 500 chars" }, { status: 400 })
   }
 
-  const signal = await getSignal(params.id)
+  const signal = await getSignal(id)
   if (!signal) {
     return NextResponse.json({ error: "Signal not found" }, { status: 404 })
   }
@@ -53,7 +54,7 @@ export async function POST(
   }
 
   const reply = await createReply({
-    signal_id: params.id,
+    signal_id: id,
     author_wallet: walletStr,
     author_display,
     body: (body.body as string).trim(),

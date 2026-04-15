@@ -23,12 +23,12 @@ export function FreighterConnect({ trailing }: FreighterConnectProps) {
   const t =
     lang === "es"
       ? {
-          walletLabel: "WALLET",
+          walletLabel: "PROFILE",
           connecting: "Conectando...",
           connect: "Conectar Wallet",
         }
       : {
-          walletLabel: "WALLET",
+          walletLabel: "PROFILE",
           connecting: "Connecting...",
           connect: "Connect Wallet",
         }
@@ -52,7 +52,7 @@ export function FreighterConnect({ trailing }: FreighterConnectProps) {
             >
               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" aria-hidden />
               <span className="max-w-[min(100vw-10rem,14rem)] truncate font-mono text-[10px] font-medium uppercase tracking-widest text-violet-300">
-                {t.walletLabel} · {truncateAddress(address)}
+                {t.walletLabel} · {address.slice(0, 4)}
               </span>
             </button>
           </>
