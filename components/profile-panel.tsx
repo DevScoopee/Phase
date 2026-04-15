@@ -1,14 +1,130 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Sheet, SheetContent } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { useLang } from "@/components/lang-context"
 
-type ProfileData = {
+// Social icons (inline SVG)
+function DiscordIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.963 19.963 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
+    </svg>
+  )
+}
+
+function TelegramIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.062 3.345-.48.33-.913.49-1.303.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.015 3.333-1.386 4.025-1.627 4.477-1.635z" />
+    </svg>
+  )
+}
+
+export type ProfileSocials = {
   display_name?: string
   twitter?: string
   discord?: string
   telegram?: string
+}
+
+type ProfileData = ProfileSocials
+
+function SocialChip({
+  bg,
+  label,
+  href,
+  onCopy,
+}: {
+  bg: string
+  label: string
+  href?: string
+  onCopy?: () => void
+}) {
+  const chip = (
+    <span
+      className="inline-flex h-[14px] w-[14px] items-center justify-center rounded-[2px] shrink-0"
+      style={{ background: bg, fontSize: "7px", color: "#fff", fontWeight: 700, lineHeight: 1 }}
+    >
+      {label}
+    </span>
+  )
+  if (href) {
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:opacity-80 transition-opacity">
+        {chip}
+      </a>
+    )
+  }
+  return (
+    <button type="button" onClick={onCopy} className="flex items-center gap-1 hover:opacity-80 transition-opacity">
+      {chip}
+    </button>
+  )
+}
+
+export function SocialChips({
+  profile,
+  showLabel = false,
+}: {
+  profile: ProfileSocials
+  showLabel?: boolean
+}) {
+  const [discordCopied, setDiscordCopied] = useState(false)
+
+  function copyDiscord() {
+    if (!profile.discord) return
+    void navigator.clipboard.writeText(profile.discord).then(() => {
+      setDiscordCopied(true)
+      setTimeout(() => setDiscordCopied(false), 2000)
+    })
+  }
+
+  const hasSocials = profile.twitter || profile.discord || profile.telegram
+  if (!hasSocials) return <span className="font-mono text-[9px] text-zinc-700">—</span>
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+      {profile.twitter && (
+        <div className="flex items-center gap-1">
+          <SocialChip
+            bg="#000"
+            label="𝕏"
+            href={`https://twitter.com/${profile.twitter.replace(/^@/, "")}`}
+          />
+          {showLabel && (
+            <span className="font-mono text-[9px] text-zinc-500">{profile.twitter}</span>
+          )}
+        </div>
+      )}
+      {profile.discord && (
+        <div className="flex items-center gap-1">
+          <SocialChip
+            bg="#5865F2"
+            label="DC"
+            onCopy={copyDiscord}
+          />
+          {showLabel && (
+            <span className="font-mono text-[9px] text-zinc-500">
+              {discordCopied ? "[ COPIED ]" : profile.discord}
+            </span>
+          )}
+        </div>
+      )}
+      {profile.telegram && (
+        <div className="flex items-center gap-1">
+          <SocialChip
+            bg="#0088cc"
+            label="TG"
+            href={`https://t.me/${profile.telegram.replace(/^@/, "")}`}
+          />
+          {showLabel && (
+            <span className="font-mono text-[9px] text-zinc-500">{profile.telegram}</span>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 type NftItem = {
@@ -18,7 +134,7 @@ type NftItem = {
   collectionId?: number
 }
 
-type Tab = "artifacts" | "rewards"
+type Tab = "artifacts" | "rewards" | "search"
 
 function truncateAddress(addr: string) {
   if (!addr || addr.length < 14) return addr
@@ -32,6 +148,104 @@ function avatarInitials(displayName: string | undefined, address: string): strin
     return displayName.slice(0, 2).toUpperCase()
   }
   return address.slice(1, 3).toUpperCase()
+}
+
+type SearchResult = {
+  wallet: string
+  display_name: string | null
+  twitter: string | null
+  discord: string | null
+  telegram: string | null
+  artifact_count: number
+}
+
+type SearchCopy = {
+  searchPlaceholder: string
+  searchInitial: string
+  searchNoResults: string
+  searchSearching: string
+  viewProfile: string
+}
+
+function SearchTab({ t }: { t: SearchCopy }) {
+  const [query, setQuery] = useState("")
+  const [results, setResults] = useState<SearchResult[]>([])
+  const [searching, setSearching] = useState(false)
+  const [searched, setSearched] = useState(false)
+
+  useEffect(() => {
+    if (query.trim().length < 2) {
+      setResults([])
+      setSearched(false)
+      return
+    }
+    const timer = setTimeout(() => {
+      setSearching(true)
+      fetch(`/api/profile/search?q=${encodeURIComponent(query.trim())}`)
+        .then((r) => r.json())
+        .then((data: { results?: SearchResult[] }) => {
+          setResults(data.results ?? [])
+          setSearched(true)
+        })
+        .catch(() => setResults([]))
+        .finally(() => setSearching(false))
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [query])
+
+  return (
+    <div className="flex flex-col gap-3 pt-1">
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder={t.searchPlaceholder}
+        className="w-full border border-zinc-700 bg-zinc-900 px-2 py-1.5 font-mono text-[10px] text-zinc-200 placeholder:text-zinc-700 focus:outline-none focus:border-violet-600 transition-colors"
+      />
+      {searching && (
+        <p className="font-mono text-[9px] text-zinc-600">{t.searchSearching}</p>
+      )}
+      {!searching && query.trim().length < 2 && (
+        <p className="font-mono text-[9px] text-zinc-700">{t.searchInitial}</p>
+      )}
+      {!searching && searched && results.length === 0 && (
+        <p className="font-mono text-[9px] text-zinc-600">{t.searchNoResults}</p>
+      )}
+      {results.map((r) => {
+        const name = r.display_name ?? `${r.wallet.slice(0, 4)}…${r.wallet.slice(-4)}`
+        const initials = name.slice(0, 2).toUpperCase()
+        return (
+          <div
+            key={r.wallet}
+            className="flex items-start gap-2 border border-zinc-800 bg-zinc-900/60 p-2"
+          >
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white"
+              style={{ background: "#534AB7" }}>
+              {initials}
+            </div>
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="font-mono text-[10px] font-medium text-zinc-200 truncate">{name}</span>
+              <span className="font-mono text-[8px] text-zinc-600 truncate">
+                {r.wallet.slice(0, 6)}…{r.wallet.slice(-4)}
+              </span>
+              <SocialChips profile={{
+                display_name: r.display_name ?? undefined,
+                twitter: r.twitter ?? undefined,
+                discord: r.discord ?? undefined,
+                telegram: r.telegram ?? undefined,
+              }} />
+            </div>
+            <a
+              href={`/profile/${r.wallet}`}
+              className="shrink-0 font-mono text-[8px] uppercase tracking-widest text-violet-500 hover:text-violet-300 transition-colors"
+            >
+              {t.viewProfile}
+            </a>
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 type ProfilePanelProps = {
@@ -80,6 +294,12 @@ export function ProfilePanel({ open, onOpenChange, address, disconnect }: Profil
           disconnect: "[ DESCONECTAR_WALLET ]",
           noArtifacts: "Sin artefactos en esta wallet.",
           loading: "···",
+          search: "BUSCAR",
+          searchPlaceholder: "Buscar por nombre, @twitter, discord o wallet...",
+          searchInitial: "[ INGRESAR_TÉRMINO ]",
+          searchNoResults: "[ SIN_RESULTADOS ]",
+          searchSearching: "[ BUSCANDO… ]",
+          viewProfile: "[ VER_PERFIL ]",
           placeholder: {
             displayName: "alias o nombre",
             twitter: "@handle",
@@ -110,6 +330,12 @@ export function ProfilePanel({ open, onOpenChange, address, disconnect }: Profil
           disconnect: "[ DISCONNECT_WALLET ]",
           noArtifacts: "No artifacts in this wallet.",
           loading: "···",
+          search: "SEARCH",
+          searchPlaceholder: "Search by name, @twitter, discord or wallet...",
+          searchInitial: "[ ENTER_SEARCH_TERM ]",
+          searchNoResults: "[ NO_RESULTS ]",
+          searchSearching: "[ SEARCHING… ]",
+          viewProfile: "[ VIEW_PROFILE ]",
           placeholder: {
             displayName: "alias or name",
             twitter: "@handle",
@@ -196,6 +422,7 @@ export function ProfilePanel({ open, onOpenChange, address, disconnect }: Profil
   const TABS: { id: Tab; label: string }[] = [
     { id: "artifacts", label: t.artifacts },
     { id: "rewards", label: t.rewards },
+    { id: "search", label: t.search },
   ]
 
   const SOCIAL_FIELDS = [
@@ -211,6 +438,7 @@ export function ProfilePanel({ open, onOpenChange, address, disconnect }: Profil
         side="right"
         className="w-[min(100vw,22rem)] flex flex-col gap-0 p-0 border-l border-violet-800/30 bg-[#0a0a0f] text-zinc-100 overflow-hidden"
       >
+        <SheetTitle className="sr-only">{t.profile}</SheetTitle>
 
         {/* ── Header ── */}
         <div className="px-5 pt-5 pb-4 border-b border-violet-800/20 flex items-start gap-3">
@@ -289,20 +517,7 @@ export function ProfilePanel({ open, onOpenChange, address, disconnect }: Profil
 
           {!editing ? (
             /* View mode */
-            <div className="flex flex-wrap gap-x-4 gap-y-1">
-              {profile.twitter && (
-                <span className="font-mono text-[9px] text-zinc-500">𝕏 {profile.twitter}</span>
-              )}
-              {profile.discord && (
-                <span className="font-mono text-[9px] text-zinc-500">DC {profile.discord}</span>
-              )}
-              {profile.telegram && (
-                <span className="font-mono text-[9px] text-zinc-500">TG {profile.telegram}</span>
-              )}
-              {!profile.twitter && !profile.discord && !profile.telegram && (
-                <span className="font-mono text-[9px] text-zinc-700">—</span>
-              )}
-            </div>
+            <SocialChips profile={profile} />
           ) : (
             /* Edit mode */
             <div className="space-y-1.5">
@@ -401,6 +616,8 @@ export function ProfilePanel({ open, onOpenChange, address, disconnect }: Profil
               </a>
             </div>
           )}
+
+          {tab === "search" && <SearchTab t={t} />}
         </div>
 
         {/* ── Disconnect ── */}

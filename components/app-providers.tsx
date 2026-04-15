@@ -5,6 +5,8 @@ import { useEffect } from "react"
 import { Toaster } from "sonner"
 import { LangProvider } from "@/components/lang-context"
 import { WalletProvider } from "@/components/wallet-provider"
+import { FaucetModal } from "@/components/faucet-modal"
+import { FloatingHeader } from "@/components/floating-header"
 
 /**
  * Respaldo si el `Script` beforeInteractive del layout no aplicó (p. ej. orden de listeners).
@@ -36,7 +38,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
     <LangProvider>
       <WalletProvider>
         <SwallowEmptyUnhandledRejections />
+        <FloatingHeader />
         {children}
+        <FaucetModal />
         <Toaster
           theme="dark"
           position="top-center"

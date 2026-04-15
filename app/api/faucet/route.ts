@@ -23,6 +23,7 @@ import {
 import {
   checkHasPhased,
   fetchCreatorCollectionId,
+  fetchCreatorCollectionIds,
   fetchTotalCollections,
   HORIZON_URL,
   NETWORK_PASSPHRASE,
@@ -31,6 +32,7 @@ import {
   tokenContractIdForServer,
   userOwnsAnyPhaseToken,
 } from "@/lib/phase-protocol"
+import { getAllWorldCollections } from "@/lib/narrative-world-store"
 
 /** Vercel: Hobby ~10s; Pro/Enterprise permite más — subir si el faucet sigue en 504. */
 export const maxDuration = 60
@@ -45,6 +47,7 @@ const FAUCET_PENDING_TTL_MS = 8 * 60 * 1000
 const FAUCET_POLL_INTERVAL_MS = 1000
 const FAUCET_MAX_POLLS_PER_REQUEST = 4
 const QUEST_REWARD_STROOPS = "30000000"
+const NEW_QUEST_REWARD_STROOPS = "50000000"
 const DAILY_REWARD_STROOPS = "20000000"
 /** `get_user_phase(wallet, cid)` por cid — acotado; evita depender solo del escaneo owner_of en los últimos N ids. */
 const QUEST_COLLECTION_PHASE_SCAN_CAP = 256
@@ -52,7 +55,13 @@ const QUEST_COLLECTION_PHASE_SCAN_CAP = 256
 /** Por debajo de esto, Soroban suele fallar (trap / ihf_trapped) por falta de XLM para fees y renta. */
 const MIN_SIGNER_NATIVE_XLM = 5
 
-const QUEST_IDS = ["quest_connect_wallet", "quest_first_collection", "quest_first_settle"] as const
+const QUEST_IDS = [
+  "quest_connect_wallet",
+  "quest_first_collection",
+  "quest_first_settle",
+  "quest_first_world",
+  "quest_three_collections",
+] as const
 type QuestId = (typeof QUEST_IDS)[number]
 type RewardType = "genesis" | "daily" | QuestId
 
@@ -179,6 +188,7 @@ function serverTokenContractId(): string {
 function rewardAmountStroops(reward: RewardType): string {
   if (reward === "genesis") return PHASER_FAUCET_MINT_STROOPS
   if (reward === "daily") return DAILY_REWARD_STROOPS
+  if (reward === "quest_first_world" || reward === "quest_three_collections") return NEW_QUEST_REWARD_STROOPS
   return QUEST_REWARD_STROOPS
 }
 
@@ -191,21 +201,31 @@ async function readQuestProgress(wallet: string | null): Promise<Record<QuestId,
   const collectionText =
     "Forge a collection, or mint once in any collection (Chamber / EXECUTE_SETTLEMENT)."
   const settleText = "Complete a Chamber settlement (signed phase mint on-chain)."
+  const worldText = "Create a narrative world in World Studio."
+  const threeColText = "Mint in 3 different collections."
   if (!wallet) {
     return {
-      quest_connect_wallet: { completed: false, progressPct: 0, requirementText: connectText },
+      quest_connect_wallet:   { completed: false, progressPct: 0, requirementText: connectText },
       quest_first_collection: { completed: false, progressPct: 0, requirementText: collectionText },
-      quest_first_settle: { completed: false, progressPct: 0, requirementText: settleText },
+      quest_first_settle:     { completed: false, progressPct: 0, requirementText: settleText },
+      quest_first_world:      { completed: false, progressPct: 0, requirementText: worldText },
+      quest_three_collections:{ completed: false, progressPct: 0, requirementText: threeColText },
     }
   }
 
   try {
-    const [creatorCollectionId, defaultPhase, totalColsRaw] = await Promise.all([
+    const [creatorCollectionId, defaultPhase, totalColsRaw, creatorIds, worldsStore] = await Promise.all([
       fetchCreatorCollectionId(wallet),
       checkHasPhased(wallet, 0),
       fetchTotalCollections(),
+      fetchCreatorCollectionIds(wallet),
+      getAllWorldCollections(),
     ])
     const hasCreatorCollection = Boolean(creatorCollectionId && creatorCollectionId > 0)
+
+    // quest_first_world: any creator collection has an active world
+    const worldCollectionIds = new Set(Object.keys(worldsStore).map(Number))
+    const hasFirstWorld = creatorIds.some((id) => worldCollectionIds.has(id))
 
     let hasMintedPhase = Boolean(defaultPhase.phased)
     if (!hasMintedPhase && hasCreatorCollection && creatorCollectionId != null) {
@@ -213,26 +233,34 @@ async function readQuestProgress(wallet: string | null): Promise<Record<QuestId,
       hasMintedPhase = Boolean(ownCol.phased)
     }
 
+    // Combined scan: find hasMintedPhase + count minted collections (for quest_three_collections)
+    let mintedCollectionCount = hasMintedPhase ? 1 : 0
     const colCap = Math.min(Math.max(totalColsRaw, 0), QUEST_COLLECTION_PHASE_SCAN_CAP)
-    if (!hasMintedPhase && colCap > 0) {
+    if (colCap > 0) {
       const conc = 8
-      for (let start = 1; start <= colCap && !hasMintedPhase; start += conc) {
+      for (let start = 1; start <= colCap; start += conc) {
+        if (hasMintedPhase && mintedCollectionCount >= 3) break
         const batch: Promise<{ phased: boolean }>[] = []
         for (let j = 0; j < conc && start + j <= colCap; j++) {
-          const cid = start + j
-          batch.push(checkHasPhased(wallet, cid))
+          batch.push(checkHasPhased(wallet, start + j))
         }
         const results = await Promise.all(batch)
-        if (results.some((r) => r.phased)) hasMintedPhase = true
+        for (const r of results) {
+          if (r.phased) {
+            hasMintedPhase = true
+            mintedCollectionCount++
+          }
+        }
       }
     }
 
-    /** Respaldo: NFT con id bajo no entra en la ventana “últimos N” de `userOwnsAnyPhaseToken`. */
+    /** Respaldo: NFT con id bajo no entra en la ventana "últimos N" de `userOwnsAnyPhaseToken`. */
     const QUEST_OWNER_SCAN_WINDOW = 2000
     const hasSettlement =
       hasMintedPhase || (await userOwnsAnyPhaseToken(wallet, QUEST_OWNER_SCAN_WINDOW))
 
     const hasCollectionEngagement = hasCreatorCollection || hasMintedPhase
+    const threeColsDone = mintedCollectionCount >= 3
 
     return {
       quest_connect_wallet: { completed: true, progressPct: 100, requirementText: connectText },
@@ -246,12 +274,24 @@ async function readQuestProgress(wallet: string | null): Promise<Record<QuestId,
         progressPct: hasSettlement ? 100 : hasCollectionEngagement ? 50 : 0,
         requirementText: settleText,
       },
+      quest_first_world: {
+        completed: hasFirstWorld,
+        progressPct: hasFirstWorld ? 100 : hasCreatorCollection ? 40 : 0,
+        requirementText: worldText,
+      },
+      quest_three_collections: {
+        completed: threeColsDone,
+        progressPct: Math.min(100, Math.round((mintedCollectionCount / 3) * 100)),
+        requirementText: threeColText,
+      },
     }
   } catch {
     return {
-      quest_connect_wallet: { completed: true, progressPct: 100, requirementText: connectText },
-      quest_first_collection: { completed: false, progressPct: 0, requirementText: collectionText },
-      quest_first_settle: { completed: false, progressPct: 0, requirementText: settleText },
+      quest_connect_wallet:   { completed: true,  progressPct: 100, requirementText: connectText },
+      quest_first_collection: { completed: false, progressPct: 0,   requirementText: collectionText },
+      quest_first_settle:     { completed: false, progressPct: 0,   requirementText: settleText },
+      quest_first_world:      { completed: false, progressPct: 0,   requirementText: worldText },
+      quest_three_collections:{ completed: false, progressPct: 0,   requirementText: threeColText },
     }
   }
 }
@@ -318,10 +358,28 @@ async function buildWalletStatus(wallet: string | null, claims: FaucetClaims) {
     requirementText: questProgress.quest_first_settle.requirementText,
   }
 
-  const questCompletion = [questConnect, questCollection, questSettle].map((r) =>
-    r.claimedAt || r.requirementMet ? 1 : 0,
-  )
-  const questsDone = Number(questCompletion[0]) + Number(questCompletion[1]) + Number(questCompletion[2])
+  const rawQuestFirstWorld = claimStatusForReward(claim, "quest_first_world", now)
+  const rawQuestThreeCols  = claimStatusForReward(claim, "quest_three_collections", now)
+
+  const questFirstWorld: RewardStatus = {
+    ...rawQuestFirstWorld,
+    claimable: rawQuestFirstWorld.claimable && questProgress.quest_first_world.completed,
+    requirementMet: Boolean(rawQuestFirstWorld.claimedAt) || questProgress.quest_first_world.completed,
+    progressPct: rawQuestFirstWorld.claimedAt ? 100 : questProgress.quest_first_world.progressPct,
+    requirementText: questProgress.quest_first_world.requirementText,
+  }
+  const questThreeCols: RewardStatus = {
+    ...rawQuestThreeCols,
+    claimable: rawQuestThreeCols.claimable && questProgress.quest_three_collections.completed,
+    requirementMet: Boolean(rawQuestThreeCols.claimedAt) || questProgress.quest_three_collections.completed,
+    progressPct: rawQuestThreeCols.claimedAt ? 100 : questProgress.quest_three_collections.progressPct,
+    requirementText: questProgress.quest_three_collections.requirementText,
+  }
+
+  const allQuests = [questConnect, questCollection, questSettle, questFirstWorld, questThreeCols]
+  const questsDone = allQuests.filter((r) => r.claimedAt || r.requirementMet).length
+  const totalQuests = allQuests.length
+
   return {
     enabled: faucetConfigured(),
     payoutMode: faucetConfigured() ? (faucetUsesDistributorTransfer() ? "transfer" : "mint") : null,
@@ -329,8 +387,8 @@ async function buildWalletStatus(wallet: string | null, claims: FaucetClaims) {
     dailyWindowMs: DAILY_WINDOW_MS,
     questOverview: {
       completed: questsDone,
-      total: 3,
-      progressPct: Math.round((questsDone / 3) * 100),
+      total: totalQuests,
+      progressPct: Math.round((questsDone / totalQuests) * 100),
     },
     rewards: {
       genesis: rawGenesis,
@@ -338,6 +396,8 @@ async function buildWalletStatus(wallet: string | null, claims: FaucetClaims) {
       quest_connect_wallet: questConnect,
       quest_first_collection: questCollection,
       quest_first_settle: questSettle,
+      quest_first_world: questFirstWorld,
+      quest_three_collections: questThreeCols,
     },
   }
 }
@@ -415,7 +475,7 @@ function faucetMintLedgerFailedResponse(
     {
       error: "La transacción falló en el ledger (Soroban).",
       code: "FAUCET_MINT_LEDGER_FAILED",
-      detail: `En esta petición ya comprobamos en Horizon que tenías trustline PHASELQ (mismo code+issuer que la app). El rechazo viene del contrato token o de otra regla on-chain, no de “falta trustline”. Detalle: ${sorobanSummary}. Abre el hash en Stellar Expert (Soroban testnet) para ver el motivo exacto.`,
+      detail: `En esta petición ya comprobamos en Horizon que tenías trustline PHASELQ (mismo code+issuer que la app). El rechazo viene del contrato token o de otra regla on-chain, no de "falta trustline". Detalle: ${sorobanSummary}. Abre el hash en Stellar Expert (Soroban testnet) para ver el motivo exacto.`,
       hash,
       sorobanSummary,
     },
