@@ -33,6 +33,7 @@ import {
   tokenContractIdForServer,
 } from "@/lib/phase-protocol"
 import { logUnknownStellarError } from "@/lib/stellar"
+import { checkAndUnlock } from "@/lib/achievement-store"
 import { warnPhaserLiqSacMismatchOnce } from "@/lib/phaser-liq-sac-warn"
 import {
   generateForgeImageUrlViaNanobananaApi,
@@ -1017,6 +1018,14 @@ export async function POST(request: NextRequest): Promise<NextResponse<ForgeAgen
 
     const outputLang = normalizeForgeOutputLang(body.lang)
     const payload = await runForgeAgentCore(body.prompt, styleMode, nanobananaCallBackUrl, worldPrompt, outputLang, recentLores)
+    // Achievements: fire-and-forget after successful forge
+    const payerForAchiev = body.payerAddress?.trim() ?? ""
+    if (payerForAchiev) {
+      void checkAndUnlock(payerForAchiev, {
+        mints: 1,
+        has_collection: typeof body.collection_id === "number" && body.collection_id > 0,
+      }).catch(() => { /* silent */ })
+    }
     return NextResponse.json(payload)
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)

@@ -33,6 +33,7 @@ import {
   userOwnsAnyPhaseToken,
 } from "@/lib/phase-protocol"
 import { getAllWorldCollections } from "@/lib/narrative-world-store"
+import { checkAndUnlock } from "@/lib/achievement-store"
 
 /** Vercel: Hobby ~10s; Pro/Enterprise permite más — subir si el faucet sigue en 504. */
 export const maxDuration = 60
@@ -740,6 +741,9 @@ export async function POST(req: NextRequest) {
       const out = await pollSubmittedMint(server, pendingHash)
       if (out.outcome === "SUCCESS") {
         await markClaim(userAddress, reward)
+        if (reward === "daily") {
+          void checkAndUnlock(userAddress, { daily_claim: true }).catch(() => { /* silent */ })
+        }
         return NextResponse.json({
           ok: true,
           hash: pendingHash,
@@ -839,6 +843,9 @@ export async function POST(req: NextRequest) {
     const out = await pollSubmittedMint(server, hash)
     if (out.outcome === "SUCCESS") {
       await markClaim(userAddress, reward)
+      if (reward === "daily") {
+        void checkAndUnlock(userAddress, { daily_claim: true }).catch(() => { /* silent */ })
+      }
       return NextResponse.json({ ok: true, hash, reward, amountStroops: rewardAmountStroops(reward) })
     }
     if (out.outcome === "FAILED") {

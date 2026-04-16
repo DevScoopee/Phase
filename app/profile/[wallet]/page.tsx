@@ -1,8 +1,10 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
+import { WalletAvatar } from "@/components/wallet-avatar"
 import { getProfile } from "@/lib/profile-store"
 import { getFollowCounts } from "@/lib/follow-store"
 import { getSignals } from "@/lib/signal-store"
+import { getAchievements } from "@/lib/achievement-store"
 import { SocialChipsPublic } from "./social-chips-public"
 import { FollowButton } from "./follow-button"
 
@@ -75,11 +77,12 @@ export default async function ProfilePage({ params }: Props) {
 
   if (!wallet || wallet.length < 10) notFound()
 
-  const [profile, nfts, followCounts, recentSignals] = await Promise.all([
+  const [profile, nfts, followCounts, recentSignals, achievements] = await Promise.all([
     getProfile(wallet),
     fetchNfts(wallet),
     getFollowCounts(wallet),
     getSignals(undefined, "new").then((all) => all.filter((s) => s.author_wallet === wallet).slice(0, 3)),
+    getAchievements(wallet),
   ])
 
   const displayName = profile?.display_name ?? truncate(wallet)
@@ -161,6 +164,35 @@ export default async function ProfilePage({ params }: Props) {
                   <p className="font-mono text-[10px] text-zinc-300 truncate">{nft.name}</p>
                 </div>
               ))}
+            </div>
+          </section>
+        )}
+
+        {/* Achievements */}
+        {achievements.length > 0 && (
+          <section className="space-y-3">
+            <h2 className="text-[9px] uppercase tracking-widest text-zinc-600 border-b border-violet-800/20 pb-1">
+              ACHIEVEMENTS — {achievements.length}
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              {achievements.map((a) => {
+                const NAMES: Record<string, string> = {
+                  first_mint: "First Artifact", collector_5: "Collector ×5", collector_10: "Collector ×10",
+                  first_collection: "Forge Master", world_builder: "World Builder", narrator_10: "Narrator ×10",
+                  signal_pioneer: "Signal Pioneer", community_voice: "Community Voice", connector_10: "Connector ×10",
+                  daily_streak_7: "Streak ×7", daily_streak_30: "Streak ×30", phaselq_100: "PHASELQ ×100",
+                }
+                return (
+                  <span
+                    key={a.id}
+                    className="inline-flex items-center gap-1 font-mono text-[8px] px-2 py-1"
+                    style={{ background: "rgba(124,58,237,0.1)", color: "#a78bfa", border: "1px solid rgba(124,58,237,0.25)" }}
+                    title={`Unlocked ${new Date(a.unlocked_at).toLocaleDateString()}`}
+                  >
+                    ◈ {NAMES[a.id] ?? a.id}
+                  </span>
+                )
+              })}
             </div>
           </section>
         )}

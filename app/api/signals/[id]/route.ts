@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { StrKey } from "@stellar/stellar-sdk"
 import { getSignal, upvoteSignal, getReplies } from "@/lib/signal-store"
+import { createNotification } from "@/lib/notification-store"
+import { checkAndUnlock } from "@/lib/achievement-store"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -44,6 +46,19 @@ export async function POST(
 
   try {
     const signal = await upvoteSignal(id, body.wallet)
+    // Notify at milestones: 5, 10, 25 upvotes (fire-and-forget)
+    const count = signal.upvotes.length
+    if ((count === 5 || count === 10 || count === 25) && signal.author_wallet !== body.wallet) {
+      void createNotification(signal.author_wallet, "signal_upvote", {
+        signal_id: id,
+        signal_title: signal.title,
+        upvote_count: count,
+      }).catch(() => { /* silent */ })
+    }
+    // Achievement: track upvotes for the author (fire-and-forget)
+    if (signal.author_wallet !== body.wallet) {
+      void checkAndUnlock(signal.author_wallet, { upvote_delta: 1 }).catch(() => { /* silent */ })
+    }
     return NextResponse.json({ signal })
   } catch {
     return NextResponse.json({ error: "Signal not found" }, { status: 404 })

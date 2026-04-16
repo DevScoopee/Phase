@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { StrKey } from "@stellar/stellar-sdk"
 import { getSignal, createReply } from "@/lib/signal-store"
+import { createNotification } from "@/lib/notification-store"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -61,6 +62,16 @@ export async function POST(
     upvotes: [],
     signature: body.signature as string,
   })
+
+  // Notify signal author (fire-and-forget)
+  if (signal.author_wallet !== walletStr) {
+    void createNotification(signal.author_wallet, "signal_reply", {
+      reply_author_wallet: walletStr,
+      reply_author_name: author_display,
+      signal_id: id,
+      signal_title: signal.title,
+    }).catch(() => { /* silent */ })
+  }
 
   return NextResponse.json({ reply }, { status: 201 })
 }

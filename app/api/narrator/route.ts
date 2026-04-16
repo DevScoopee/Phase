@@ -6,6 +6,7 @@ import {
   saveNarrativeForToken,
   getNarrativeForToken,
 } from "@/lib/narrative-world-store"
+import { createNotification } from "@/lib/notification-store"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -39,6 +40,7 @@ type NarratorBody = {
   token_id?: unknown
   collection_id?: unknown
   lore?: unknown
+  creator_wallet?: unknown
 }
 
 export async function POST(request: NextRequest) {
@@ -129,6 +131,16 @@ export async function POST(request: NextRequest) {
     collection_id: collectionId,
     lore_input: loreInput,
   })
+
+  // Notify world creator if provided (fire-and-forget)
+  const creatorWallet = typeof body.creator_wallet === "string" ? body.creator_wallet.trim() : ""
+  if (creatorWallet) {
+    void createNotification(creatorWallet, "narrator_generated", {
+      collection_id: collectionId,
+      world_name: world.world_name,
+      token_id: tokenId,
+    }).catch(() => { /* silent */ })
+  }
 
   return NextResponse.json({ ok: true, narrative })
 }

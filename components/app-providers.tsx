@@ -7,6 +7,7 @@ import { LangProvider } from "@/components/lang-context"
 import { WalletProvider } from "@/components/wallet-provider"
 import { FaucetModal } from "@/components/faucet-modal"
 import { FloatingHeader } from "@/components/floating-header"
+import { NotificationsModal } from "@/components/notifications-modal"
 
 /**
  * Respaldo si el `Script` beforeInteractive del layout no aplicó (p. ej. orden de listeners).
@@ -41,6 +42,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
         <FloatingHeader />
         {children}
         <FaucetModal />
+        <NotificationsModal />
         <Toaster
           theme="dark"
           position="top-center"

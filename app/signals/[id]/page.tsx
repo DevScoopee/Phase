@@ -1,16 +1,18 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
+import { WalletAvatar } from "@/components/wallet-avatar"
 import { getSignal, getReplies } from "@/lib/signal-store"
 import { SignalDetailClient } from "./signal-detail-client"
 
 export const dynamic = "force-dynamic"
 
 type Props = {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }
 
 export async function generateMetadata({ params }: Props) {
-  const signal = await getSignal(params.id)
+  const { id } = await params
+  const signal = await getSignal(id)
   if (!signal) return { title: "Signal not found — PHASE" }
   return {
     title: `${signal.title} — PHASE SIGNAL_BOARD`,
@@ -29,12 +31,12 @@ function timeAgo(ts: number): string {
 }
 
 export default async function SignalDetailPage({ params }: Props) {
-  const signal = await getSignal(params.id)
+  const { id } = await params
+  const signal = await getSignal(id)
   if (!signal) notFound()
 
-  const replies = await getReplies(params.id)
+  const replies = await getReplies(id)
   const shortWallet = `${signal.author_wallet.slice(0, 4)}…${signal.author_wallet.slice(-4)}`
-  const initials = signal.author_display.slice(0, 2).toUpperCase()
 
   return (
     <div className="min-h-screen" style={{ fontFamily: "var(--font-mono)" }}>
@@ -58,12 +60,11 @@ export default async function SignalDetailPage({ params }: Props) {
           }}
         >
           <div className="flex items-center gap-2 flex-wrap">
-            <div
-              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white"
-              style={{ background: "#534AB7" }}
-            >
-              {initials}
-            </div>
+            <WalletAvatar
+              wallet={signal.author_wallet}
+              displayName={signal.author_display}
+              size={28}
+            />
             <span className="font-mono text-[11px] font-medium text-foreground">
               {signal.author_display}
             </span>
@@ -126,7 +127,7 @@ export default async function SignalDetailPage({ params }: Props) {
         </article>
 
         {/* Replies + compose (client island) */}
-        <SignalDetailClient signalId={params.id} initialReplies={replies} />
+        <SignalDetailClient signalId={id} initialReplies={replies} />
       </div>
     </div>
   )

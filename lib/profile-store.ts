@@ -7,6 +7,7 @@ export type ProfileData = {
   twitter?: string
   discord?: string
   telegram?: string
+  avatar_token_id?: number
   updated_at: number
 }
 

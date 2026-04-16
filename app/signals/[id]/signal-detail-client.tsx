@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useWallet } from "@/components/wallet-provider"
 import { useLang } from "@/components/lang-context"
+import { WalletAvatar } from "@/components/wallet-avatar"
 import type { SignalReply } from "@/lib/signal-store"
 
 const copy = {
@@ -95,40 +96,36 @@ export function SignalDetailClient({ signalId, initialReplies }: Props) {
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {replies.map((r) => {
-            const initials = r.author_display.slice(0, 2).toUpperCase()
-            return (
-              <div
-                key={r.id}
-                className="border border-[var(--color-border-tertiary)] p-4 flex flex-col gap-2"
-                style={{ background: "var(--color-background-primary)" }}
-              >
-                <div className="flex items-center gap-2 flex-wrap">
-                  <div
-                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[8px] font-bold text-white"
-                    style={{ background: "#534AB7" }}
-                  >
-                    {initials}
-                  </div>
-                  <span className="font-mono text-[10px] font-medium text-foreground">
-                    {r.author_display}
-                  </span>
-                  <span
-                    className="font-mono text-[8px] px-1 py-0.5"
-                    style={{ background: "#EEEDFE", color: "#534AB7" }}
-                  >
-                    {t.walletBadge}
-                  </span>
-                  <span className="ml-auto font-mono text-[9px] text-muted-foreground/40">
-                    {timeAgo(r.created_at)}
-                  </span>
-                </div>
-                <p className="font-mono text-[11px] text-muted-foreground leading-relaxed whitespace-pre-wrap">
-                  {r.body}
-                </p>
+          {replies.map((r) => (
+            <div
+              key={r.id}
+              className="border border-[var(--color-border-tertiary)] p-4 flex flex-col gap-2"
+              style={{ background: "var(--color-background-primary)" }}
+            >
+              <div className="flex items-center gap-2 flex-wrap">
+                <WalletAvatar
+                  wallet={r.author_wallet}
+                  displayName={r.author_display}
+                  size={24}
+                />
+                <span className="font-mono text-[10px] font-medium text-foreground">
+                  {r.author_display}
+                </span>
+                <span
+                  className="font-mono text-[8px] px-1 py-0.5"
+                  style={{ background: "#EEEDFE", color: "#534AB7" }}
+                >
+                  {t.walletBadge}
+                </span>
+                <span className="ml-auto font-mono text-[9px] text-muted-foreground/40">
+                  {timeAgo(r.created_at)}
+                </span>
               </div>
-            )
-          })}
+              <p className="font-mono text-[11px] text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                {r.body}
+              </p>
+            </div>
+          ))}
         </div>
       )}
 

@@ -18,6 +18,7 @@ type ProfileBody = {
   twitter?: unknown
   discord?: unknown
   telegram?: unknown
+  avatar_token_id?: unknown
 }
 
 function sanitizeHandle(value: unknown, prefix: string): string | undefined {
@@ -45,7 +46,13 @@ export async function POST(request: NextRequest) {
   const twitter = sanitizeHandle(body.twitter, "")
   const discord = typeof body.discord === "string" ? body.discord.trim().slice(0, 40) || undefined : undefined
   const telegram = sanitizeHandle(body.telegram, "")
+  const avatar_token_id =
+    typeof body.avatar_token_id === "number" && Number.isInteger(body.avatar_token_id)
+      ? body.avatar_token_id
+      : body.avatar_token_id === null
+        ? undefined
+        : undefined
 
-  const profile = await saveProfile(wallet, { display_name, twitter, discord, telegram })
+  const profile = await saveProfile(wallet, { display_name, twitter, discord, telegram, avatar_token_id })
   return NextResponse.json({ ok: true, profile })
 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { StrKey } from "@stellar/stellar-sdk"
 import {
   getAllWorldCollections,
   getAllNarrativesCount,
@@ -7,6 +8,7 @@ import {
   saveWorldForCollection,
   type NarratorTone,
 } from "@/lib/narrative-world-store"
+import { checkAndUnlock } from "@/lib/achievement-store"
 
 export type WorldsListItem = {
   collectionId: number
@@ -69,6 +71,7 @@ type WorldSaveBody = {
   world_name?: unknown
   world_prompt?: unknown
   narrator_tone?: unknown
+  creator_wallet?: unknown
 }
 
 function isNonEmptyString(v: unknown): v is string {
@@ -118,6 +121,11 @@ export async function POST(request: NextRequest) {
     world_prompt: body.world_prompt.trim(),
     narrator_tone: isValidTone(body.narrator_tone) ? body.narrator_tone : undefined,
   })
+
+  // Achievements: fire-and-forget
+  if (typeof body.creator_wallet === "string" && StrKey.isValidEd25519PublicKey(body.creator_wallet)) {
+    void checkAndUnlock(body.creator_wallet, { has_world: true }).catch(() => { /* silent */ })
+  }
 
   return NextResponse.json({ ok: true, collection_id: collectionId })
 }

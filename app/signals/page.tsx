@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useWallet } from "@/components/wallet-provider"
 import { useLang } from "@/components/lang-context"
 import { SignalCompose } from "@/components/signal-compose"
 import { SocialChips } from "@/components/profile-panel"
+import { WalletAvatar } from "@/components/wallet-avatar"
 import type { Signal } from "@/lib/signal-store"
 
 type ChannelStat = { id: string; label: string; count: number }
@@ -144,16 +146,17 @@ function PostCard({
   onUpvote: (id: string) => void
 }) {
   const [expanded, setExpanded] = useState(false)
-  const initials = signal.author_display.slice(0, 2).toUpperCase()
+  const router = useRouter()
   const shortWallet = `${signal.author_wallet.slice(0, 4)}…${signal.author_wallet.slice(-4)}`
   const isLong = signal.body.length > 180
   const authorProfile = useAuthorProfile(signal.author_wallet)
   const nftVerified = useNftVerified(signal.author_wallet, signal.nft_token_id)
 
   return (
-    <Link
-      href={`/signals/${signal.id}`}
-      className="block border border-[var(--color-border-tertiary)] hover:border-[var(--color-border-primary)] transition-colors"
+    <div
+      role="article"
+      onClick={() => router.push(`/signals/${signal.id}`)}
+      className="block border border-[var(--color-border-tertiary)] hover:border-[var(--color-border-primary)] transition-colors cursor-pointer"
       style={{
         background: "var(--color-background-primary)",
         ...(signal.channel !== "general" && signal.channel !== "showcase"
@@ -164,12 +167,11 @@ function PostCard({
       <div className="p-4 flex flex-col gap-2.5">
         {/* Header */}
         <div className="flex items-center gap-2 flex-wrap">
-          <div
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white"
-            style={{ background: "#534AB7" }}
-          >
-            {initials}
-          </div>
+          <WalletAvatar
+            wallet={signal.author_wallet}
+            displayName={signal.author_display}
+            size={28}
+          />
           {/* Author name → public profile */}
           <Link
             href={`/profile/${signal.author_wallet}`}
@@ -293,7 +295,7 @@ function PostCard({
           <span className="ml-auto font-mono text-[9px] text-muted-foreground/40">{shortWallet}</span>
         </div>
       </div>
-    </Link>
+    </div>
   )
 }
 

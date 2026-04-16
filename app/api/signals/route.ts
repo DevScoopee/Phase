@@ -6,6 +6,7 @@ import {
   getSignalChannelStats,
 } from "@/lib/signal-store"
 import { getAllWorldCollections } from "@/lib/narrative-world-store"
+import { checkAndUnlock } from "@/lib/achievement-store"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -105,6 +106,9 @@ export async function POST(request: NextRequest) {
     ...(typeof body.nft_name === "string" ? { nft_name: body.nft_name } : {}),
     ...(typeof body.nft_image === "string" ? { nft_image: body.nft_image } : {}),
   })
+
+  // Achievements: fire-and-forget
+  void checkAndUnlock(walletStr, { signal_posted: true }).catch(() => { /* silent */ })
 
   return NextResponse.json({ signal }, { status: 201 })
 }

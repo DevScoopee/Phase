@@ -13,6 +13,10 @@ const FILES = {
   signals: "signals.json",
   signalReplies: "signal-replies.json",
   profileFollows: "profile-follows.json",
+  notifications: "notifications.json",
+  marketListings: "market-listings.json",
+  marketOffers: "market-offers.json",
+  achievements: "achievements.json",
 } as const
 
 export type ServerDataFile = keyof typeof FILES
