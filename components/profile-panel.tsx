@@ -982,6 +982,8 @@ export function ProfilePanel({ open, onOpenChange, address, disconnect }: Profil
 
   async function handleSelectAvatar(tokenId: number | null) {
     setSavingAvatar(true)
+    const selectedNft = tokenId !== null ? nfts.find((n) => n.tokenId === tokenId) : undefined
+    const avatar_image_url = selectedNft?.image?.trim() || undefined
     try {
       const res = await fetch("/api/profile", {
         method: "POST",
@@ -993,10 +995,11 @@ export function ProfilePanel({ open, onOpenChange, address, disconnect }: Profil
           discord: profile.discord,
           telegram: profile.telegram,
           avatar_token_id: tokenId,
+          avatar_image_url,
         }),
       })
       if (!res.ok) throw new Error("save failed")
-      setProfile((p) => ({ ...p, avatar_token_id: tokenId ?? undefined }))
+      setProfile((p) => ({ ...p, avatar_token_id: tokenId ?? undefined, avatar_image_url }))
       setAvatarSelectorOpen(false)
     } catch { /* ignore */ }
     finally { setSavingAvatar(false) }

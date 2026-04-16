@@ -8,6 +8,7 @@ export type ProfileData = {
   discord?: string
   telegram?: string
   avatar_token_id?: number
+  avatar_image_url?: string
   updated_at: number
 }
 

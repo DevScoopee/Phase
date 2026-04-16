@@ -19,6 +19,7 @@ type ProfileBody = {
   discord?: unknown
   telegram?: unknown
   avatar_token_id?: unknown
+  avatar_image_url?: unknown
 }
 
 function sanitizeHandle(value: unknown, prefix: string): string | undefined {
@@ -52,11 +53,15 @@ export async function POST(request: NextRequest) {
       : body.avatar_token_id === null
         ? undefined
         : undefined
+  const avatar_image_url =
+    typeof body.avatar_image_url === "string" && body.avatar_image_url.trim()
+      ? body.avatar_image_url.trim()
+      : undefined
 
   console.log("[profile POST] saving:", { wallet, display_name, twitter, discord, telegram, avatar_token_id })
   let profile
   try {
-    profile = await saveProfile(wallet, { display_name, twitter, discord, telegram, avatar_token_id })
+    profile = await saveProfile(wallet, { display_name, twitter, discord, telegram, avatar_token_id, avatar_image_url })
   } catch (err) {
     console.error("[profile POST] saveProfile error:", err)
     return NextResponse.json({ error: "save_failed", detail: String(err) }, { status: 500 })
