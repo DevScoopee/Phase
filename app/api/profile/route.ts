@@ -53,6 +53,14 @@ export async function POST(request: NextRequest) {
         ? undefined
         : undefined
 
-  const profile = await saveProfile(wallet, { display_name, twitter, discord, telegram, avatar_token_id })
+  console.log("[profile POST] saving:", { wallet, display_name, twitter, discord, telegram, avatar_token_id })
+  let profile
+  try {
+    profile = await saveProfile(wallet, { display_name, twitter, discord, telegram, avatar_token_id })
+  } catch (err) {
+    console.error("[profile POST] saveProfile error:", err)
+    return NextResponse.json({ error: "save_failed", detail: String(err) }, { status: 500 })
+  }
+  console.log("[profile POST] saved ok:", profile)
   return NextResponse.json({ ok: true, profile })
 }

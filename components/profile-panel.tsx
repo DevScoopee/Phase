@@ -1023,6 +1023,7 @@ export function ProfilePanel({ open, onOpenChange, address, disconnect }: Profil
             className="shrink-0 rounded-full border border-violet-700/40 hover:border-violet-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <WalletAvatar
+              key={profile.avatar_token_id ?? "no-avatar"}
               wallet={address}
               displayName={profile.display_name}
               size={40}

@@ -7,9 +7,7 @@ import { signTransaction } from "@/lib/stellar-wallet-kit"
 import { LangToggle } from "@/components/lang-toggle"
 import { useLang } from "@/components/lang-context"
 import { IpfsDisplayImg } from "@/components/ipfs-display-img"
-import { PhaseProtectedPreview } from "@/components/phase-protected-preview"
 import { TokenIcon } from "@/components/token-icon"
-import { ArtistAliasControl } from "@/components/artist-alias-control"
 import { useWallet } from "@/components/wallet-provider"
 import { pickCopy } from "@/lib/phase-copy"
 import { cn } from "@/lib/utils"
@@ -74,7 +72,7 @@ export default function DashboardPage() {
   const d = t.dashboard
   const n = t.nav
 
-  const { address, connect, disconnect, connecting, refresh } = useWallet()
+  const { address, connect, connecting, refresh } = useWallet()
   const [activeTab, setActiveTab] = useState<Tab>("GLOBAL_MARKET")
   const [items, setItems] = useState<CollectionInfo[]>([])
   const [loadState, setLoadState] = useState<"idle" | "loading" | "error" | "done">("idle")
@@ -370,60 +368,6 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-background font-mono text-foreground">
       <div className="grid-bg pointer-events-none fixed inset-0 opacity-40" aria-hidden />
 
-      {/* ── Header ── */}
-      <header className="relative z-10 flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-950/90 px-4 py-3 backdrop-blur-sm md:px-6">
-        <div className="flex flex-wrap items-center gap-2">
-          <Link href="/" className={navLinkClass}>{n.home}</Link>
-          <Link href="/explore" className={navLinkClass}>
-            {lang === "es" ? "Explorar" : "Explore"}
-          </Link>
-          <Link href="/world" className={navLinkClass}>
-            {lang === "es" ? "Mundos" : "World"}
-          </Link>
-          <Link href="/forge" className={navLinkClass}>{n.forge}</Link>
-          <Link href="/chamber" className={navLinkClass}>{n.chamber}</Link>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Global refresh */}
-          <button
-            type="button"
-            onClick={() => void globalRefresh()}
-            disabled={isBusy}
-            className="flex items-center gap-1.5 rounded-sm border border-zinc-700 bg-zinc-900/60 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-zinc-400 transition-colors hover:border-violet-500/50 hover:text-violet-300 disabled:opacity-40"
-          >
-            <svg className="h-3 w-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            {isBusy ? d.refreshing : d.refresh}
-          </button>
-
-          {/* Wallet badge */}
-          {!address ? (
-            <button
-              type="button"
-              disabled={connecting}
-              onClick={() => void connect().then(() => refresh()).catch(() => {})}
-              className="rounded-sm border border-violet-700/60 bg-violet-950/40 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-violet-300 transition-colors hover:bg-violet-900/40 disabled:opacity-50"
-            >
-              {connecting ? d.connecting : d.connect}
-            </button>
-          ) : (
-            <div className="group flex items-center gap-2 rounded-sm border border-violet-700/40 bg-violet-950/30 px-3 py-1.5">
-              <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" />
-              <span className="text-[10px] font-medium text-violet-300">{truncateAddress(address)}</span>
-              <button
-                type="button"
-                onClick={() => { disconnect(); void refresh().catch(() => {}) }}
-                className="ml-1 text-[9px] font-bold uppercase text-zinc-500 transition-colors hover:text-red-400"
-              >
-                {d.disconnect}
-              </button>
-            </div>
-          )}
-          <LangToggle variant="phosphor" />
-        </div>
-      </header>
 
       <main className="relative z-10 mx-auto max-w-6xl px-4 py-8 md:py-10">
 
@@ -476,11 +420,6 @@ export default function DashboardPage() {
                       </Link>
                     </div>
                   </div>
-                  {address ? (
-                    <div className="shrink-0 rounded border border-violet-500/35 bg-black/25 p-3 lg:max-w-[17rem] lg:border-l lg:border-t-0 lg:border-violet-500/30 lg:pl-5">
-                      <ArtistAliasControl compact />
-                    </div>
-                  ) : null}
                 </div>
               </div>
 
@@ -508,11 +447,10 @@ export default function DashboardPage() {
                       {/* Image */}
                       <div className="aspect-square overflow-hidden bg-black">
                         {previewUri ? (
-                          <PhaseProtectedPreview
+                          <IpfsDisplayImg
                             uri={previewUri}
-                            chainVerified={chainVerified}
-                            viewerAddress={address}
-                            labels={previewLabels}
+                            className="h-full w-full object-contain"
+                            loading="lazy"
                           />
                         ) : (
                           <div className="flex h-full items-center justify-center">
