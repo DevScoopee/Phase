@@ -69,6 +69,9 @@ const GDPRSettingsScreen = () => {
           <Switch
             value={consent.analytics}
             onValueChange={(val) => setConsent({ analytics: val })}
+            accessibilityLabel="Analytics data sharing"
+            accessibilityRole="switch"
+            accessibilityState={{ checked: consent.analytics }}
           />
         </View>
 
@@ -80,6 +83,9 @@ const GDPRSettingsScreen = () => {
           <Switch
             value={consent.marketing}
             onValueChange={(val) => setConsent({ marketing: val })}
+            accessibilityLabel="Marketing notifications"
+            accessibilityRole="switch"
+            accessibilityState={{ checked: consent.marketing }}
           />
         </View>
       </View>
@@ -91,6 +97,10 @@ const GDPRSettingsScreen = () => {
           style={styles.button} 
           onPress={handleExport}
           disabled={loading}
+          accessibilityRole="button"
+          accessibilityLabel="Export my data as JSON"
+          accessibilityHint="Downloads a copy of your profile, subscriptions, and billing history"
+          accessibilityState={{ disabled: loading, busy: loading }}
         >
           {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Export My Data (JSON)</Text>}
         </TouchableOpacity>
@@ -102,6 +112,10 @@ const GDPRSettingsScreen = () => {
           style={[styles.button, styles.deleteButton]} 
           onPress={handleDeleteAccount}
           disabled={loading}
+          accessibilityRole="button"
+          accessibilityLabel="Delete my account"
+          accessibilityHint="Permanently anonymizes your personal data. This cannot be undone."
+          accessibilityState={{ disabled: loading }}
         >
           <Text style={styles.buttonText}>Delete My Account</Text>
         </TouchableOpacity>

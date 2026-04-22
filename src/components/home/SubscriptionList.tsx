@@ -34,18 +34,26 @@ export const SubscriptionList: React.FC<SubscriptionListProps> = ({
       {/* Upcoming Billing Section */}
       {upcomingSubscriptions && upcomingSubscriptions.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Upcoming Billing</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">
+            Upcoming Billing
+          </Text>
           <Text style={styles.sectionSubtitle}>
             {upcomingSubscriptions.length} subscription
             {upcomingSubscriptions.length !== 1 ? 's' : ''} due this week
           </Text>
-          <View style={styles.upcomingContainer}>
+          <View
+            style={styles.upcomingContainer}
+            accessible={false}>
             {upcomingSubscriptions.slice(0, 3).map((subscription) => (
-              <View key={subscription.id} style={styles.upcomingItem}>
-                <Text style={styles.upcomingName} numberOfLines={1}>
+              <View
+                key={subscription.id}
+                style={styles.upcomingItem}
+                accessible={true}
+                accessibilityLabel={`${subscription.name}, due ${new Date(subscription.nextBillingDate).toLocaleDateString()}`}>
+                <Text style={styles.upcomingName} numberOfLines={1} accessibilityElementsHidden={true} importantForAccessibility="no">
                   {subscription.name}
                 </Text>
-                <Text style={styles.upcomingDate}>
+                <Text style={styles.upcomingDate} accessibilityElementsHidden={true} importantForAccessibility="no">
                   {new Date(subscription.nextBillingDate).toLocaleDateString()}
                 </Text>
               </View>
@@ -57,9 +65,11 @@ export const SubscriptionList: React.FC<SubscriptionListProps> = ({
       {/* Main List Section */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Your Subscriptions</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">
+            Your Subscriptions
+          </Text>
           {hasSubscriptions && (
-            <View style={styles.sectionHeaderRight}>
+            <View style={styles.sectionHeaderRight} accessibilityElementsHidden={true} importantForAccessibility="no">
               {hasActiveFilters && (
                 <Text style={styles.activeFiltersText}>
                   {filteredCount} of {totalCount}
@@ -85,13 +95,24 @@ export const SubscriptionList: React.FC<SubscriptionListProps> = ({
             ))}
           </View>
         ) : (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyIcon}>📱</Text>
-            <Text style={styles.emptyText}>No subscriptions yet</Text>
-            <Text style={styles.emptySubtext}>
+          <View
+            style={styles.emptyState}
+            accessible={true}
+            accessibilityLabel="No subscriptions yet. Add your first subscription to start tracking your spending.">
+            <Text style={styles.emptyIcon} accessibilityElementsHidden={true} importantForAccessibility="no">
+              📱
+            </Text>
+            <Text style={styles.emptyText} accessibilityElementsHidden={true} importantForAccessibility="no">
+              No subscriptions yet
+            </Text>
+            <Text style={styles.emptySubtext} accessibilityElementsHidden={true} importantForAccessibility="no">
               Add your first subscription to start tracking your spending
             </Text>
-            <TouchableOpacity style={styles.addFirstButton} onPress={onAddFirstPress}>
+            <TouchableOpacity
+              style={styles.addFirstButton}
+              onPress={onAddFirstPress}
+              accessibilityRole="button"
+              accessibilityLabel="Add your first subscription">
               <Text style={styles.addFirstButtonText}>Add Subscription</Text>
             </TouchableOpacity>
           </View>
