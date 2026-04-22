@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import { SubscriptionCategory, BillingCycle, SubscriptionFormData } from '../typ
 import { useSubscriptionStore } from '../store';
 import { Button } from '../components/common/Button';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { errorHandler } from '../services/errorHandler';
 
 interface AddSubscriptionFormData extends SubscriptionFormData {
   priceError: string;
@@ -26,7 +27,7 @@ interface AddSubscriptionFormData extends SubscriptionFormData {
 
 const AddSubscriptionScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { addSubscription, isLoading } = useSubscriptionStore();
+  const { addSubscription, isLoading, error } = useSubscriptionStore();
 
   const [formData, setFormData] = useState<AddSubscriptionFormData>({
     name: '',
@@ -43,12 +44,13 @@ const AddSubscriptionScreen: React.FC = () => {
     cryptoAmount: undefined,
   });
 
-  const [selectedCategory, setSelectedCategory] = useState<SubscriptionCategory>(
-    SubscriptionCategory.OTHER
-  );
-  const [selectedBillingCycle, setSelectedBillingCycle] = useState<BillingCycle>(
-    BillingCycle.MONTHLY
-  );
+  useEffect(() => {
+    if (error) {
+      Alert.alert('Error', error.userMessage);
+      // Clear the error after showing it
+      // Note: In a real app, you might want to clear errors in the store
+    }
+  }, [error]);
 
   // Date Picker States
   const [showPicker, setShowPicker] = useState(false);
@@ -99,8 +101,14 @@ const AddSubscriptionScreen: React.FC = () => {
   };
 
   const handleSubmit = async () => {
+    // Client-side validation
     if (!formData.name.trim()) {
-      Alert.alert('Error', 'Please enter a subscription name');
+      const validationError = new Error('Subscription name is required');
+      const appError = errorHandler.handleError(validationError, {
+        action: 'validateSubscription',
+        component: 'AddSubscriptionScreen',
+      });
+      Alert.alert('Validation Error', appError.userMessage);
       return;
     }
 
@@ -110,7 +118,12 @@ const AddSubscriptionScreen: React.FC = () => {
       formData.price <= 0 ||
       Number.isNaN(formData.price)
     ) {
-      Alert.alert('Error', formData.priceError || 'Please enter a valid price');
+      const validationError = new Error(formData.priceError || 'Invalid price: must be greater than 0');
+      const appError = errorHandler.handleError(validationError, {
+        action: 'validateSubscription',
+        component: 'AddSubscriptionScreen',
+      });
+      Alert.alert('Validation Error', appError.userMessage);
       return;
     }
 
@@ -135,7 +148,10 @@ const AddSubscriptionScreen: React.FC = () => {
         ]);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to add subscription. Please try again.');
+      // Error is already handled in the store, but we can show additional UI feedback
+      if (error) {
+        Alert.alert('Error', 'Failed to add subscription. Please try again.');
+      }
     }
   };
 
@@ -183,6 +199,9 @@ const AddSubscriptionScreen: React.FC = () => {
                   placeholder="Enter subscription name"
                   placeholderTextColor={colors.textSecondary}
                   autoFocus
+                  accessibilityLabel="Subscription name, required"
+                  accessibilityHint="Enter the name of the subscription service"
+                  returnKeyType="next"
                 />
               </View>
 
@@ -197,6 +216,8 @@ const AddSubscriptionScreen: React.FC = () => {
                   multiline
                   numberOfLines={3}
                   textAlignVertical="top"
+                  accessibilityLabel="Description, optional"
+                  accessibilityHint="Enter an optional description for this subscription"
                 />
               </View>
             </View>
@@ -211,7 +232,10 @@ const AddSubscriptionScreen: React.FC = () => {
                       styles.categoryItem,
                       selectedCategory === category && styles.categoryItemSelected,
                     ]}
-                    onPress={() => handleCategorySelect(category)}>
+                    onPress={() => handleCategorySelect(category)}
+                    accessibilityRole="checkbox"
+                    accessibilityLabel={category.charAt(0).toUpperCase() + category.slice(1)}
+                    accessibilityState={{ checked: selectedCategory === category }}>
                     <Text
                       style={[
                         styles.categoryText,
@@ -256,6 +280,8 @@ const AddSubscriptionScreen: React.FC = () => {
                     placeholder="0.00"
                     placeholderTextColor={colors.textSecondary}
                     keyboardType="decimal-pad"
+                    accessibilityLabel="Price, required"
+                    accessibilityHint="Enter the subscription price"
                   />
                 </View>
                 {formData.priceError ? (
@@ -265,7 +291,12 @@ const AddSubscriptionScreen: React.FC = () => {
 
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Next Billing Date *</Text>
-                <TouchableOpacity style={styles.datePickerButton} onPress={showPickerHandler}>
+                <TouchableOpacity
+                  style={styles.datePickerButton}
+                  onPress={showPickerHandler}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Next billing date, ${formData.nextBillingDate.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}`}
+                  accessibilityHint="Opens date picker to select the next billing date">
                   <Text style={styles.datePickerText}>
                     {formData.nextBillingDate.toLocaleString([], {
                       dateStyle: 'medium',
@@ -296,7 +327,10 @@ const AddSubscriptionScreen: React.FC = () => {
                         styles.billingCycleItem,
                         selectedBillingCycle === cycle && styles.billingCycleItemSelected,
                       ]}
-                      onPress={() => handleBillingCycleSelect(cycle)}>
+                      onPress={() => handleBillingCycleSelect(cycle)}
+                      accessibilityRole="radio"
+                      accessibilityLabel={cycle.charAt(0).toUpperCase() + cycle.slice(1)}
+                      accessibilityState={{ checked: selectedBillingCycle === cycle }}>
                       <Text
                         style={[
                           styles.billingCycleText,
@@ -320,7 +354,10 @@ const AddSubscriptionScreen: React.FC = () => {
                       'notificationsEnabled',
                       !(formData.notificationsEnabled !== false)
                     )
-                  }>
+                  }
+                  accessibilityRole="switch"
+                  accessibilityLabel="Billing reminders and charge alerts"
+                  accessibilityState={{ checked: formData.notificationsEnabled !== false }}>
                   <View
                     style={[
                       styles.toggleSwitch,
@@ -348,7 +385,10 @@ const AddSubscriptionScreen: React.FC = () => {
               <View style={styles.cryptoOption}>
                 <TouchableOpacity
                   style={styles.cryptoToggle}
-                  onPress={() => handleInputChange('isCryptoEnabled', !formData.isCryptoEnabled)}>
+                  onPress={() => handleInputChange('isCryptoEnabled', !formData.isCryptoEnabled)}
+                  accessibilityRole="switch"
+                  accessibilityLabel="Enable crypto payments"
+                  accessibilityState={{ checked: formData.isCryptoEnabled }}>
                   <View
                     style={[
                       styles.toggleSwitch,

@@ -13,7 +13,7 @@ import AnalyticsScreen from '../screens/AnalyticsScreen';
 import GDPRSettingsScreen from '../screens/GDPRSettingsScreen';
 import LanguageSettingsScreen from '../screens/LanguageSettingsScreen';
 import SettingsScreen from '../screens/SettingsScreen';
-import GDPRSettingsScreen from '../screens/GDPRSettingsScreen';
+import ErrorDashboardScreen from '../screens/ErrorDashboardScreen';
 import { colors } from '../utils/constants';
 import { RootStackParamList, TabParamList } from './types';
 
@@ -58,6 +58,11 @@ const SettingsStack = () => (
       name="LanguageSettings" 
       component={LanguageSettingsScreen} 
       options={{ title: 'Language', headerShown: true }} 
+    />
+    <Stack.Screen 
+      name="ErrorDashboard" 
+      component={ErrorDashboardScreen} 
+      options={{ title: 'Error Dashboard', headerShown: true }} 
     />
   </Stack.Navigator>
 );

@@ -19,12 +19,25 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   onAction,
 }) => {
   return (
-    <View style={styles.container}>
-      <Text style={styles.icon}>{icon}</Text>
-      <Text style={styles.title}>{title}</Text>
+    <View
+      style={styles.container}
+      accessible={true}
+      accessibilityRole="text"
+      accessibilityLabel={`${title}. ${message}`}>
+      <Text style={styles.icon} accessibilityElementsHidden={true} importantForAccessibility="no">
+        {icon}
+      </Text>
+      <Text style={styles.title} accessibilityRole="header">
+        {title}
+      </Text>
       <Text style={styles.message}>{message}</Text>
       {actionText && onAction && (
-        <TouchableOpacity style={styles.button} onPress={onAction}>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={onAction}
+          accessibilityRole="button"
+          accessibilityLabel={actionText}
+          accessibilityHint="Activates the suggested action">
           <Text style={styles.buttonText}>{actionText}</Text>
         </TouchableOpacity>
       )}

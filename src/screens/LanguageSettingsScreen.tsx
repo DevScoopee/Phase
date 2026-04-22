@@ -53,6 +53,9 @@ const LanguageSettingsScreen = () => {
               currentLanguage === lang.code && styles.activeItem,
             ]}
             onPress={() => handleLanguageChange(lang.code)}
+            accessibilityRole="radio"
+            accessibilityLabel={`${lang.name}, ${lang.nativeName}`}
+            accessibilityState={{ checked: currentLanguage === lang.code }}
           >
             <View>
               <Text style={[
