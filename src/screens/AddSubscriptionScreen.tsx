@@ -199,6 +199,9 @@ const AddSubscriptionScreen: React.FC = () => {
                   placeholder="Enter subscription name"
                   placeholderTextColor={colors.textSecondary}
                   autoFocus
+                  accessibilityLabel="Subscription name, required"
+                  accessibilityHint="Enter the name of the subscription service"
+                  returnKeyType="next"
                 />
               </View>
 
@@ -213,6 +216,8 @@ const AddSubscriptionScreen: React.FC = () => {
                   multiline
                   numberOfLines={3}
                   textAlignVertical="top"
+                  accessibilityLabel="Description, optional"
+                  accessibilityHint="Enter an optional description for this subscription"
                 />
               </View>
             </View>
@@ -227,7 +232,10 @@ const AddSubscriptionScreen: React.FC = () => {
                       styles.categoryItem,
                       selectedCategory === category && styles.categoryItemSelected,
                     ]}
-                    onPress={() => handleCategorySelect(category)}>
+                    onPress={() => handleCategorySelect(category)}
+                    accessibilityRole="checkbox"
+                    accessibilityLabel={category.charAt(0).toUpperCase() + category.slice(1)}
+                    accessibilityState={{ checked: selectedCategory === category }}>
                     <Text
                       style={[
                         styles.categoryText,
@@ -272,6 +280,8 @@ const AddSubscriptionScreen: React.FC = () => {
                     placeholder="0.00"
                     placeholderTextColor={colors.textSecondary}
                     keyboardType="decimal-pad"
+                    accessibilityLabel="Price, required"
+                    accessibilityHint="Enter the subscription price"
                   />
                 </View>
                 {formData.priceError ? (
@@ -281,7 +291,12 @@ const AddSubscriptionScreen: React.FC = () => {
 
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Next Billing Date *</Text>
-                <TouchableOpacity style={styles.datePickerButton} onPress={showPickerHandler}>
+                <TouchableOpacity
+                  style={styles.datePickerButton}
+                  onPress={showPickerHandler}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Next billing date, ${formData.nextBillingDate.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}`}
+                  accessibilityHint="Opens date picker to select the next billing date">
                   <Text style={styles.datePickerText}>
                     {formData.nextBillingDate.toLocaleString([], {
                       dateStyle: 'medium',
@@ -312,7 +327,10 @@ const AddSubscriptionScreen: React.FC = () => {
                         styles.billingCycleItem,
                         selectedBillingCycle === cycle && styles.billingCycleItemSelected,
                       ]}
-                      onPress={() => handleBillingCycleSelect(cycle)}>
+                      onPress={() => handleBillingCycleSelect(cycle)}
+                      accessibilityRole="radio"
+                      accessibilityLabel={cycle.charAt(0).toUpperCase() + cycle.slice(1)}
+                      accessibilityState={{ checked: selectedBillingCycle === cycle }}>
                       <Text
                         style={[
                           styles.billingCycleText,
@@ -336,7 +354,10 @@ const AddSubscriptionScreen: React.FC = () => {
                       'notificationsEnabled',
                       !(formData.notificationsEnabled !== false)
                     )
-                  }>
+                  }
+                  accessibilityRole="switch"
+                  accessibilityLabel="Billing reminders and charge alerts"
+                  accessibilityState={{ checked: formData.notificationsEnabled !== false }}>
                   <View
                     style={[
                       styles.toggleSwitch,
@@ -364,7 +385,10 @@ const AddSubscriptionScreen: React.FC = () => {
               <View style={styles.cryptoOption}>
                 <TouchableOpacity
                   style={styles.cryptoToggle}
-                  onPress={() => handleInputChange('isCryptoEnabled', !formData.isCryptoEnabled)}>
+                  onPress={() => handleInputChange('isCryptoEnabled', !formData.isCryptoEnabled)}
+                  accessibilityRole="switch"
+                  accessibilityLabel="Enable crypto payments"
+                  accessibilityState={{ checked: formData.isCryptoEnabled }}>
                   <View
                     style={[
                       styles.toggleSwitch,

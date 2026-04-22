@@ -40,7 +40,31 @@ export const lightTheme: Theme = {
   },
 };
 
-export const builtInThemes: Theme[] = [darkTheme, lightTheme];
+/**
+ * High contrast theme for users who need stronger visual differentiation.
+ * Uses pure black/white backgrounds with high-saturation accent colors.
+ */
+export const highContrastTheme: Theme = {
+  id: 'high-contrast',
+  name: 'High Contrast',
+  mode: 'dark',
+  colors: {
+    primary: '#ffffff',
+    secondary: '#ffff00',
+    accent: '#00ffff',
+    success: '#00ff00',
+    warning: '#ffaa00',
+    error: '#ff4444',
+    background: '#000000',
+    surface: '#1a1a1a',
+    text: '#ffffff',
+    textSecondary: '#dddddd',
+    border: '#ffffff',
+    overlay: 'rgba(0, 0, 0, 0.9)',
+  },
+};
+
+export const builtInThemes: Theme[] = [darkTheme, lightTheme, highContrastTheme];
 
 /** Create a brand theme by overriding brand colors on top of a base theme */
 export function createBrandTheme(base: Theme, brand: BrandConfig, id: string, name: string): Theme {
