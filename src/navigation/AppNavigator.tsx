@@ -10,6 +10,8 @@ import WalletConnectScreen from '../screens/WalletConnectScreen';
 import CryptoPaymentScreen from '../screens/CryptoPaymentScreen';
 import SubscriptionDetailScreen from '../screens/SubscriptionDetailScreen';
 import AnalyticsScreen from '../screens/AnalyticsScreen';
+import GDPRSettingsScreen from '../screens/GDPRSettingsScreen';
+import LanguageSettingsScreen from '../screens/LanguageSettingsScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import GDPRSettingsScreen from '../screens/GDPRSettingsScreen';
 import { colors } from '../utils/constants';
@@ -47,10 +49,15 @@ const HomeStack = () => (
 const SettingsStack = () => (
   <Stack.Navigator>
     <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
-    <Stack.Screen 
+    <Stack.Screen
       name="GDPRSettings" 
       component={GDPRSettingsScreen} 
       options={{ title: 'Privacy Settings', headerShown: true }} 
+    />
+    <Stack.Screen 
+      name="LanguageSettings" 
+      component={LanguageSettingsScreen} 
+      options={{ title: 'Language', headerShown: true }} 
     />
   </Stack.Navigator>
 );

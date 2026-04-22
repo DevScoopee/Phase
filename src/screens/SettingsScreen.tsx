@@ -170,8 +170,8 @@ const SettingsScreen: React.FC = () => {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.linkRow}
-            onPress={() => navigation.navigate('GDPRSettings')}>
-            <Text style={styles.linkText}>Privacy & GDPR Settings</Text>
+            onPress={() => navigation.navigate('LanguageSettings')}>
+            <Text style={styles.linkText}>Language</Text>
             <Text style={styles.linkArrow}>→</Text>
           </TouchableOpacity>
           <TouchableOpacity

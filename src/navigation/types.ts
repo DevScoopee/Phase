@@ -8,7 +8,7 @@ export type RootStackParamList = {
   CryptoPayment: { subscriptionId?: string } | undefined;
   Analytics: undefined;
   Settings: undefined;
-  GDPRSettings: undefined;
+  LanguageSettings: undefined;
 };
 
 export type TabParamList = {
