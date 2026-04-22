@@ -174,6 +174,14 @@ const SettingsScreen: React.FC = () => {
             <Text style={styles.linkText}>Language</Text>
             <Text style={styles.linkArrow}>→</Text>
           </TouchableOpacity>
+          {__DEV__ && (
+            <TouchableOpacity
+              style={styles.linkRow}
+              onPress={() => navigation.navigate('ErrorDashboard')}>
+              <Text style={styles.linkText}>Error Dashboard</Text>
+              <Text style={styles.linkArrow}>→</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={styles.linkRow}
             onPress={() => Linking.openURL('https://subtrackr.app/privacy')}>

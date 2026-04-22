@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import { SubscriptionCategory, BillingCycle, SubscriptionFormData } from '../typ
 import { useSubscriptionStore } from '../store';
 import { Button } from '../components/common/Button';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { errorHandler } from '../services/errorHandler';
 
 interface AddSubscriptionFormData extends SubscriptionFormData {
   priceError: string;
@@ -26,7 +27,7 @@ interface AddSubscriptionFormData extends SubscriptionFormData {
 
 const AddSubscriptionScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { addSubscription, isLoading } = useSubscriptionStore();
+  const { addSubscription, isLoading, error } = useSubscriptionStore();
 
   const [formData, setFormData] = useState<AddSubscriptionFormData>({
     name: '',
@@ -43,12 +44,13 @@ const AddSubscriptionScreen: React.FC = () => {
     cryptoAmount: undefined,
   });
 
-  const [selectedCategory, setSelectedCategory] = useState<SubscriptionCategory>(
-    SubscriptionCategory.OTHER
-  );
-  const [selectedBillingCycle, setSelectedBillingCycle] = useState<BillingCycle>(
-    BillingCycle.MONTHLY
-  );
+  useEffect(() => {
+    if (error) {
+      Alert.alert('Error', error.userMessage);
+      // Clear the error after showing it
+      // Note: In a real app, you might want to clear errors in the store
+    }
+  }, [error]);
 
   // Date Picker States
   const [showPicker, setShowPicker] = useState(false);
@@ -99,8 +101,14 @@ const AddSubscriptionScreen: React.FC = () => {
   };
 
   const handleSubmit = async () => {
+    // Client-side validation
     if (!formData.name.trim()) {
-      Alert.alert('Error', 'Please enter a subscription name');
+      const validationError = new Error('Subscription name is required');
+      const appError = errorHandler.handleError(validationError, {
+        action: 'validateSubscription',
+        component: 'AddSubscriptionScreen',
+      });
+      Alert.alert('Validation Error', appError.userMessage);
       return;
     }
 
@@ -110,7 +118,12 @@ const AddSubscriptionScreen: React.FC = () => {
       formData.price <= 0 ||
       Number.isNaN(formData.price)
     ) {
-      Alert.alert('Error', formData.priceError || 'Please enter a valid price');
+      const validationError = new Error(formData.priceError || 'Invalid price: must be greater than 0');
+      const appError = errorHandler.handleError(validationError, {
+        action: 'validateSubscription',
+        component: 'AddSubscriptionScreen',
+      });
+      Alert.alert('Validation Error', appError.userMessage);
       return;
     }
 
@@ -135,7 +148,10 @@ const AddSubscriptionScreen: React.FC = () => {
         ]);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to add subscription. Please try again.');
+      // Error is already handled in the store, but we can show additional UI feedback
+      if (error) {
+        Alert.alert('Error', 'Failed to add subscription. Please try again.');
+      }
     }
   };
 
