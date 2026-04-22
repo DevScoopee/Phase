@@ -9,6 +9,8 @@ export type RootStackParamList = {
   Analytics: undefined;
   Settings: undefined;
   LanguageSettings: undefined;
+  GDPRSettings: undefined;
+  PricingOptimization: undefined;
 };
 
 export type TabParamList = {

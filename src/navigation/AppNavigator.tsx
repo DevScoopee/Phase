@@ -13,7 +13,7 @@ import AnalyticsScreen from '../screens/AnalyticsScreen';
 import GDPRSettingsScreen from '../screens/GDPRSettingsScreen';
 import LanguageSettingsScreen from '../screens/LanguageSettingsScreen';
 import SettingsScreen from '../screens/SettingsScreen';
-import GDPRSettingsScreen from '../screens/GDPRSettingsScreen';
+import PricingOptimizationScreen from '../../app/screens/PricingOptimizationScreen';
 import { colors } from '../utils/constants';
 import { RootStackParamList, TabParamList } from './types';
 
@@ -43,6 +43,11 @@ const HomeStack = () => (
       component={CryptoPaymentScreen}
       options={{ headerShown: false }}
     />
+    <Stack.Screen
+      name="PricingOptimization"
+      component={PricingOptimizationScreen}
+      options={{ title: 'Price Optimization', headerShown: true }}
+    />
   </Stack.Navigator>
 );
 
@@ -50,14 +55,14 @@ const SettingsStack = () => (
   <Stack.Navigator>
     <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
     <Stack.Screen
-      name="GDPRSettings" 
-      component={GDPRSettingsScreen} 
-      options={{ title: 'Privacy Settings', headerShown: true }} 
+      name="GDPRSettings"
+      component={GDPRSettingsScreen}
+      options={{ title: 'Privacy Settings', headerShown: true }}
     />
-    <Stack.Screen 
-      name="LanguageSettings" 
-      component={LanguageSettingsScreen} 
-      options={{ title: 'Language', headerShown: true }} 
+    <Stack.Screen
+      name="LanguageSettings"
+      component={LanguageSettingsScreen}
+      options={{ title: 'Language', headerShown: true }}
     />
   </Stack.Navigator>
 );
