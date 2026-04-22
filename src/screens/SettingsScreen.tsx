@@ -14,6 +14,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, typography, borderRadius } from '../utils/constants';
 import { useWalletStore } from '../store';
 import { Card } from '../components/common/Card';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../navigation/types';
 
 const APP_VERSION = '1.0.0';
 interface Settings {
@@ -23,6 +26,7 @@ interface Settings {
 const SETTINGS_KEY = '@subtrackr_settings';
 
 const SettingsScreen: React.FC = () => {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { address, network, disconnect } = useWalletStore();
   const [settings, setSettings] = useState<Settings>({
     notificationsEnabled: true,

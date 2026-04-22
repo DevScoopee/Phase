@@ -13,6 +13,7 @@ import AnalyticsScreen from '../screens/AnalyticsScreen';
 import GDPRSettingsScreen from '../screens/GDPRSettingsScreen';
 import LanguageSettingsScreen from '../screens/LanguageSettingsScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import GDPRSettingsScreen from '../screens/GDPRSettingsScreen';
 import { colors } from '../utils/constants';
 import { RootStackParamList, TabParamList } from './types';
 
