@@ -233,6 +233,22 @@ jobs:
         run: cargo build --release
 
   # ─────────────────────────────────────────────────────────
+  # Load Testing
+  # ─────────────────────────────────────────────────────────
+  load-test:
+    name: k6 Load Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run k6 Load Test
+        uses: grafana/k6-action@v0.5.0
+        with:
+          filename: load-tests/run.js
+          flags: --env SCENARIO=subscription
+
+  # ─────────────────────────────────────────────────────────
   # Merge Protection (only on PRs)
   # ─────────────────────────────────────────────────────────
   merge-protection:
@@ -251,6 +267,7 @@ jobs:
         rust-clippy,
         rust-tests,
         rust-build,
+        load-test,
       ]
     steps:
       - name: All checks passed
@@ -275,6 +292,7 @@ jobs:
         rust-clippy,
         rust-tests,
         rust-build,
+        load-test,
       ]
     steps:
       - name: Check for failures
@@ -291,7 +309,8 @@ jobs:
              [ "${{ needs.rust-format.result }}" != "success" ] || \
              [ "${{ needs.rust-clippy.result }}" != "success" ] || \
              [ "${{ needs.rust-tests.result }}" != "success" ] || \
-             [ "${{ needs.rust-build.result }}" != "success" ]; then
+             [ "${{ needs.rust-build.result }}" != "success" ] || \
+             [ "${{ needs.load-test.result }}" != "success" ]; then
             echo "One or more CI checks failed"
             exit 1
           fi
