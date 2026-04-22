@@ -1,3 +1,6 @@
+[![Security](https://github.com/Smartdevs17/SubTrackr/actions/workflows/security-scan.yml/badge.svg)](https://github.com/Smartdevs17/SubTrackr/actions/workflows/security-scan.yml)
+[![Dependabot Status](https://img.shields.io/badge/Dependabot-active-brightgreen.svg)](https://github.com/Smartdevs17/SubTrackr/security/dependabot)
+
 # SubTrackr - On-Chain Subscription Management on Stellar
 
 SubTrackr is a mobile application for managing recurring payments and subscriptions powered by Soroban smart contracts on the Stellar network. Merchants create subscription plans, users authorize recurring XLM or token payments, and smart contracts handle automated billing cycles.
@@ -228,6 +231,19 @@ Run locally in dry mode:
 
 ```bash
 npm run release:dry-run
+```
+
+## Security
+
+SubTrackr prioritizes the security of your subscriptions and on-chain transactions.
+
+- **Dependency Scanning**: Powered by GitHub Dependabot and `npm audit`.
+- **Security Monitoring**: Automated workflows run high-level vulnerability scans on every push and pull request.
+- **Reporting**: Found a vulnerability? Please see our [Security Policy](docs/security.md) for reporting guidelines.
+
+To run a manual security audit:
+```bash
+npm run security:audit
 ```
 
 ## License
