@@ -63,6 +63,9 @@ const HomeScreen: React.FC = () => {
             SubTrackr
           </Text>
           <Text style={styles.subtitle}>Manage your subscriptions</Text>
+          <Text style={styles.gestureHint}>
+            Swipe right to toggle a subscription or long-press a card for quick actions.
+          </Text>
           <FilterBar
             searchQuery={filters.searchQuery}
             setSearchQuery={filters.setSearchQuery}
@@ -89,6 +92,7 @@ const HomeScreen: React.FC = () => {
           onSubscriptionPress={(sub) => navigation.navigate('SubscriptionDetail', { id: sub.id })}
           onToggleStatus={handleToggleStatus}
           onAddFirstPress={() => navigation.navigate('AddSubscription')}
+          debugGestures={__DEV__}
         />
       </ScrollView>
 
@@ -126,6 +130,12 @@ const styles = StyleSheet.create({
   header: { padding: spacing.lg, paddingBottom: spacing.md },
   title: { ...typography.h1, color: colors.text, marginBottom: spacing.xs },
   subtitle: { ...typography.body, color: colors.textSecondary },
+  gestureHint: {
+    ...typography.caption,
+    color: colors.accent,
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
+  },
   errorContainer: {
     backgroundColor: colors.error,
     padding: spacing.md,

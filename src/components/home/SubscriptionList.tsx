@@ -15,6 +15,7 @@ interface SubscriptionListProps {
   onSubscriptionPress: (sub: Subscription) => void;
   onToggleStatus: (id: string) => void;
   onAddFirstPress: () => void;
+  debugGestures?: boolean;
 }
 
 export const SubscriptionList: React.FC<SubscriptionListProps> = ({
@@ -28,6 +29,7 @@ export const SubscriptionList: React.FC<SubscriptionListProps> = ({
   onSubscriptionPress,
   onToggleStatus,
   onAddFirstPress,
+  debugGestures = false,
 }) => {
   return (
     <View>
@@ -91,6 +93,7 @@ export const SubscriptionList: React.FC<SubscriptionListProps> = ({
                 subscription={subscription}
                 onPress={onSubscriptionPress}
                 onToggleStatus={onToggleStatus}
+                debugGestures={debugGestures}
               />
             ))}
           </View>
