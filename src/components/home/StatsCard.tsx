@@ -15,21 +15,42 @@ export const StatsCard: React.FC<StatsCardProps> = ({
   onWalletPress,
 }) => {
   return (
-    <View style={styles.statsContainer}>
-      <View style={styles.statCard}>
-        <Text style={styles.statLabel}>Total Monthly</Text>
-        <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit>
+    <View style={styles.statsContainer} accessibilityRole="summary">
+      <View
+        style={styles.statCard}
+        accessible={true}
+        accessibilityLabel={`Total monthly spend, ${formatCurrencyCompact(totalMonthlySpend)}`}>
+        <Text style={styles.statLabel} accessibilityElementsHidden={true} importantForAccessibility="no">
+          Total Monthly
+        </Text>
+        <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit accessibilityElementsHidden={true} importantForAccessibility="no">
           {formatCurrencyCompact(totalMonthlySpend)}
         </Text>
       </View>
-      <View style={styles.statCard}>
-        <Text style={styles.statLabel}>Active Subs</Text>
-        <Text style={styles.statValue}>{totalActive}</Text>
+      <View
+        style={styles.statCard}
+        accessible={true}
+        accessibilityLabel={`Active subscriptions, ${totalActive}`}>
+        <Text style={styles.statLabel} accessibilityElementsHidden={true} importantForAccessibility="no">
+          Active Subs
+        </Text>
+        <Text style={styles.statValue} accessibilityElementsHidden={true} importantForAccessibility="no">
+          {totalActive}
+        </Text>
       </View>
       <View style={styles.statCard}>
-        <TouchableOpacity onPress={onWalletPress}>
+        <TouchableOpacity
+          onPress={onWalletPress}
+          accessibilityRole="button"
+          accessibilityLabel="Connect wallet"
+          accessibilityHint="Opens the wallet connection screen">
           <Text style={styles.statLabel}>Wallet</Text>
-          <Text style={styles.statValue}>🔗</Text>
+          <Text
+            style={styles.statValue}
+            accessibilityElementsHidden={true}
+            importantForAccessibility="no">
+            🔗
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
