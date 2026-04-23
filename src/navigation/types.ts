@@ -10,6 +10,9 @@ export type RootStackParamList = {
   Settings: undefined;
   LanguageSettings: undefined;
   ErrorDashboard: undefined;
+  SegmentManagement: undefined;
+  SegmentDetail: { segmentId: string };
+  Gamification: undefined;
 };
 
 export type TabParamList = {
