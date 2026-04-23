@@ -2,7 +2,9 @@ import React, { useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { colors, spacing, typography, borderRadius, shadows } from '../../utils/constants';
-import { SubscriptionCard } from '../subscription/SubscriptionCard';
+import { AnimatedSubscriptionCard } from '../subscription/AnimatedSubscriptionCard';
+import { SubscriptionListSkeleton } from '../common/SkeletonLoader';
+import { StaggeredList, ScreenTransition } from '../common/ScreenTransitions';
 import { Subscription } from '../../types/subscription';
 import { usePerformanceProfiler } from '../../hooks/usePerformanceProfiler';
 
@@ -17,6 +19,7 @@ interface SubscriptionListProps {
   onSubscriptionPress: (sub: Subscription) => void;
   onToggleStatus: (id: string) => void;
   onAddFirstPress: () => void;
+  isLoading?: boolean;
 }
 
 export const SubscriptionList: React.FC<SubscriptionListProps> = React.memo(({
@@ -30,18 +33,125 @@ export const SubscriptionList: React.FC<SubscriptionListProps> = React.memo(({
   onSubscriptionPress,
   onToggleStatus,
   onAddFirstPress,
+  isLoading = false,
 }) => {
   usePerformanceProfiler('SubscriptionList', {
     activeCount: activeSubscriptions.length,
     upcomingCount: upcomingSubscriptions.length,
+    isLoading,
   });
 
-  const renderItem = useCallback(
-    ({ item }: { item: Subscription }) => (
-      <SubscriptionCard subscription={item} onPress={onSubscriptionPress} onToggleStatus={onToggleStatus} />
-    ),
-    [onSubscriptionPress, onToggleStatus]
+  if (isLoading) {
+    return (
+      <View testID="subscription-list-loading">
+        <SubscriptionListSkeleton count={3} />
+      </View>
+    );
+  }
+
+  return (
+    <ScreenTransition type="fade" duration={400}>
+      <View testID="subscription-list-root">
+        {/* Upcoming Billing Section */}
+        {upcomingSubscriptions && upcomingSubscriptions.length > 0 && (
+          <ScreenTransition type="slide" delay={200}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle} accessibilityRole="header">
+                Upcoming Billing
+              </Text>
+              <Text style={styles.sectionSubtitle}>
+                {upcomingSubscriptions.length} subscription
+                {upcomingSubscriptions.length !== 1 ? 's' : ''} due this week
+              </Text>
+              <StaggeredList staggerDelay={100} animationType="slide">
+                {upcomingSubscriptions.slice(0, 3).map((subscription) => (
+                  <View
+                    key={subscription.id}
+                    style={styles.upcomingItem}
+                    accessible={true}
+                    accessibilityLabel={`${subscription.name}, due ${new Date(subscription.nextBillingDate).toLocaleDateString()}`}>
+                    <Text style={styles.upcomingName} numberOfLines={1} accessibilityElementsHidden={true} importantForAccessibility="no">
+                      {subscription.name}
+                    </Text>
+                    <Text style={styles.upcomingDate} accessibilityElementsHidden={true} importantForAccessibility="no">
+                      {new Date(subscription.nextBillingDate).toLocaleDateString()}
+                    </Text>
+                  </View>
+                ))}
+              </StaggeredList>
+            </View>
+          </ScreenTransition>
+        )}
+
+        {/* Main List Section */}
+        <ScreenTransition type="fade" delay={300}>
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle} accessibilityRole="header">
+                Your Subscriptions
+              </Text>
+              {hasSubscriptions && (
+                <View style={styles.sectionHeaderRight} accessibilityElementsHidden={true} importantForAccessibility="no">
+                  {hasActiveFilters && (
+                    <Text style={styles.activeFiltersText}>
+                      {filteredCount} of {totalCount}
+                    </Text>
+                  )}
+                  <Text style={styles.subscriptionCount}>
+                    {activeSubscriptions.length} subscription
+                    {activeSubscriptions.length !== 1 ? 's' : ''}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {hasSubscriptions ? (
+              <View style={styles.subscriptionsList}>
+                <StaggeredList staggerDelay={30} animationType="fade">
+                  {activeSubscriptions.map((subscription, index) => (
+                    <AnimatedSubscriptionCard
+                      key={subscription.id}
+                      subscription={subscription}
+                      onPress={onSubscriptionPress}
+                      onToggleStatus={onToggleStatus}
+                      index={index}
+                      sharedElementId={`subscription-${subscription.id}`}
+                    />
+                  ))}
+                </StaggeredList>
+              </View>
+            ) : (
+              <ScreenTransition type="scale" delay={500}>
+                <View
+                  style={styles.emptyState}
+                  accessible={true}
+                  accessibilityLabel="No subscriptions yet. Add your first subscription to start tracking your spending.">
+                  <Text style={styles.emptyIcon} accessibilityElementsHidden={true} importantForAccessibility="no">
+                    📱
+                  </Text>
+                  <Text style={styles.emptyText} accessibilityElementsHidden={true} importantForAccessibility="no">
+                    No subscriptions yet
+                  </Text>
+                  <Text style={styles.emptySubtext} accessibilityElementsHidden={true} importantForAccessibility="no">
+                    Add your first subscription to start tracking your spending
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.addFirstButton}
+                    onPress={onAddFirstPress}
+                    testID="add-subscription-button"
+                    accessibilityRole="button"
+                    accessibilityLabel="Add your first subscription">
+                    <Text style={styles.addFirstButtonText}>Add Subscription</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScreenTransition>
+            )}
+          </View>
+        </ScreenTransition>
+      </View>
+    </ScreenTransition>
   );
+});
 
   const keyExtractor = useCallback((item: Subscription) => item.id, []);
 

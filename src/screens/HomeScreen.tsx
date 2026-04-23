@@ -19,6 +19,10 @@ import { FilterBar } from '../components/home/FilterBar';
 import { FilterModal } from '../components/home/FilterModal';
 import { StatsCard } from '../components/home/StatsCard';
 import { SubscriptionList } from '../components/home/SubscriptionList';
+import { ScreenTransition, StaggeredList } from '../components/common/ScreenTransitions';
+import { SharedElement } from '../components/common/SharedElement';
+
+type HomeNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 type HomeNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -47,9 +51,18 @@ const HomeScreen: React.FC = () => {
   });
 
   useEffect(() => {
-    calculateStats();
-    if (subscriptions) setUpcomingSubscriptions(getUpcomingSubscriptions(subscriptions));
-  }, [subscriptions, calculateStats]);
+    const loadData = async () => {
+      try {
+        await fetchSubscriptions();
+        calculateStats();
+        if (subscriptions) setUpcomingSubscriptions(getUpcomingSubscriptions(subscriptions));
+      } catch (error) {
+        console.error('Failed to load subscriptions:', error);
+      }
+    };
+
+    loadData();
+  }, [fetchSubscriptions, calculateStats, subscriptions]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -76,13 +89,16 @@ const HomeScreen: React.FC = () => {
             accessibilityLabel={refreshing ? 'Refreshing subscriptions' : 'Pull to refresh'}
           />
         }>
+        <ScreenTransition type="fade" duration={500}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={styles.title} accessibilityRole="header">
-                  SubTrackr
-                </Text>
-                <TouchableOpacity 
+                <SharedElement id="app-title">
+                  <Text style={styles.title} accessibilityRole="header">
+                    SubTrackr
+                  </Text>
+                </SharedElement>
+                <TouchableOpacity
                   onPress={() => navigation.navigate('Gamification')}
                   style={{ backgroundColor: colors.primary, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2, marginLeft: 10 }}
                 >
@@ -98,6 +114,7 @@ const HomeScreen: React.FC = () => {
               <Text style={{ color: '#fff', fontWeight: 'bold' }}>Segments</Text>
             </TouchableOpacity>
           </View>
+        </ScreenTransition>
           <FilterBar
             searchQuery={filters.searchQuery}
             setSearchQuery={filters.setSearchQuery}

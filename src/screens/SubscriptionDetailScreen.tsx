@@ -19,6 +19,10 @@ import { Subscription, SubscriptionCategory } from '../types/subscription';
 import { RootStackParamList } from '../navigation/types';
 import { Button } from '../components/common/Button';
 import { Card } from '../components/common/Card';
+import { ScreenTransition, SharedElement } from '../components/common/SharedElement';
+
+type SubscriptionDetailRouteProp = RouteProp<RootStackParamList, 'SubscriptionDetail'>;
+type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 type SubscriptionDetailRouteProp = RouteProp<RootStackParamList, 'SubscriptionDetail'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -131,9 +135,10 @@ const SubscriptionDetailScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container} testID="subscription-detail-screen">
-      <ScrollView style={styles.scrollView}>
-        {/* Header */}
-        <View style={styles.header}>
+      <ScreenTransition type="slide" duration={400}>
+        <ScrollView style={styles.scrollView}>
+          {/* Header */}
+          <View style={styles.header}>
           <TouchableOpacity
             style={styles.backIcon}
             onPress={() => navigation.goBack()}
@@ -153,7 +158,9 @@ const SubscriptionDetailScreen: React.FC = () => {
           <View style={styles.nameRow}>
             <Text style={styles.categoryIcon}>{getCategoryIcon(subscription.category)}</Text>
             <View style={styles.nameContainer}>
-              <Text style={styles.subscriptionName}>{subscription.name}</Text>
+              <SharedElement id={`subscription-${subscription.id}-name`}>
+                <Text style={styles.subscriptionName}>{subscription.name}</Text>
+              </SharedElement>
               <Text style={styles.categoryText}>
                 {subscription.category.charAt(0).toUpperCase() + subscription.category.slice(1)}
               </Text>
@@ -360,6 +367,7 @@ const SubscriptionDetailScreen: React.FC = () => {
           />
         </View>
       </ScrollView>
+      </ScreenTransition>
     </SafeAreaView>
   );
 };
