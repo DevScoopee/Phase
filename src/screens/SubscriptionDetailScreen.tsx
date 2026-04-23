@@ -134,10 +134,17 @@ const SubscriptionDetailScreen: React.FC = () => {
       <ScrollView style={styles.scrollView}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backIcon} onPress={() => navigation.goBack()}>
+          <TouchableOpacity
+            style={styles.backIcon}
+            onPress={() => navigation.goBack()}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Text style={styles.backIconText}>←</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>Subscription Details</Text>
+          <Text style={styles.title} accessibilityRole="header">
+            Subscription Details
+          </Text>
           <View style={styles.placeholder} />
         </View>
 
