@@ -15,6 +15,9 @@ import LanguageSettingsScreen from '../screens/LanguageSettingsScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import ErrorDashboardScreen from '../screens/ErrorDashboardScreen';
 import AdminDashboardScreen from '../screens/AdminDashboardScreen';
+import { SegmentManagementScreen } from '../screens/SegmentManagementScreen';
+import { SegmentDetailScreen } from '../screens/SegmentDetailScreen';
+import { GamificationScreen } from '../screens/GamificationScreen';
 import { colors } from '../utils/constants';
 import { RootStackParamList, TabParamList } from './types';
 
@@ -43,6 +46,21 @@ const HomeStack = () => (
       name="CryptoPayment"
       component={CryptoPaymentScreen}
       options={{ headerShown: false }}
+    />
+    <Stack.Screen
+      name="SegmentManagement"
+      component={SegmentManagementScreen}
+      options={{ title: 'Segments', headerShown: true }}
+    />
+    <Stack.Screen
+      name="SegmentDetail"
+      component={SegmentDetailScreen}
+      options={{ title: 'Segment Detail', headerShown: true }}
+    />
+    <Stack.Screen
+      name="Gamification"
+      component={GamificationScreen}
+      options={{ title: 'Achievements', headerShown: true }}
     />
   </Stack.Navigator>
 );

@@ -11,6 +11,9 @@ export type RootStackParamList = {
   AdminDashboard: undefined;
   LanguageSettings: undefined;
   ErrorDashboard: undefined;
+  SegmentManagement: undefined;
+  SegmentDetail: { segmentId: string };
+  Gamification: undefined;
 };
 
 export type TabParamList = {
