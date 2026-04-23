@@ -1,4 +1,5 @@
 import React from 'react';
+import { View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { useNotifications } from './src/hooks/useNotifications';
@@ -12,6 +13,7 @@ import { createAppKit, defaultConfig, AppKit } from '@reown/appkit-ethers-react-
 
 import { EVM_RPC_URLS } from './src/config/evm';
 import { useNetworkStore } from './src/store';
+import { sessionService } from './src/services/auth/session';
 
 // Get projectId from environment variable
 const projectId = process.env.WALLET_CONNECT_PROJECT_ID || 'YOUR_PROJECT_ID';
@@ -72,6 +74,7 @@ function NotificationBootstrap() {
   const { initialize } = useNetworkStore();
   React.useEffect(() => {
     initialize();
+    void sessionService.initializeCurrentSession();
   }, [initialize]);
 
   return null;
@@ -79,13 +82,13 @@ function NotificationBootstrap() {
 
 export default function App() {
   return (
-    <>
+    <View style={{ flex: 1 }} testID="app-root">
       <StatusBar style="light" />
       <ErrorBoundary>
         <NotificationBootstrap />
         <AppNavigator />
       </ErrorBoundary>
       <AppKit />
-    </>
+    </View>
   );
 }

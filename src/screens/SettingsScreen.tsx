@@ -214,6 +214,15 @@ const SettingsScreen: React.FC = () => {
             <Text style={styles.linkText}>Language</Text>
             <Text style={styles.linkArrow} accessibilityElementsHidden={true}>→</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.linkRow}
+            onPress={() => navigation.navigate('SessionManagement')}
+            accessibilityRole="button"
+            accessibilityLabel="Session management"
+            accessibilityHint="Opens active session security controls">
+            <Text style={styles.linkText}>Session Management</Text>
+            <Text style={styles.linkArrow} accessibilityElementsHidden={true}>→</Text>
+          </TouchableOpacity>
           {__DEV__ && (
             <TouchableOpacity
               style={styles.linkRow}
