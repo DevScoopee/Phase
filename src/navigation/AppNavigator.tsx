@@ -12,6 +12,7 @@ import SubscriptionDetailScreen from '../screens/SubscriptionDetailScreen';
 import AnalyticsScreen from '../screens/AnalyticsScreen';
 import GDPRSettingsScreen from '../screens/GDPRSettingsScreen';
 import LanguageSettingsScreen from '../screens/LanguageSettingsScreen';
+import SessionManagementScreen from '../screens/SessionManagementScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import ErrorDashboardScreen from '../screens/ErrorDashboardScreen';
 import AdminDashboardScreen from '../screens/AdminDashboardScreen';
@@ -77,6 +78,11 @@ const SettingsStack = () => (
       name="LanguageSettings" 
       component={LanguageSettingsScreen} 
       options={{ title: 'Language', headerShown: true }} 
+    />
+    <Stack.Screen
+      name="SessionManagement"
+      component={SessionManagementScreen}
+      options={{ title: 'Sessions', headerShown: true }}
     />
     <Stack.Screen
       name="AdminDashboard"

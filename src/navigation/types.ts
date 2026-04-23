@@ -10,6 +10,7 @@ export type RootStackParamList = {
   Settings: undefined;
   AdminDashboard: undefined;
   LanguageSettings: undefined;
+  SessionManagement: undefined;
   ErrorDashboard: undefined;
   SegmentManagement: undefined;
   SegmentDetail: { segmentId: string };

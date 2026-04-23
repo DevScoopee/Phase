@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, SafeAreaView, RefreshControl, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -9,6 +9,8 @@ import { getUpcomingSubscriptions } from '../utils/dummyData';
 import { Subscription } from '../types/subscription';
 import { RootStackParamList } from '../navigation/types';
 import { useGamificationStore } from '../store/gamificationStore';
+import { useTransactionQueueStore } from '../store/transactionQueueStore';
+import { usePerformanceProfiler } from '../hooks/usePerformanceProfiler';
 
 // Components
 import { FloatingActionButton } from '../components/common/FloatingActionButton';
@@ -24,14 +26,25 @@ const HomeScreen: React.FC = () => {
   const navigation = useNavigation<HomeNavigationProp>();
   const { subscriptions, stats, fetchSubscriptions, calculateStats, toggleSubscriptionStatus } =
     useSubscriptionStore();
-  const { points, level } = useGamificationStore();
+  const isOnline = useTransactionQueueStore((state) => state.isOnline);
+  const pendingTransactions = useTransactionQueueStore((state) => state.queuedTransactions.length);
+  const { level } = useGamificationStore();
   const [refreshing, setRefreshing] = useState(false);
   const [upcomingSubscriptions, setUpcomingSubscriptions] = useState<Subscription[]>([]);
 
   // Use the new hook
   const { filters, filteredAndSorted, activeFilterCount, hasActiveFilters, clearAllFilters } =
     useFilteredSubscriptions(subscriptions);
+  const activeSubscriptions = useMemo(
+    () => filteredAndSorted.filter((subscription) => subscription.isActive),
+    [filteredAndSorted]
+  );
   const [showFilterModal, setShowFilterModal] = useState(false);
+
+  usePerformanceProfiler('HomeScreen', {
+    subscriptions: subscriptions.length,
+    filtered: filteredAndSorted.length,
+  });
 
   useEffect(() => {
     calculateStats();
@@ -49,7 +62,10 @@ const HomeScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container} accessibilityLabel="SubTrackr home screen">
+    <SafeAreaView
+      style={styles.container}
+      accessibilityLabel="SubTrackr home screen"
+      testID="home-screen">
       <ScrollView
         style={styles.scrollView}
         refreshControl={
@@ -97,9 +113,18 @@ const HomeScreen: React.FC = () => {
           onWalletPress={() => navigation.navigate('WalletConnect')}
         />
 
+        {!isOnline && (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>
+              You are offline. {pendingTransactions} queued transaction
+              {pendingTransactions === 1 ? '' : 's'} will sync when back online.
+            </Text>
+          </View>
+        )}
+
         <SubscriptionList
           subscriptions={subscriptions}
-          activeSubscriptions={filteredAndSorted.filter((s) => s.isActive)}
+          activeSubscriptions={activeSubscriptions}
           upcomingSubscriptions={upcomingSubscriptions}
           hasSubscriptions={subscriptions.length > 0}
           hasActiveFilters={hasActiveFilters}
@@ -116,6 +141,7 @@ const HomeScreen: React.FC = () => {
           onPress={() => navigation.navigate('AddSubscription')}
           icon="+"
           size="large"
+          testID="add-subscription-button"
         />
       )}
 
