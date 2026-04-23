@@ -198,6 +198,15 @@ const SettingsScreen: React.FC = () => {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.linkRow}
+            onPress={() => navigation.navigate('AdminDashboard')}
+            accessibilityRole="button"
+            accessibilityLabel="Admin dashboard"
+            accessibilityHint="Opens the web-style admin dashboard view">
+            <Text style={styles.linkText}>Admin Dashboard</Text>
+            <Text style={styles.linkArrow} accessibilityElementsHidden={true}>→</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.linkRow}
             onPress={() => navigation.navigate('LanguageSettings')}
             accessibilityRole="button"
             accessibilityLabel="Language settings"

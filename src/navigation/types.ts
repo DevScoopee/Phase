@@ -8,6 +8,7 @@ export type RootStackParamList = {
   CryptoPayment: { subscriptionId?: string } | undefined;
   Analytics: undefined;
   Settings: undefined;
+  AdminDashboard: undefined;
   LanguageSettings: undefined;
   ErrorDashboard: undefined;
   SegmentManagement: undefined;

@@ -14,6 +14,7 @@ import GDPRSettingsScreen from '../screens/GDPRSettingsScreen';
 import LanguageSettingsScreen from '../screens/LanguageSettingsScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import ErrorDashboardScreen from '../screens/ErrorDashboardScreen';
+import AdminDashboardScreen from '../screens/AdminDashboardScreen';
 import { SegmentManagementScreen } from '../screens/SegmentManagementScreen';
 import { SegmentDetailScreen } from '../screens/SegmentDetailScreen';
 import { GamificationScreen } from '../screens/GamificationScreen';
@@ -72,10 +73,15 @@ const SettingsStack = () => (
       component={GDPRSettingsScreen} 
       options={{ title: 'Privacy Settings', headerShown: true }} 
     />
-    <Stack.Screen 
+    <Stack.Screen
       name="LanguageSettings" 
       component={LanguageSettingsScreen} 
       options={{ title: 'Language', headerShown: true }} 
+    />
+    <Stack.Screen
+      name="AdminDashboard"
+      component={AdminDashboardScreen}
+      options={{ title: 'Admin Dashboard', headerShown: true }}
     />
     <Stack.Screen 
       name="ErrorDashboard" 
