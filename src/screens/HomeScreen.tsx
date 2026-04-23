@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, SafeAreaView, RefreshControl, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -8,6 +8,7 @@ import { useSubscriptionStore } from '../store';
 import { getUpcomingSubscriptions } from '../utils/dummyData';
 import { Subscription } from '../types/subscription';
 import { RootStackParamList } from '../navigation/types';
+import { useGamificationStore } from '../store/gamificationStore';
 
 // Components
 import { FloatingActionButton } from '../components/common/FloatingActionButton';
@@ -23,6 +24,7 @@ const HomeScreen: React.FC = () => {
   const navigation = useNavigation<HomeNavigationProp>();
   const { subscriptions, stats, fetchSubscriptions, calculateStats, toggleSubscriptionStatus } =
     useSubscriptionStore();
+  const { points, level } = useGamificationStore();
   const [refreshing, setRefreshing] = useState(false);
   const [upcomingSubscriptions, setUpcomingSubscriptions] = useState<Subscription[]>([]);
 
@@ -58,11 +60,28 @@ const HomeScreen: React.FC = () => {
             accessibilityLabel={refreshing ? 'Refreshing subscriptions' : 'Pull to refresh'}
           />
         }>
-        <View style={styles.header}>
-          <Text style={styles.title} accessibilityRole="header">
-            SubTrackr
-          </Text>
-          <Text style={styles.subtitle}>Manage your subscriptions</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={styles.title} accessibilityRole="header">
+                  SubTrackr
+                </Text>
+                <TouchableOpacity 
+                  onPress={() => navigation.navigate('Gamification')}
+                  style={{ backgroundColor: colors.primary, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2, marginLeft: 10 }}
+                >
+                  <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>Lvl {level}</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.subtitle}>Manage your subscriptions</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('SegmentManagement')}
+              style={{ backgroundColor: colors.accent, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
+            >
+              <Text style={{ color: '#fff', fontWeight: 'bold' }}>Segments</Text>
+            </TouchableOpacity>
+          </View>
           <FilterBar
             searchQuery={filters.searchQuery}
             setSearchQuery={filters.setSearchQuery}
