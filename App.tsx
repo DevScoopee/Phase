@@ -1,4 +1,5 @@
 import React from 'react';
+import { View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AppNavigator } from './src/navigation/AppNavigator';
@@ -12,6 +13,8 @@ import '@walletconnect/react-native-compat';
 import { createAppKit, defaultConfig, AppKit } from '@reown/appkit-ethers-react-native';
 
 import { EVM_RPC_URLS } from './src/config/evm';
+import { useNetworkStore } from './src/store';
+import { sessionService } from './src/services/auth/session';
 
 // Get projectId from environment variable
 const projectId = process.env.WALLET_CONNECT_PROJECT_ID || 'YOUR_PROJECT_ID';
@@ -68,18 +71,27 @@ createAppKit({
 function NotificationBootstrap() {
   useNotifications();
   useTransactionQueue();
+
+  const { initialize } = useNetworkStore();
+  React.useEffect(() => {
+    initialize();
+    void sessionService.initializeCurrentSession();
+  }, [initialize]);
+
   return null;
 }
 
 export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <StatusBar style="light" />
-      <ErrorBoundary>
-        <NotificationBootstrap />
-        <AppNavigator />
-      </ErrorBoundary>
-      <AppKit />
+      <View style={{ flex: 1 }} testID="app-root">
+        <StatusBar style="light" />
+        <ErrorBoundary>
+          <NotificationBootstrap />
+          <AppNavigator />
+        </ErrorBoundary>
+        <AppKit />
+      </View>
     </GestureHandlerRootView>
   );
 }
