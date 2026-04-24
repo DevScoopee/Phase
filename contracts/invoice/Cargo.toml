@@ -1,12 +1,12 @@
 [package]
-name = "subtrackr-storage"
-version = "0.2.0"
+name = "subtrackr-invoice"
+version = "0.1.0"
 edition = "2021"
 authors = ["SubTrackr Team"]
-description = "State storage contract for SubTrackr (Soroban)"
+description = "SubTrackr subscription invoicing contract (Soroban)"
 
 [lib]
-name = "subtrackr_storage"
+name = "subtrackr_invoice"
 path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
@@ -16,3 +16,4 @@ subtrackr-types = { path = "../types" }
 
 [dev-dependencies]
 soroban-sdk = { version = "21.0.0", features = ["testutils"] }
+subtrackr-storage = { path = "../storage" }

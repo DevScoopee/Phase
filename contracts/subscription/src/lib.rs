@@ -1,7 +1,9 @@
 #![no_std]
 
 use soroban_sdk::{token, Address, Env, IntoVal, String, TryFromVal, Val, Vec};
-use subtrackr_types::{Interval, Plan, StorageKey, Subscription, SubscriptionStatus};
+use subtrackr_types::{
+    Interval, Invoice, Plan, StorageKey, Subscription, SubscriptionStatus, TimeRange,
+};
 
 /// Billing interval in seconds.
 const MAX_PAUSE_DURATION: u64 = 2_592_000; // 30 days
@@ -151,6 +153,10 @@ fn get_user_plan_index(env: &Env, storage: &Address, subscriber: &Address, plan_
     storage_persistent_get(env, storage, StorageKey::UserPlanIndex(subscriber.clone(), plan_id))
 }
 
+fn invoice_contract(env: &Env, storage: &Address) -> Option<Address> {
+    storage_instance_get(env, storage, StorageKey::InvoiceContract)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Implementation Contract
 // ─────────────────────────────────────────────────────────────────────────────
@@ -222,6 +228,21 @@ impl SubTrackrSubscription {
         storage_instance_set(&env, &storage, StorageKey::Admin, admin);
         storage_instance_set(&env, &storage, StorageKey::PlanCount, 0u64);
         storage_instance_set(&env, &storage, StorageKey::SubscriptionCount, 0u64);
+        storage_instance_remove(&env, &storage, StorageKey::InvoiceContract);
+    }
+
+    pub fn set_invoice_contract(env: Env, proxy: Address, storage: Address, invoice: Address) {
+        proxy.require_auth();
+        let admin = get_admin(&env, &storage);
+        admin.require_auth();
+        storage_instance_set(&env, &storage, StorageKey::InvoiceContract, invoice);
+    }
+
+    pub fn clear_invoice_contract(env: Env, proxy: Address, storage: Address) {
+        proxy.require_auth();
+        let admin = get_admin(&env, &storage);
+        admin.require_auth();
+        storage_instance_remove(&env, &storage, StorageKey::InvoiceContract);
     }
 
     // ── Rate Limiting Admin ──
@@ -576,6 +597,26 @@ impl SubTrackrSubscription {
             (String::from_str(&env, "subscription_charged"), subscription_id),
             (sub.subscriber.clone(), plan.price, 100_000u64, now),
         );
+
+        if let Some(invoice_addr) = invoice_contract(&env, &storage) {
+            let period = TimeRange {
+                start: sub.last_charged_at,
+                end: sub.next_charge_at,
+            };
+            let _invoice: Invoice = env.invoke_contract(
+                &invoice_addr,
+                &soroban_sdk::Symbol::new(&env, "generate_invoice"),
+                soroban_sdk::vec![
+                    &env,
+                    storage.clone().into_val(&env),
+                    subscription_id.into_val(&env),
+                    period.into_val(&env),
+                    String::from_str(&env, "GLOBAL").into_val(&env),
+                    String::from_str(&env, "").into_val(&env),
+                ],
+            );
+            let _ = _invoice;
+        }
     }
 
     pub fn request_refund(
