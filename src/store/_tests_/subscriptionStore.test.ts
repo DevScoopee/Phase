@@ -15,6 +15,7 @@ jest.mock('../../services/notificationService', () => ({
   syncRenewalReminders: jest.fn(() => Promise.resolve()),
   presentChargeSuccessNotification: jest.fn(() => Promise.resolve()),
   presentChargeFailedNotification: jest.fn(() => Promise.resolve()),
+  presentLocalNotification: jest.fn(() => Promise.resolve()),
 }));
 
 jest.mock('../../utils/billingDate', () => ({

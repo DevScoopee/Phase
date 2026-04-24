@@ -6,7 +6,10 @@ export type RootStackParamList = {
   SubscriptionDetail: { id: string };
   WalletConnect: undefined;
   CryptoPayment: { subscriptionId?: string } | undefined;
+  Community: undefined;
+  Profile: { subscriber?: string } | undefined;
   Analytics: undefined;
+  GDPRSettings: undefined;
   Settings: undefined;
   AdminDashboard: undefined;
   LanguageSettings: undefined;

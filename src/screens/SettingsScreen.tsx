@@ -19,7 +19,6 @@ import { Card } from '../components/common/Card';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
-import { Network } from '../config/networks';
 
 const APP_VERSION = '1.0.0';
 interface Settings {
@@ -30,7 +29,7 @@ const SETTINGS_KEY = '@subtrackr_settings';
 
 const SettingsScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { address, network, disconnect } = useWalletStore();
+  const { address, disconnect } = useWalletStore();
   const { currentNetwork, availableNetworks, setNetwork, initialize } = useNetworkStore();
   const [settings, setSettings] = useState<Settings>({
     notificationsEnabled: true,
@@ -100,7 +99,9 @@ const SettingsScreen: React.FC = () => {
           <Text style={styles.subtitle}>Configure your preferences</Text>
         </View>
         <Card style={styles.section}>
-          <Text style={styles.sectionTitle} accessibilityRole="header">Account</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">
+            Account
+          </Text>
           <View style={styles.settingRow}>
             <View style={styles.settingInfo}>
               <Text style={styles.settingLabel}>Wallet Address</Text>
@@ -119,7 +120,9 @@ const SettingsScreen: React.FC = () => {
                 {currentNetwork ? currentNetwork.name : 'Select Network'}
               </Text>
             </View>
-            <Text style={styles.linkArrow} accessibilityElementsHidden={true}>→</Text>
+            <Text style={styles.linkArrow} accessibilityElementsHidden={true}>
+              →
+            </Text>
           </TouchableOpacity>
           {address && (
             <TouchableOpacity
@@ -133,7 +136,9 @@ const SettingsScreen: React.FC = () => {
           )}
         </Card>
         <Card style={styles.section}>
-          <Text style={styles.sectionTitle} accessibilityRole="header">Notifications</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">
+            Notifications
+          </Text>
           <View style={styles.settingRow}>
             <View style={styles.settingInfo}>
               <Text style={styles.settingLabel}>Billing Reminders</Text>
@@ -151,7 +156,9 @@ const SettingsScreen: React.FC = () => {
           </View>
         </Card>
         <Card style={styles.section}>
-          <Text style={styles.sectionTitle} accessibilityRole="header">Preferences</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">
+            Preferences
+          </Text>
           <View style={styles.settingRow}>
             <View style={styles.settingInfo}>
               <Text style={styles.settingLabel}>Default Currency</Text>
@@ -182,7 +189,9 @@ const SettingsScreen: React.FC = () => {
           </View>
         </Card>
         <Card style={styles.section}>
-          <Text style={styles.sectionTitle} accessibilityRole="header">About</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">
+            About
+          </Text>
           <View style={styles.settingRow}>
             <Text style={styles.settingLabel}>Version</Text>
             <Text style={styles.settingValue}>{APP_VERSION}</Text>
@@ -194,7 +203,20 @@ const SettingsScreen: React.FC = () => {
             accessibilityLabel="Contact Support"
             accessibilityHint="Opens your email app to contact support">
             <Text style={styles.linkText}>Contact Support</Text>
-            <Text style={styles.linkArrow} accessibilityElementsHidden={true}>→</Text>
+            <Text style={styles.linkArrow} accessibilityElementsHidden={true}>
+              →
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.linkRow}
+            onPress={() => navigation.navigate('Community')}
+            accessibilityRole="button"
+            accessibilityLabel="Community"
+            accessibilityHint="Opens subscriber profiles and forum discussions">
+            <Text style={styles.linkText}>Community</Text>
+            <Text style={styles.linkArrow} accessibilityElementsHidden={true}>
+              &gt;
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.linkRow}
@@ -203,7 +225,9 @@ const SettingsScreen: React.FC = () => {
             accessibilityLabel="Admin dashboard"
             accessibilityHint="Opens the web-style admin dashboard view">
             <Text style={styles.linkText}>Admin Dashboard</Text>
-            <Text style={styles.linkArrow} accessibilityElementsHidden={true}>→</Text>
+            <Text style={styles.linkArrow} accessibilityElementsHidden={true}>
+              →
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.linkRow}
@@ -212,7 +236,9 @@ const SettingsScreen: React.FC = () => {
             accessibilityLabel="Language settings"
             accessibilityHint="Opens language selection screen">
             <Text style={styles.linkText}>Language</Text>
-            <Text style={styles.linkArrow} accessibilityElementsHidden={true}>→</Text>
+            <Text style={styles.linkArrow} accessibilityElementsHidden={true}>
+              →
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.linkRow}
@@ -221,7 +247,9 @@ const SettingsScreen: React.FC = () => {
             accessibilityLabel="Session management"
             accessibilityHint="Opens active session security controls">
             <Text style={styles.linkText}>Session Management</Text>
-            <Text style={styles.linkArrow} accessibilityElementsHidden={true}>→</Text>
+            <Text style={styles.linkArrow} accessibilityElementsHidden={true}>
+              →
+            </Text>
           </TouchableOpacity>
           {__DEV__ && (
             <TouchableOpacity
@@ -238,7 +266,9 @@ const SettingsScreen: React.FC = () => {
             accessibilityLabel="Privacy Policy"
             accessibilityHint="Opens privacy policy in browser">
             <Text style={styles.linkText}>Privacy Policy</Text>
-            <Text style={styles.linkArrow} accessibilityElementsHidden={true}>→</Text>
+            <Text style={styles.linkArrow} accessibilityElementsHidden={true}>
+              →
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.linkRow, styles.linkRowLast]}
@@ -247,7 +277,9 @@ const SettingsScreen: React.FC = () => {
             accessibilityLabel="Terms of Service"
             accessibilityHint="Opens terms of service in browser">
             <Text style={styles.linkText}>Terms of Service</Text>
-            <Text style={styles.linkArrow} accessibilityElementsHidden={true}>→</Text>
+            <Text style={styles.linkArrow} accessibilityElementsHidden={true}>
+              →
+            </Text>
           </TouchableOpacity>
         </Card>
 
@@ -290,9 +322,7 @@ const SettingsScreen: React.FC = () => {
                       {item.type.toUpperCase()} {item.isTestnet ? '(Testnet)' : '(Mainnet)'}
                     </Text>
                   </View>
-                  {currentNetwork?.id === item.id && (
-                    <Text style={styles.checkmark}>✓</Text>
-                  )}
+                  {currentNetwork?.id === item.id && <Text style={styles.checkmark}>✓</Text>}
                 </TouchableOpacity>
               )}
             />

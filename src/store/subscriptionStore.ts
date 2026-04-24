@@ -325,7 +325,9 @@ export const useSubscriptionStore = create<SubscriptionState>()(
           await syncRenewalReminders(get().subscriptions);
         } catch (error) {
           set({
-            error: error instanceof Error ? error.message : 'Failed to fetch subscriptions',
+            error: errorHandler.handleError(error as Error, {
+              action: 'fetchSubscriptions',
+            }),
             isLoading: false,
           });
         }
@@ -403,7 +405,11 @@ export const useSubscriptionStore = create<SubscriptionState>()(
       onRehydrateStorage: () => (state, error) => {
         if (error) {
           useSubscriptionStore.setState({
-            error: 'Stored subscription data is corrupted. Loaded fallback data.',
+            error: errorHandler.createError(
+              new Error('Stored subscription data is corrupted. Loaded fallback data.'),
+              { action: 'rehydrateSubscriptions' },
+              true
+            ),
             subscriptions: [...dummySubscriptions],
             isLoading: false,
           });
