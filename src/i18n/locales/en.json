@@ -1,0 +1,30 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "back": "Back"
+  },
+  "navigation": {
+    "home": "Home",
+    "add": "Add",
+    "wallet": "Wallet",
+    "analytics": "Analytics",
+    "settings": "Settings"
+  },
+  "home": {
+    "title": "Your Subscriptions",
+    "subtitle": "Track your spending effectively",
+    "no_subscriptions": "No subscriptions found. Add your first one!"
+  },
+  "settings": {
+    "language": "Language",
+    "notifications": "Notifications",
+    "privacy": "Privacy & GDPR",
+    "about": "About"
+  }
+}

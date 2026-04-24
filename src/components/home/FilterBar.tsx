@@ -18,18 +18,31 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   activeFilterCount,
 }) => {
   return (
-    <View style={styles.searchFilterBar}>
+    <View style={styles.searchFilterBar} accessibilityRole="search">
       <View style={styles.searchContainer}>
-        <Text style={styles.searchIcon}>🔍</Text>
+        <Text
+          style={styles.searchIcon}
+          accessibilityElementsHidden={true}
+          importantForAccessibility="no">
+          🔍
+        </Text>
         <TextInput
           style={styles.searchInput}
           placeholder="Search subscriptions..."
           placeholderTextColor={colors.textSecondary}
           value={searchQuery}
           onChangeText={setSearchQuery}
+          accessibilityLabel="Search subscriptions"
+          accessibilityHint="Type to filter your subscription list"
+          returnKeyType="search"
+          clearButtonMode="while-editing"
         />
         {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery('')}>
+          <TouchableOpacity
+            onPress={() => setSearchQuery('')}
+            accessibilityRole="button"
+            accessibilityLabel="Clear search"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Text style={styles.clearSearchIcon}>✕</Text>
           </TouchableOpacity>
         )}
@@ -37,10 +50,25 @@ export const FilterBar: React.FC<FilterBarProps> = ({
 
       <TouchableOpacity
         style={[styles.filterButton, hasActiveFilters && styles.filterButtonActive]}
-        onPress={onFilterPress}>
-        <Text style={styles.filterIcon}>🔧</Text>
+        onPress={onFilterPress}
+        accessibilityRole="button"
+        accessibilityLabel={
+          hasActiveFilters
+            ? `Filters, ${activeFilterCount} active filter${activeFilterCount !== 1 ? 's' : ''}`
+            : 'Filters'
+        }
+        accessibilityHint="Opens filter and sort options">
+        <Text
+          style={styles.filterIcon}
+          accessibilityElementsHidden={true}
+          importantForAccessibility="no">
+          🔧
+        </Text>
         {hasActiveFilters && (
-          <View style={styles.filterBadge}>
+          <View
+            style={styles.filterBadge}
+            accessibilityElementsHidden={true}
+            importantForAccessibility="no">
             <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
           </View>
         )}

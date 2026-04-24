@@ -16,6 +16,9 @@ import {
   presentChargeSuccessNotification,
   presentChargeFailedNotification,
 } from '../services/notificationService';
+import { useGamificationStore } from './gamificationStore';
+import { AchievementTrigger } from '../types/gamification';
+import { errorHandler, AppError } from '../services/errorHandler';
 
 const STORAGE_KEY = 'subtrackr-subscriptions';
 const STORE_VERSION = 1;
@@ -138,7 +141,7 @@ interface SubscriptionState {
   subscriptions: Subscription[];
   stats: SubscriptionStats;
   isLoading: boolean;
-  error: string | null;
+  error: AppError | null;
 
   // Actions
   addSubscription: (data: SubscriptionFormData) => Promise<void>;
@@ -184,9 +187,23 @@ export const useSubscriptionStore = create<SubscriptionState>()(
 
           get().calculateStats();
           await syncRenewalReminders(get().subscriptions);
+
+          // Gamification Triggers
+          const gamificationStore = useGamificationStore.getState();
+          gamificationStore.addPoints(10); // 10 points for adding a subscription
+          gamificationStore.checkAchievements(AchievementTrigger.SUBSCRIPTION_ADDED, {
+            totalSubscriptions: get().subscriptions.length,
+            price: data.price,
+            category: data.category,
+          });
         } catch (error) {
+          const appError = errorHandler.handleError(error as Error, {
+            action: 'addSubscription',
+            subscriptionId: 'new',
+            metadata: { formData: data },
+          });
           set({
-            error: error instanceof Error ? error.message : 'Failed to add subscription',
+            error: appError,
             isLoading: false,
           });
         }
@@ -205,8 +222,13 @@ export const useSubscriptionStore = create<SubscriptionState>()(
           get().calculateStats();
           await syncRenewalReminders(get().subscriptions);
         } catch (error) {
+          const appError = errorHandler.handleError(error as Error, {
+            action: 'updateSubscription',
+            subscriptionId: id,
+            metadata: { updateData: data },
+          });
           set({
-            error: error instanceof Error ? error.message : 'Failed to update subscription',
+            error: appError,
             isLoading: false,
           });
         }
@@ -223,8 +245,12 @@ export const useSubscriptionStore = create<SubscriptionState>()(
           get().calculateStats();
           await syncRenewalReminders(get().subscriptions);
         } catch (error) {
+          const appError = errorHandler.handleError(error as Error, {
+            action: 'deleteSubscription',
+            subscriptionId: id,
+          });
           set({
-            error: error instanceof Error ? error.message : 'Failed to delete subscription',
+            error: appError,
             isLoading: false,
           });
         }
@@ -243,8 +269,12 @@ export const useSubscriptionStore = create<SubscriptionState>()(
           get().calculateStats();
           await syncRenewalReminders(get().subscriptions);
         } catch (error) {
+          const appError = errorHandler.handleError(error as Error, {
+            action: 'toggleSubscriptionStatus',
+            subscriptionId: id,
+          });
           set({
-            error: error instanceof Error ? error.message : 'Failed to toggle subscription',
+            error: appError,
             isLoading: false,
           });
         }
@@ -295,7 +325,9 @@ export const useSubscriptionStore = create<SubscriptionState>()(
           await syncRenewalReminders(get().subscriptions);
         } catch (error) {
           set({
-            error: error instanceof Error ? error.message : 'Failed to fetch subscriptions',
+            error: errorHandler.handleError(error as Error, {
+              action: 'fetchSubscriptions',
+            }),
             isLoading: false,
           });
         }
@@ -373,7 +405,11 @@ export const useSubscriptionStore = create<SubscriptionState>()(
       onRehydrateStorage: () => (state, error) => {
         if (error) {
           useSubscriptionStore.setState({
-            error: 'Stored subscription data is corrupted. Loaded fallback data.',
+            error: errorHandler.createError(
+              new Error('Stored subscription data is corrupted. Loaded fallback data.'),
+              { action: 'rehydrateSubscriptions' },
+              true
+            ),
             subscriptions: [...dummySubscriptions],
             isLoading: false,
           });

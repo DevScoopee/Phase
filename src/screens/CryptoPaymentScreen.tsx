@@ -85,7 +85,11 @@ const CryptoPaymentScreen: React.FC = () => {
         if (!isWalletConnected(connection)) return;
         if (selectedProtocol !== 'sablier') return;
         const tokenInfo = availableTokens.find((t) => t.symbol === selectedToken);
-        if (!tokenInfo || !tokenInfo.address || tokenInfo.address === ethers.constants.AddressZero) {
+        if (
+          !tokenInfo ||
+          !tokenInfo.address ||
+          tokenInfo.address === ethers.constants.AddressZero
+        ) {
           return;
         }
         if (!amount || parseFloat(amount) <= 0) return;
@@ -236,7 +240,11 @@ const CryptoPaymentScreen: React.FC = () => {
               ? ethers.constants.MaxUint256
               : ethers.utils.parseUnits(amount, selectedTokenInfo.decimals);
           const spender = ADDRESS_CONSTANTS.SABLIER_V2_LOCKUP_LINEAR;
-          await walletServiceManager.approveErc20(selectedTokenInfo.address, spender, approveAmount);
+          await walletServiceManager.approveErc20(
+            selectedTokenInfo.address,
+            spender,
+            approveAmount
+          );
         } finally {
           setIsApproving(false);
         }
@@ -338,8 +346,13 @@ const CryptoPaymentScreen: React.FC = () => {
                     styles.tokenOption,
                     selectedToken === token.symbol && styles.tokenOptionSelected,
                   ]}
-                  onPress={() => handleTokenSelect(token.symbol)}>
-                  <Text style={styles.tokenIcon}>{getTokenIcon(token.symbol)}</Text>
+                  onPress={() => handleTokenSelect(token.symbol)}
+                  accessibilityRole="radio"
+                  accessibilityLabel={`${token.symbol}, balance ${parseFloat(token.balance).toFixed(4)}`}
+                  accessibilityState={{ checked: selectedToken === token.symbol }}>
+                  <Text style={styles.tokenIcon} accessibilityElementsHidden={true}>
+                    {getTokenIcon(token.symbol)}
+                  </Text>
                   <Text style={styles.tokenSymbol}>{token.symbol}</Text>
                   <Text style={styles.tokenBalance}>{parseFloat(token.balance).toFixed(4)}</Text>
                 </TouchableOpacity>
@@ -359,6 +372,8 @@ const CryptoPaymentScreen: React.FC = () => {
                 placeholder="0.00"
                 placeholderTextColor={colors.textSecondary}
                 keyboardType="decimal-pad"
+                accessibilityLabel={`Payment amount in ${selectedToken}`}
+                accessibilityHint="Enter the amount to stream per payment cycle"
               />
             </View>
             <Text style={styles.amountDescription}>Amount to stream per payment cycle</Text>
@@ -375,6 +390,8 @@ const CryptoPaymentScreen: React.FC = () => {
               placeholderTextColor={colors.textSecondary}
               autoCapitalize="none"
               autoCorrect={false}
+              accessibilityLabel="Recipient wallet address"
+              accessibilityHint="Enter the Ethereum address that will receive the payments"
             />
             <Text style={styles.addressDescription}>
               The address that will receive the payments
@@ -390,8 +407,13 @@ const CryptoPaymentScreen: React.FC = () => {
                   styles.protocolOption,
                   selectedProtocol === 'superfluid' && styles.protocolOptionSelected,
                 ]}
-                onPress={() => handleProtocolSelect('superfluid')}>
-                <Text style={styles.protocolIcon}>🌊</Text>
+                onPress={() => handleProtocolSelect('superfluid')}
+                accessibilityRole="radio"
+                accessibilityLabel="Superfluid, continuous streaming payments"
+                accessibilityState={{ checked: selectedProtocol === 'superfluid' }}>
+                <Text style={styles.protocolIcon} accessibilityElementsHidden={true}>
+                  🌊
+                </Text>
                 <Text style={styles.protocolName}>Superfluid</Text>
                 <Text style={styles.protocolDescription}>Continuous streaming payments</Text>
               </TouchableOpacity>
@@ -401,8 +423,13 @@ const CryptoPaymentScreen: React.FC = () => {
                   styles.protocolOption,
                   selectedProtocol === 'sablier' && styles.protocolOptionSelected,
                 ]}
-                onPress={() => handleProtocolSelect('sablier')}>
-                <Text style={styles.protocolIcon}>⏰</Text>
+                onPress={() => handleProtocolSelect('sablier')}
+                accessibilityRole="radio"
+                accessibilityLabel="Sablier, time-locked payment streams"
+                accessibilityState={{ checked: selectedProtocol === 'sablier' }}>
+                <Text style={styles.protocolIcon} accessibilityElementsHidden={true}>
+                  ⏰
+                </Text>
                 <Text style={styles.protocolName}>Sablier</Text>
                 <Text style={styles.protocolDescription}>Time-locked payment streams</Text>
               </TouchableOpacity>
@@ -474,7 +501,8 @@ const CryptoPaymentScreen: React.FC = () => {
                   onPress={async () => {
                     if (!isWalletConnected(connection)) return;
                     const tokenInfo = availableTokens.find((t) => t.symbol === selectedToken);
-                    if (!tokenInfo?.address || tokenInfo.address === ethers.constants.AddressZero) return;
+                    if (!tokenInfo?.address || tokenInfo.address === ethers.constants.AddressZero)
+                      return;
                     setIsApproving(true);
                     try {
                       const approveAmount =
@@ -488,7 +516,10 @@ const CryptoPaymentScreen: React.FC = () => {
                       );
                       setNeedsApproval(false);
                       setApprovalGas(null);
-                      Alert.alert('Approved', 'Token approved successfully. You can now create the stream.');
+                      Alert.alert(
+                        'Approved',
+                        'Token approved successfully. You can now create the stream.'
+                      );
                     } catch (e) {
                       const message =
                         e instanceof Error ? e.message : 'Token approval failed. Please try again.';

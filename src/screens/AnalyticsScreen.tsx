@@ -142,12 +142,15 @@ const AnalyticsScreen: React.FC = () => {
           <Text style={styles.title}>Analytics</Text>
           <Text style={styles.subtitle}>Your spending insights</Text>
         </View>
-        <View style={styles.dateRangeContainer}>
+        <View style={styles.dateRangeContainer} accessibilityRole="tablist">
           {(['week', 'month', 'year'] as DateRange[]).map((range) => (
             <TouchableOpacity
               key={range}
               style={[styles.dateRangeButton, dateRange === range && styles.dateRangeButtonActive]}
-              onPress={() => setDateRange(range)}>
+              onPress={() => setDateRange(range)}
+              accessibilityRole="tab"
+              accessibilityLabel={`${range.charAt(0).toUpperCase() + range.slice(1)} view`}
+              accessibilityState={{ selected: dateRange === range }}>
               <Text
                 style={[
                   styles.dateRangeButtonText,
@@ -160,12 +163,32 @@ const AnalyticsScreen: React.FC = () => {
         </View>
         <View style={styles.summaryContainer}>
           <Card style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Monthly Spend</Text>
-            <Text style={styles.summaryValue}>${stats.totalMonthlySpend.toFixed(2)}</Text>
+            <Text
+              style={styles.summaryLabel}
+              accessibilityElementsHidden={true}
+              importantForAccessibility="no">
+              Monthly Spend
+            </Text>
+            <Text
+              style={styles.summaryValue}
+              accessibilityElementsHidden={true}
+              importantForAccessibility="no">
+              ${stats.totalMonthlySpend.toFixed(2)}
+            </Text>
           </Card>
           <Card style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Yearly Estimate</Text>
-            <Text style={styles.summaryValue}>${stats.totalYearlySpend.toFixed(2)}</Text>
+            <Text
+              style={styles.summaryLabel}
+              accessibilityElementsHidden={true}
+              importantForAccessibility="no">
+              Yearly Estimate
+            </Text>
+            <Text
+              style={styles.summaryValue}
+              accessibilityElementsHidden={true}
+              importantForAccessibility="no">
+              ${stats.totalYearlySpend.toFixed(2)}
+            </Text>
           </Card>
         </View>
         <Card style={styles.chartCard}>

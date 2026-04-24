@@ -8,9 +8,19 @@ import HomeScreen from '../screens/HomeScreen';
 import AddSubscriptionScreen from '../screens/AddSubscriptionScreen';
 import WalletConnectScreen from '../screens/WalletConnectScreen';
 import CryptoPaymentScreen from '../screens/CryptoPaymentScreen';
+import CommunityScreen from '../screens/CommunityScreen';
+import ProfileScreen from '../screens/ProfileScreen';
 import SubscriptionDetailScreen from '../screens/SubscriptionDetailScreen';
 import AnalyticsScreen from '../screens/AnalyticsScreen';
+import GDPRSettingsScreen from '../screens/GDPRSettingsScreen';
+import LanguageSettingsScreen from '../screens/LanguageSettingsScreen';
+import SessionManagementScreen from '../screens/SessionManagementScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import ErrorDashboardScreen from '../screens/ErrorDashboardScreen';
+import AdminDashboardScreen from '../screens/AdminDashboardScreen';
+import { SegmentManagementScreen } from '../screens/SegmentManagementScreen';
+import { SegmentDetailScreen } from '../screens/SegmentDetailScreen';
+import { GamificationScreen } from '../screens/GamificationScreen';
 import RevenueReportScreen from '../screens/RevenueReportScreen';
 import { colors } from '../utils/constants';
 import { RootStackParamList, TabParamList } from './types';
@@ -40,6 +50,72 @@ const HomeStack = () => (
       name="CryptoPayment"
       component={CryptoPaymentScreen}
       options={{ headerShown: false }}
+    />
+    <Stack.Screen
+      name="Community"
+      component={CommunityScreen}
+      options={{ title: 'Community', headerShown: true }}
+    />
+    <Stack.Screen
+      name="Profile"
+      component={ProfileScreen}
+      options={{ title: 'Profile', headerShown: true }}
+    />
+    <Stack.Screen
+      name="SegmentManagement"
+      component={SegmentManagementScreen}
+      options={{ title: 'Segments', headerShown: true }}
+    />
+    <Stack.Screen
+      name="SegmentDetail"
+      component={SegmentDetailScreen}
+      options={{ title: 'Segment Detail', headerShown: true }}
+    />
+    <Stack.Screen
+      name="Gamification"
+      component={GamificationScreen}
+      options={{ title: 'Achievements', headerShown: true }}
+    />
+  </Stack.Navigator>
+);
+
+const SettingsStack = () => (
+  <Stack.Navigator>
+    <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
+    <Stack.Screen
+      name="Community"
+      component={CommunityScreen}
+      options={{ title: 'Community', headerShown: true }}
+    />
+    <Stack.Screen
+      name="Profile"
+      component={ProfileScreen}
+      options={{ title: 'Profile', headerShown: true }}
+    />
+    <Stack.Screen
+      name="GDPRSettings"
+      component={GDPRSettingsScreen}
+      options={{ title: 'Privacy Settings', headerShown: true }}
+    />
+    <Stack.Screen
+      name="LanguageSettings"
+      component={LanguageSettingsScreen}
+      options={{ title: 'Language', headerShown: true }}
+    />
+    <Stack.Screen
+      name="SessionManagement"
+      component={SessionManagementScreen}
+      options={{ title: 'Sessions', headerShown: true }}
+    />
+    <Stack.Screen
+      name="AdminDashboard"
+      component={AdminDashboardScreen}
+      options={{ title: 'Admin Dashboard', headerShown: true }}
+    />
+    <Stack.Screen
+      name="ErrorDashboard"
+      component={ErrorDashboardScreen}
+      options={{ title: 'Error Dashboard', headerShown: true }}
     />
   </Stack.Navigator>
 );
@@ -108,7 +184,7 @@ const TabNavigator = () => (
     />
     <Tab.Screen
       name="SettingsTab"
-      component={SettingsScreen}
+      component={SettingsStack}
       options={{
         tabBarLabel: 'Settings',
         tabBarIcon: ({ color, size }) => (

@@ -269,8 +269,15 @@ const WalletConnectScreen: React.FC = () => {
                   <Text style={styles.statusText}>Connected</Text>
                   <Text style={styles.connectionTime}>Just now</Text>
                 </View>
-                <TouchableOpacity style={styles.disconnectButton} onPress={handleDisconnectWallet}>
-                  <Text style={styles.disconnectIcon}>⏹️</Text>
+                <TouchableOpacity
+                  style={styles.disconnectButton}
+                  onPress={handleDisconnectWallet}
+                  accessibilityRole="button"
+                  accessibilityLabel="Disconnect wallet"
+                  accessibilityHint="Disconnects your currently connected wallet">
+                  <Text style={styles.disconnectIcon} accessibilityElementsHidden={true}>
+                    ⏹️
+                  </Text>
                   <Text style={styles.disconnectText}>Disconnect</Text>
                 </TouchableOpacity>
               </View>
@@ -278,8 +285,15 @@ const WalletConnectScreen: React.FC = () => {
               <View style={styles.walletInfo}>
                 <View style={styles.addressContainer}>
                   <Text style={styles.addressLabel}>Wallet Address</Text>
-                  <TouchableOpacity style={styles.addressCopyButton} onPress={handleCopyAddress}>
-                    <Text style={styles.copyIcon}>📋</Text>
+                  <TouchableOpacity
+                    style={styles.addressCopyButton}
+                    onPress={handleCopyAddress}
+                    accessibilityRole="button"
+                    accessibilityLabel="Copy wallet address"
+                    accessibilityHint="Copies your wallet address to the clipboard">
+                    <Text style={styles.copyIcon} accessibilityElementsHidden={true}>
+                      📋
+                    </Text>
                   </TouchableOpacity>
                 </View>
                 <Text style={styles.addressText}>{formatAddress(connection.address)}</Text>
@@ -307,8 +321,15 @@ const WalletConnectScreen: React.FC = () => {
                   <Text style={styles.balancesIcon}>💰</Text>
                   <Text style={styles.sectionTitle}>Token Balances</Text>
                 </View>
-                <TouchableOpacity style={styles.refreshButton} onPress={handleRefreshBalances}>
-                  <Text style={styles.refreshIcon}>🔄</Text>
+                <TouchableOpacity
+                  style={styles.refreshButton}
+                  onPress={handleRefreshBalances}
+                  accessibilityRole="button"
+                  accessibilityLabel="Refresh token balances"
+                  accessibilityHint="Reloads your current token balances from the blockchain">
+                  <Text style={styles.refreshIcon} accessibilityElementsHidden={true}>
+                    🔄
+                  </Text>
                   <Text style={styles.refreshText}>Refresh</Text>
                 </TouchableOpacity>
               </View>
