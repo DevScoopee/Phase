@@ -1,5 +1,7 @@
 #![no_std]
 
+pub mod revenue;
+
 use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, String, Vec};
 
 /// Billing interval in seconds
@@ -468,6 +470,20 @@ impl SubTrackrContract {
             .persistent()
             .set(&DataKey::Subscription(subscription_id), &sub);
 
+        // Generate revenue recognition schedule for this charge.
+        revenue::generate_revenue_schedule(
+            &env,
+            subscription_id,
+            sub.plan_id,
+            plan.price,
+            now,
+            plan.interval.seconds(),
+        );
+        // All newly charged revenue starts as deferred.
+        revenue::update_merchant_revenue_balances(&env, &plan.merchant, 0, plan.price);
+        // Track subscription under merchant for analytics.
+        revenue::track_merchant_subscription(&env, &plan.merchant, subscription_id);
+
         // Publish event
         env.events().publish(
             (
@@ -695,6 +711,55 @@ impl SubTrackrContract {
             (String::from_str(&env, "transfer_accepted"), subscription_id),
             (old, recipient),
         );
+    }
+
+    // ── Revenue Recognition API ──
+
+    /// Set a revenue recognition rule for a plan (merchant only).
+    pub fn set_revenue_rule(
+        env: Env,
+        merchant: Address,
+        plan_id: u64,
+        method: revenue::RecognitionMethod,
+        recognition_period: u64,
+    ) {
+        merchant.require_auth();
+        let plan: Plan = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Plan(plan_id))
+            .expect("Plan not found");
+        assert!(plan.merchant == merchant, "Only plan owner can set revenue rule");
+        revenue::set_recognition_rule(
+            &env,
+            revenue::RevenueRecognitionRule { plan_id, method, recognition_period },
+        );
+    }
+
+    /// Compute a recognition snapshot for a subscription as of the current ledger time.
+    pub fn recognize_revenue(env: Env, subscription_id: u64) -> revenue::Recognition {
+        let sub: Subscription = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Subscription(subscription_id))
+            .expect("Subscription not found");
+        let plan: Plan = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Plan(sub.plan_id))
+            .expect("Plan not found");
+        let now = env.ledger().timestamp();
+        revenue::recognize_revenue(&env, subscription_id, plan.merchant, now)
+    }
+
+    /// Return the cumulative deferred revenue balance for a merchant.
+    pub fn get_deferred_revenue(env: Env, merchant_id: Address) -> i128 {
+        revenue::get_deferred_revenue(&env, merchant_id)
+    }
+
+    /// Return the revenue schedule for a subscription (None if not yet generated).
+    pub fn get_revenue_schedule(env: Env, subscription_id: u64) -> Option<revenue::RevenueSchedule> {
+        revenue::get_revenue_schedule(&env, subscription_id)
     }
 
     // ── Queries ──

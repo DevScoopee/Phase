@@ -8,6 +8,7 @@ export type RootStackParamList = {
   CryptoPayment: { subscriptionId?: string } | undefined;
   Analytics: undefined;
   Settings: undefined;
+  RevenueReport: undefined;
 };
 
 export type TabParamList = {
@@ -15,5 +16,6 @@ export type TabParamList = {
   AddTab: undefined;
   WalletTab: undefined;
   AnalyticsTab: undefined;
+  RevenueTab: undefined;
   SettingsTab: undefined;
 };

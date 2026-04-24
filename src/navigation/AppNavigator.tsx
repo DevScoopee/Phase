@@ -11,6 +11,7 @@ import CryptoPaymentScreen from '../screens/CryptoPaymentScreen';
 import SubscriptionDetailScreen from '../screens/SubscriptionDetailScreen';
 import AnalyticsScreen from '../screens/AnalyticsScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import RevenueReportScreen from '../screens/RevenueReportScreen';
 import { colors } from '../utils/constants';
 import { RootStackParamList, TabParamList } from './types';
 
@@ -92,6 +93,16 @@ const TabNavigator = () => (
         tabBarLabel: 'Analytics',
         tabBarIcon: ({ color, size }) => (
           <Text style={{ color, fontSize: size, fontWeight: 'bold' }}>📊</Text>
+        ),
+      }}
+    />
+    <Tab.Screen
+      name="RevenueTab"
+      component={RevenueReportScreen}
+      options={{
+        tabBarLabel: 'Revenue',
+        tabBarIcon: ({ color, size }) => (
+          <Text style={{ color, fontSize: size, fontWeight: 'bold' }}>💰</Text>
         ),
       }}
     />
