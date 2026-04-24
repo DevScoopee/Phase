@@ -38,7 +38,9 @@ const writeSessions = async (sessions: SessionRecord[]) => {
 export const sessionService = {
   async getSettings(): Promise<SessionSettings> {
     const raw = await AsyncStorage.getItem(SESSION_SETTINGS_KEY);
-    return raw ? ({ ...defaultSettings, ...(JSON.parse(raw) as SessionSettings) } as SessionSettings) : defaultSettings;
+    return raw
+      ? ({ ...defaultSettings, ...(JSON.parse(raw) as SessionSettings) } as SessionSettings)
+      : defaultSettings;
   },
 
   async updateSettings(settings: Partial<SessionSettings>): Promise<SessionSettings> {
@@ -78,7 +80,10 @@ export const sessionService = {
       isCurrent: true,
     };
 
-    await writeSessions([current, ...sessions.map((session) => ({ ...session, isCurrent: false }))]);
+    await writeSessions([
+      current,
+      ...sessions.map((session) => ({ ...session, isCurrent: false })),
+    ]);
     return current;
   },
 
@@ -98,7 +103,9 @@ export const sessionService = {
   async revokeSession(sessionId: string): Promise<void> {
     const sessions = await readSessions();
     const updated = sessions.map((session) =>
-      session.id === sessionId ? { ...session, revokedAt: now(), isCurrent: false, reason: 'Revoked by user' } : session
+      session.id === sessionId
+        ? { ...session, revokedAt: now(), isCurrent: false, reason: 'Revoked by user' }
+        : session
     );
     await writeSessions(updated);
   },
@@ -107,7 +114,12 @@ export const sessionService = {
     const sessions = await readSessions();
     const updated = sessions.map((session) =>
       session.id !== currentSessionId && !session.revokedAt
-        ? { ...session, revokedAt: now(), isCurrent: false, reason: 'Forced logout from current session' }
+        ? {
+            ...session,
+            revokedAt: now(),
+            isCurrent: false,
+            reason: 'Forced logout from current session',
+          }
         : session
     );
     await writeSessions(updated);

@@ -27,12 +27,18 @@ describe('Subscription Lifecycle E2E', () => {
     await openSubscriptionByName(subName);
 
     await element(by.id('cancel-subscription-button')).tap();
-    await waitFor(element(by.text('Yes, Cancel'))).toBeVisible().withTimeout(3000);
+    await waitFor(element(by.text('Yes, Cancel')))
+      .toBeVisible()
+      .withTimeout(3000);
     await element(by.text('Yes, Cancel')).tap();
     await dismissAnySystemAlert();
 
-    await waitFor(element(by.id('home-screen'))).toBeVisible().withTimeout(10000);
-    await waitFor(element(by.text(subName))).not.toExist().withTimeout(10000);
+    await waitFor(element(by.id('home-screen')))
+      .toBeVisible()
+      .withTimeout(10000);
+    await waitFor(element(by.text(subName)))
+      .not.toExist()
+      .withTimeout(10000);
   });
 
   it('changes plan cycle and reflects in detail screen', async () => {

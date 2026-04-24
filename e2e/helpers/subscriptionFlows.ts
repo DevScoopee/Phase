@@ -8,8 +8,12 @@ const BILLING_LABELS: Record<'monthly' | 'yearly' | 'weekly', string> = {
 
 export const launchCleanApp = async () => {
   await device.launchApp({ newInstance: true, delete: true });
-  await waitFor(element(by.id('app-root'))).toExist().withTimeout(30000);
-  await waitFor(element(by.id('home-screen'))).toExist().withTimeout(30000);
+  await waitFor(element(by.id('app-root')))
+    .toExist()
+    .withTimeout(30000);
+  await waitFor(element(by.id('home-screen')))
+    .toExist()
+    .withTimeout(30000);
 };
 
 export const createSubscription = async (
@@ -18,7 +22,9 @@ export const createSubscription = async (
   cycle: 'monthly' | 'yearly' | 'weekly' = 'monthly'
 ) => {
   await element(by.id('add-subscription-button')).tap();
-  await waitFor(element(by.id('add-subscription-screen'))).toBeVisible().withTimeout(10000);
+  await waitFor(element(by.id('add-subscription-screen')))
+    .toBeVisible()
+    .withTimeout(10000);
   await expect(element(by.id('subscription-form-title'))).toBeVisible();
 
   await element(by.id('subscription-name-input')).replaceText(name);
@@ -31,17 +37,25 @@ export const createSubscription = async (
   await element(by.id('save-subscription-button')).tap();
   await dismissAnySystemAlert();
 
-  await waitFor(element(by.text(name))).toBeVisible().withTimeout(15000);
+  await waitFor(element(by.text(name)))
+    .toBeVisible()
+    .withTimeout(15000);
 };
 
 export const openSubscriptionByName = async (name: string) => {
-  await waitFor(element(by.text(name))).toBeVisible().withTimeout(10000);
+  await waitFor(element(by.text(name)))
+    .toBeVisible()
+    .withTimeout(10000);
   await element(by.text(name)).tap();
-  await waitFor(element(by.id('subscription-detail-screen'))).toBeVisible().withTimeout(10000);
+  await waitFor(element(by.id('subscription-detail-screen')))
+    .toBeVisible()
+    .withTimeout(10000);
 };
 
 export const expectBillingCycle = async (cycle: 'monthly' | 'yearly' | 'weekly') => {
-  await expect(element(by.id('subscription-billing-cycle-value'))).toHaveText(BILLING_LABELS[cycle]);
+  await expect(element(by.id('subscription-billing-cycle-value'))).toHaveText(
+    BILLING_LABELS[cycle]
+  );
 };
 
 export const dismissAnySystemAlert = async () => {
