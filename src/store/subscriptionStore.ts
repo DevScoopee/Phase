@@ -16,6 +16,7 @@ import {
   presentChargeSuccessNotification,
   presentChargeFailedNotification,
 } from '../services/notificationService';
+import { errorHandler, AppError } from '../services/errorHandler';
 
 const STORAGE_KEY = 'subtrackr-subscriptions';
 const STORE_VERSION = 1;
@@ -138,7 +139,7 @@ interface SubscriptionState {
   subscriptions: Subscription[];
   stats: SubscriptionStats;
   isLoading: boolean;
-  error: string | null;
+  error: AppError | null;
 
   // Actions
   addSubscription: (data: SubscriptionFormData) => Promise<void>;
@@ -185,8 +186,13 @@ export const useSubscriptionStore = create<SubscriptionState>()(
           get().calculateStats();
           await syncRenewalReminders(get().subscriptions);
         } catch (error) {
+          const appError = errorHandler.handleError(error as Error, {
+            action: 'addSubscription',
+            subscriptionId: 'new',
+            metadata: { formData: data },
+          });
           set({
-            error: error instanceof Error ? error.message : 'Failed to add subscription',
+            error: appError,
             isLoading: false,
           });
         }
@@ -205,8 +211,13 @@ export const useSubscriptionStore = create<SubscriptionState>()(
           get().calculateStats();
           await syncRenewalReminders(get().subscriptions);
         } catch (error) {
+          const appError = errorHandler.handleError(error as Error, {
+            action: 'updateSubscription',
+            subscriptionId: id,
+            metadata: { updateData: data },
+          });
           set({
-            error: error instanceof Error ? error.message : 'Failed to update subscription',
+            error: appError,
             isLoading: false,
           });
         }
@@ -223,8 +234,12 @@ export const useSubscriptionStore = create<SubscriptionState>()(
           get().calculateStats();
           await syncRenewalReminders(get().subscriptions);
         } catch (error) {
+          const appError = errorHandler.handleError(error as Error, {
+            action: 'deleteSubscription',
+            subscriptionId: id,
+          });
           set({
-            error: error instanceof Error ? error.message : 'Failed to delete subscription',
+            error: appError,
             isLoading: false,
           });
         }
@@ -243,8 +258,12 @@ export const useSubscriptionStore = create<SubscriptionState>()(
           get().calculateStats();
           await syncRenewalReminders(get().subscriptions);
         } catch (error) {
+          const appError = errorHandler.handleError(error as Error, {
+            action: 'toggleSubscriptionStatus',
+            subscriptionId: id,
+          });
           set({
-            error: error instanceof Error ? error.message : 'Failed to toggle subscription',
+            error: appError,
             isLoading: false,
           });
         }

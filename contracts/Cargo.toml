@@ -15,7 +15,10 @@ subtrackr-types = { path = "../types" }
 [dev-dependencies]
 soroban-sdk = { version = "21.0.0", features = ["testutils"] }
 arbitrary = { version = "1.3", features = ["derive"] }
+<<<<<<< HEAD
 
+=======
+>>>>>>> 5423782bdd94afc6f35160a116f41218e39408bb
 [workspace]
 resolver = "2"
 members = [
@@ -23,7 +26,10 @@ members = [
     "storage",
     "subscription",
     "types",
+<<<<<<< HEAD
     "batch",  # ← ADD THIS NEW MEMBER
+=======
+>>>>>>> 5423782bdd94afc6f35160a116f41218e39408bb
 ]
 
 [profile.release]
@@ -34,4 +40,8 @@ strip = "symbols"
 debug-assertions = false
 panic = "abort"
 codegen-units = 1
+<<<<<<< HEAD
 lto = true
+=======
+lto = true
+>>>>>>> 5423782bdd94afc6f35160a116f41218e39408bb

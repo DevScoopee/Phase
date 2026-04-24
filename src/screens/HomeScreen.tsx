@@ -47,7 +47,7 @@ const HomeScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} accessibilityLabel="SubTrackr home screen">
       <ScrollView
         style={styles.scrollView}
         refreshControl={
@@ -55,10 +55,13 @@ const HomeScreen: React.FC = () => {
             refreshing={refreshing}
             onRefresh={onRefresh}
             tintColor={colors.primary}
+            accessibilityLabel={refreshing ? 'Refreshing subscriptions' : 'Pull to refresh'}
           />
         }>
         <View style={styles.header}>
-          <Text style={styles.title}>SubTrackr</Text>
+          <Text style={styles.title} accessibilityRole="header">
+            SubTrackr
+          </Text>
           <Text style={styles.subtitle}>Manage your subscriptions</Text>
           <FilterBar
             searchQuery={filters.searchQuery}

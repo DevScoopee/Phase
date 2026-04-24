@@ -94,7 +94,7 @@ const SettingsScreen: React.FC = () => {
           <Text style={styles.subtitle}>Configure your preferences</Text>
         </View>
         <Card style={styles.section}>
-          <Text style={styles.sectionTitle}>Account</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">Account</Text>
           <View style={styles.settingRow}>
             <View style={styles.settingInfo}>
               <Text style={styles.settingLabel}>Wallet Address</Text>
@@ -108,13 +108,18 @@ const SettingsScreen: React.FC = () => {
             </View>
           </View>
           {address && (
-            <TouchableOpacity style={styles.dangerButton} onPress={handleDisconnectWallet}>
+            <TouchableOpacity
+              style={styles.dangerButton}
+              onPress={handleDisconnectWallet}
+              accessibilityRole="button"
+              accessibilityLabel="Disconnect wallet"
+              accessibilityHint="Disconnects your connected crypto wallet">
               <Text style={styles.dangerButtonText}>Disconnect Wallet</Text>
             </TouchableOpacity>
           )}
         </Card>
         <Card style={styles.section}>
-          <Text style={styles.sectionTitle}>Notifications</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">Notifications</Text>
           <View style={styles.settingRow}>
             <View style={styles.settingInfo}>
               <Text style={styles.settingLabel}>Billing Reminders</Text>
@@ -125,11 +130,14 @@ const SettingsScreen: React.FC = () => {
               onValueChange={handleNotificationToggle}
               trackColor={{ false: colors.border, true: colors.primary }}
               thumbColor={colors.text}
+              accessibilityLabel="Billing reminders"
+              accessibilityRole="switch"
+              accessibilityState={{ checked: settings.notificationsEnabled }}
             />
           </View>
         </Card>
         <Card style={styles.section}>
-          <Text style={styles.sectionTitle}>Preferences</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">Preferences</Text>
           <View style={styles.settingRow}>
             <View style={styles.settingInfo}>
               <Text style={styles.settingLabel}>Default Currency</Text>
@@ -144,7 +152,10 @@ const SettingsScreen: React.FC = () => {
                   styles.currencyButton,
                   settings.defaultCurrency === currency && styles.currencyButtonActive,
                 ]}
-                onPress={() => handleCurrencyChange(currency)}>
+                onPress={() => handleCurrencyChange(currency)}
+                accessibilityRole="radio"
+                accessibilityLabel={currency}
+                accessibilityState={{ checked: settings.defaultCurrency === currency }}>
                 <Text
                   style={[
                     styles.currencyButtonText,
@@ -157,34 +168,54 @@ const SettingsScreen: React.FC = () => {
           </View>
         </Card>
         <Card style={styles.section}>
-          <Text style={styles.sectionTitle}>About</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">About</Text>
           <View style={styles.settingRow}>
             <Text style={styles.settingLabel}>Version</Text>
             <Text style={styles.settingValue}>{APP_VERSION}</Text>
           </View>
           <TouchableOpacity
             style={styles.linkRow}
-            onPress={() => Linking.openURL('mailto:support@subtrackr.app')}>
+            onPress={() => Linking.openURL('mailto:support@subtrackr.app')}
+            accessibilityRole="link"
+            accessibilityLabel="Contact Support"
+            accessibilityHint="Opens your email app to contact support">
             <Text style={styles.linkText}>Contact Support</Text>
-            <Text style={styles.linkArrow}>→</Text>
+            <Text style={styles.linkArrow} accessibilityElementsHidden={true}>→</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.linkRow}
-            onPress={() => navigation.navigate('LanguageSettings')}>
+            onPress={() => navigation.navigate('LanguageSettings')}
+            accessibilityRole="button"
+            accessibilityLabel="Language settings"
+            accessibilityHint="Opens language selection screen">
             <Text style={styles.linkText}>Language</Text>
-            <Text style={styles.linkArrow}>→</Text>
+            <Text style={styles.linkArrow} accessibilityElementsHidden={true}>→</Text>
           </TouchableOpacity>
+          {__DEV__ && (
+            <TouchableOpacity
+              style={styles.linkRow}
+              onPress={() => navigation.navigate('ErrorDashboard')}>
+              <Text style={styles.linkText}>Error Dashboard</Text>
+              <Text style={styles.linkArrow}>→</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={styles.linkRow}
-            onPress={() => Linking.openURL('https://subtrackr.app/privacy')}>
+            onPress={() => Linking.openURL('https://subtrackr.app/privacy')}
+            accessibilityRole="link"
+            accessibilityLabel="Privacy Policy"
+            accessibilityHint="Opens privacy policy in browser">
             <Text style={styles.linkText}>Privacy Policy</Text>
-            <Text style={styles.linkArrow}>→</Text>
+            <Text style={styles.linkArrow} accessibilityElementsHidden={true}>→</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.linkRow, styles.linkRowLast]}
-            onPress={() => Linking.openURL('https://subtrackr.app/terms')}>
+            onPress={() => Linking.openURL('https://subtrackr.app/terms')}
+            accessibilityRole="link"
+            accessibilityLabel="Terms of Service"
+            accessibilityHint="Opens terms of service in browser">
             <Text style={styles.linkText}>Terms of Service</Text>
-            <Text style={styles.linkArrow}>→</Text>
+            <Text style={styles.linkArrow} accessibilityElementsHidden={true}>→</Text>
           </TouchableOpacity>
         </Card>
       </ScrollView>
