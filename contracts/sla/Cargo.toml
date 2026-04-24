@@ -1,9 +1,9 @@
 [package]
-name = "subtrackr-proxy"
+name = "subtrackr-sla"
 version = "0.2.0"
 edition = "2021"
 authors = ["SubTrackr Team"]
-description = "Upgradeable proxy for SubTrackr (Soroban)"
+description = "SLA monitoring contract for SubTrackr (Soroban)"
 
 [lib]
 path = "src/lib.rs"
@@ -11,9 +11,6 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 soroban-sdk = "21.0.0"
-subtrackr-types = { path = "../types" }
 
 [dev-dependencies]
 soroban-sdk = { version = "21.0.0", features = ["testutils"] }
-subtrackr-subscription = { path = "../subscription" }
-subtrackr-storage = { path = "../storage" }
