@@ -220,6 +220,17 @@ const SettingsScreen: React.FC = () => {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.linkRow}
+            onPress={() => navigation.navigate('WebhookSettings')}
+            accessibilityRole="button"
+            accessibilityLabel="Webhook settings"
+            accessibilityHint="Opens subscription webhook management">
+            <Text style={styles.linkText}>Webhooks</Text>
+            <Text style={styles.linkArrow} accessibilityElementsHidden={true}>
+              →
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.linkRow}
             onPress={() => navigation.navigate('AdminDashboard')}
             accessibilityRole="button"
             accessibilityLabel="Admin dashboard"

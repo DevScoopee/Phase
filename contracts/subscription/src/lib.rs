@@ -1,14 +1,19 @@
 #![no_std]
 
 use soroban_sdk::{token, Address, Env, IntoVal, String, TryFromVal, Val, Vec};
-use subtrackr_types::{Interval, Plan, StorageKey, Subscription, SubscriptionStatus};
+use subtrackr_types::{
+    Interval, Plan, StorageKey, Subscription, SubscriptionStatus, WebhookEventType,
+};
+
+mod events;
+mod webhook;
 
 /// Billing interval in seconds.
 const MAX_PAUSE_DURATION: u64 = 2_592_000; // 30 days
 
-const STORAGE_VERSION: u32 = 2;
+const STORAGE_VERSION: u32 = 3;
 
-fn storage_instance_get<V: TryFromVal<Env, Val>>(
+pub(crate) fn storage_instance_get<V: TryFromVal<Env, Val>>(
     env: &Env,
     storage: &Address,
     key: StorageKey,
@@ -22,7 +27,12 @@ fn storage_instance_get<V: TryFromVal<Env, Val>>(
     val_opt.map(|val| V::try_from_val(env, &val).unwrap())
 }
 
-fn storage_instance_set<V: IntoVal<Env, Val>>(env: &Env, storage: &Address, key: StorageKey, value: V) {
+pub(crate) fn storage_instance_set<V: IntoVal<Env, Val>>(
+    env: &Env,
+    storage: &Address,
+    key: StorageKey,
+    value: V,
+) {
     let val: Val = value.into_val(env);
     let args: Vec<Val> = soroban_sdk::vec![env, key.into_val(env), val];
     env.invoke_contract::<()>(
@@ -32,7 +42,7 @@ fn storage_instance_set<V: IntoVal<Env, Val>>(env: &Env, storage: &Address, key:
     );
 }
 
-fn storage_instance_remove(env: &Env, storage: &Address, key: StorageKey) {
+pub(crate) fn storage_instance_remove(env: &Env, storage: &Address, key: StorageKey) {
     let args: Vec<Val> = soroban_sdk::vec![env, key.into_val(env)];
     env.invoke_contract::<()>(
         storage,
@@ -41,7 +51,7 @@ fn storage_instance_remove(env: &Env, storage: &Address, key: StorageKey) {
     );
 }
 
-fn storage_persistent_get<V: TryFromVal<Env, Val>>(
+pub(crate) fn storage_persistent_get<V: TryFromVal<Env, Val>>(
     env: &Env,
     storage: &Address,
     key: StorageKey,
@@ -55,7 +65,12 @@ fn storage_persistent_get<V: TryFromVal<Env, Val>>(
     val_opt.map(|val| V::try_from_val(env, &val).unwrap())
 }
 
-fn storage_persistent_set<V: IntoVal<Env, Val>>(env: &Env, storage: &Address, key: StorageKey, value: V) {
+pub(crate) fn storage_persistent_set<V: IntoVal<Env, Val>>(
+    env: &Env,
+    storage: &Address,
+    key: StorageKey,
+    value: V,
+) {
     let val: Val = value.into_val(env);
     let args: Vec<Val> = soroban_sdk::vec![env, key.into_val(env), val];
     env.invoke_contract::<()>(
@@ -65,7 +80,7 @@ fn storage_persistent_set<V: IntoVal<Env, Val>>(env: &Env, storage: &Address, ke
     );
 }
 
-fn storage_persistent_remove(env: &Env, storage: &Address, key: StorageKey) {
+pub(crate) fn storage_persistent_remove(env: &Env, storage: &Address, key: StorageKey) {
     let args: Vec<Val> = soroban_sdk::vec![env, key.into_val(env)];
     env.invoke_contract::<()>(
         storage,
@@ -74,11 +89,11 @@ fn storage_persistent_remove(env: &Env, storage: &Address, key: StorageKey) {
     );
 }
 
-fn get_admin(env: &Env, storage: &Address) -> Address {
+pub(crate) fn get_admin(env: &Env, storage: &Address) -> Address {
     storage_instance_get(env, storage, StorageKey::Admin).expect("Admin not set")
 }
 
-fn enforce_rate_limit(env: &Env, storage: &Address, caller: &Address, function_name: &str) {
+pub(crate) fn enforce_rate_limit(env: &Env, storage: &Address, caller: &Address, function_name: &str) {
     let fname = String::from_str(env, function_name);
     let min_interval: Option<u64> =
         storage_instance_get(env, storage, StorageKey::RateLimit(fname.clone()));
@@ -115,7 +130,7 @@ fn enforce_rate_limit(env: &Env, storage: &Address, caller: &Address, function_n
     );
 }
 
-fn check_and_resume_internal(env: &Env, sub: &mut Subscription) -> bool {
+pub(crate) fn check_and_resume_internal(env: &Env, sub: &mut Subscription) -> bool {
     if sub.status == SubscriptionStatus::Paused {
         let now = env.ledger().timestamp();
         if now >= sub.paused_at + sub.pause_duration {
@@ -128,7 +143,7 @@ fn check_and_resume_internal(env: &Env, sub: &mut Subscription) -> bool {
     false
 }
 
-fn set_user_plan_index(
+pub(crate) fn set_user_plan_index(
     env: &Env,
     storage: &Address,
     subscriber: &Address,
@@ -143,11 +158,16 @@ fn set_user_plan_index(
     );
 }
 
-fn remove_user_plan_index(env: &Env, storage: &Address, subscriber: &Address, plan_id: u64) {
+pub(crate) fn remove_user_plan_index(env: &Env, storage: &Address, subscriber: &Address, plan_id: u64) {
     storage_persistent_remove(env, storage, StorageKey::UserPlanIndex(subscriber.clone(), plan_id));
 }
 
-fn get_user_plan_index(env: &Env, storage: &Address, subscriber: &Address, plan_id: u64) -> Option<u64> {
+pub(crate) fn get_user_plan_index(
+    env: &Env,
+    storage: &Address,
+    subscriber: &Address,
+    plan_id: u64,
+) -> Option<u64> {
     storage_persistent_get(env, storage, StorageKey::UserPlanIndex(subscriber.clone(), plan_id))
 }
 
@@ -186,12 +206,17 @@ impl SubTrackrSubscription {
     /// Migrate storage from `from_version` to this implementation's `STORAGE_VERSION`.
     ///
     /// For v1 -> v2: build `UserPlanIndex` for all active/non-cancelled subscriptions.
+    /// For v2 -> v3: webhook data is additive and needs no backfill.
     pub fn migrate(env: Env, proxy: Address, storage: Address, from_version: u32) {
         proxy.require_auth();
         if from_version == STORAGE_VERSION {
             return;
         }
         assert!(from_version < STORAGE_VERSION, "Unsupported migration path");
+
+        if from_version == 2 {
+            return;
+        }
 
         if from_version == 1 {
             let sub_count: u64 = storage_instance_get(&env, &storage, StorageKey::SubscriptionCount)
@@ -332,6 +357,7 @@ impl SubTrackrSubscription {
 
         let mut plan: Plan = storage_persistent_get(&env, &storage, StorageKey::Plan(plan_id))
             .expect("Plan not found");
+        let previous_status = SubscriptionStatus::Cancelled;
         assert!(plan.active, "Plan is not active");
         assert!(
             plan.merchant != subscriber,
@@ -392,6 +418,21 @@ impl SubTrackrSubscription {
         plan.subscriber_count += 1;
         storage_persistent_set(&env, &storage, StorageKey::Plan(plan_id), plan);
 
+        let subscription: Subscription =
+            storage_persistent_get(&env, &storage, StorageKey::Subscription(sub_count))
+                .expect("Subscription not found");
+        let plan: Plan = storage_persistent_get(&env, &storage, StorageKey::Plan(plan_id))
+            .expect("Plan not found");
+        webhook::emit_subscription_event(
+            &env,
+            &storage,
+            &plan.merchant,
+            WebhookEventType::SubscriptionCreated,
+            &subscription,
+            &plan,
+            previous_status,
+        );
+
         sub_count
     }
 
@@ -405,6 +446,7 @@ impl SubTrackrSubscription {
         let mut sub: Subscription =
             storage_persistent_get(&env, &storage, StorageKey::Subscription(subscription_id))
                 .expect("Subscription not found");
+        let previous_status = sub.status.clone();
 
         assert!(sub.subscriber == subscriber, "Only subscriber can cancel");
         assert!(
@@ -424,6 +466,18 @@ impl SubTrackrSubscription {
             plan.subscriber_count -= 1;
         }
         storage_persistent_set(&env, &storage, StorageKey::Plan(sub.plan_id), plan);
+
+        let plan: Plan = storage_persistent_get(&env, &storage, StorageKey::Plan(sub.plan_id))
+            .expect("Plan not found");
+        webhook::emit_subscription_event(
+            &env,
+            &storage,
+            &plan.merchant,
+            WebhookEventType::SubscriptionCancelled,
+            &sub,
+            &plan,
+            previous_status,
+        );
     }
 
     pub fn pause_subscription(
@@ -464,6 +518,7 @@ impl SubTrackrSubscription {
         let mut sub: Subscription =
             storage_persistent_get(&env, &storage, StorageKey::Subscription(subscription_id))
                 .expect("Subscription not found");
+        let previous_status = sub.status.clone();
 
         assert!(sub.subscriber == subscriber, "Only subscriber can pause");
         assert!(
@@ -485,6 +540,18 @@ impl SubTrackrSubscription {
             (String::from_str(&env, "subscription_paused"), subscriber),
             (subscription_id, sub.paused_at, duration),
         );
+
+        let plan: Plan = storage_persistent_get(&env, &storage, StorageKey::Plan(sub.plan_id))
+            .expect("Plan not found");
+        webhook::emit_subscription_event(
+            &env,
+            &storage,
+            &plan.merchant,
+            WebhookEventType::SubscriptionPaused,
+            &sub,
+            &plan,
+            previous_status,
+        );
     }
 
     pub fn resume_subscription(
@@ -503,6 +570,7 @@ impl SubTrackrSubscription {
         let mut sub: Subscription =
             storage_persistent_get(&env, &storage, StorageKey::Subscription(subscription_id))
                 .expect("Subscription not found");
+        let previous_status = sub.status.clone();
 
         assert!(sub.subscriber == subscriber, "Only subscriber can resume");
         assert!(
@@ -526,6 +594,16 @@ impl SubTrackrSubscription {
             (String::from_str(&env, "subscription_resumed"), subscriber),
             subscription_id,
         );
+
+        webhook::emit_subscription_event(
+            &env,
+            &storage,
+            &plan.merchant,
+            WebhookEventType::SubscriptionResumed,
+            &sub,
+            &plan,
+            previous_status,
+        );
     }
 
     // ── Payment Processing ──
@@ -535,6 +613,7 @@ impl SubTrackrSubscription {
         let mut sub: Subscription =
             storage_persistent_get(&env, &storage, StorageKey::Subscription(subscription_id))
                 .expect("Subscription not found");
+        let previous_status = sub.status.clone();
 
         if sub.subscriber != get_admin(&env, &storage) {
             enforce_rate_limit(&env, &storage, &sub.subscriber, "charge_subscription");
@@ -576,6 +655,16 @@ impl SubTrackrSubscription {
             (String::from_str(&env, "subscription_charged"), subscription_id),
             (sub.subscriber.clone(), plan.price, 100_000u64, now),
         );
+
+        webhook::emit_subscription_event(
+            &env,
+            &storage,
+            &plan.merchant,
+            WebhookEventType::SubscriptionCharged,
+            &sub,
+            &plan,
+            previous_status,
+        );
     }
 
     pub fn request_refund(
@@ -589,6 +678,7 @@ impl SubTrackrSubscription {
         let mut sub: Subscription =
             storage_persistent_get(&env, &storage, StorageKey::Subscription(subscription_id))
                 .expect("Subscription not found");
+        let previous_status = sub.status.clone();
 
         if sub.subscriber != get_admin(&env, &storage) {
             enforce_rate_limit(&env, &storage, &sub.subscriber, "request_refund");
@@ -609,6 +699,18 @@ impl SubTrackrSubscription {
             (String::from_str(&env, "refund_requested"), subscription_id),
             (sub.subscriber.clone(), amount),
         );
+
+        let plan: Plan = storage_persistent_get(&env, &storage, StorageKey::Plan(sub.plan_id))
+            .expect("Plan not found");
+        webhook::emit_subscription_event(
+            &env,
+            &storage,
+            &plan.merchant,
+            WebhookEventType::RefundRequested,
+            &sub,
+            &plan,
+            previous_status,
+        );
     }
 
     pub fn approve_refund(env: Env, proxy: Address, storage: Address, subscription_id: u64) {
@@ -619,6 +721,7 @@ impl SubTrackrSubscription {
 
         let admin = get_admin(&env, &storage);
         admin.require_auth();
+        let previous_status = sub.status.clone();
 
         let amount = sub.refund_requested_amount;
         assert!(amount > 0, "No pending refund request");
@@ -635,6 +738,18 @@ impl SubTrackrSubscription {
             (String::from_str(&env, "refund_approved"), subscription_id),
             (sub.subscriber.clone(), amount),
         );
+
+        let plan: Plan = storage_persistent_get(&env, &storage, StorageKey::Plan(sub.plan_id))
+            .expect("Plan not found");
+        webhook::emit_subscription_event(
+            &env,
+            &storage,
+            &plan.merchant,
+            WebhookEventType::RefundApproved,
+            &sub,
+            &plan,
+            previous_status,
+        );
     }
 
     pub fn reject_refund(env: Env, proxy: Address, storage: Address, subscription_id: u64) {
@@ -645,6 +760,7 @@ impl SubTrackrSubscription {
 
         let admin = get_admin(&env, &storage);
         admin.require_auth();
+        let previous_status = sub.status.clone();
 
         assert!(sub.refund_requested_amount > 0, "No pending refund request");
         sub.refund_requested_amount = 0;
@@ -654,6 +770,18 @@ impl SubTrackrSubscription {
         env.events().publish(
             (String::from_str(&env, "refund_rejected"), subscription_id),
             sub.subscriber.clone(),
+        );
+
+        let plan: Plan = storage_persistent_get(&env, &storage, StorageKey::Plan(sub.plan_id))
+            .expect("Plan not found");
+        webhook::emit_subscription_event(
+            &env,
+            &storage,
+            &plan.merchant,
+            WebhookEventType::RefundRejected,
+            &sub,
+            &plan,
+            previous_status,
         );
     }
 
@@ -693,6 +821,18 @@ impl SubTrackrSubscription {
             (String::from_str(&env, "transfer_requested"), subscription_id),
             (sub.subscriber.clone(), recipient),
         );
+
+        let plan: Plan = storage_persistent_get(&env, &storage, StorageKey::Plan(sub.plan_id))
+            .expect("Plan not found");
+        webhook::emit_subscription_event(
+            &env,
+            &storage,
+            &plan.merchant,
+            WebhookEventType::TransferRequested,
+            &sub,
+            &plan,
+            sub.status.clone(),
+        );
     }
 
     pub fn accept_transfer(
@@ -711,6 +851,7 @@ impl SubTrackrSubscription {
         let mut sub: Subscription =
             storage_persistent_get(&env, &storage, StorageKey::Subscription(subscription_id))
                 .expect("Subscription not found");
+        let previous_status = sub.status.clone();
 
         let pending_recipient: Address =
             storage_instance_get(&env, &storage, StorageKey::PendingTransfer(subscription_id))
@@ -766,6 +907,18 @@ impl SubTrackrSubscription {
         env.events().publish(
             (String::from_str(&env, "transfer_accepted"), subscription_id),
             (old, recipient),
+        );
+
+        let plan: Plan = storage_persistent_get(&env, &storage, StorageKey::Plan(sub.plan_id))
+            .expect("Plan not found");
+        webhook::emit_subscription_event(
+            &env,
+            &storage,
+            &plan.merchant,
+            WebhookEventType::TransferAccepted,
+            &sub,
+            &plan,
+            previous_status,
         );
     }
 

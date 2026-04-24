@@ -18,6 +18,7 @@ export type RootStackParamList = {
   SegmentManagement: undefined;
   SegmentDetail: { segmentId: string };
   Gamification: undefined;
+  WebhookSettings: undefined;
 };
 
 export type TabParamList = {

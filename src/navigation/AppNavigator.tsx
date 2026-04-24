@@ -21,6 +21,7 @@ import AdminDashboardScreen from '../screens/AdminDashboardScreen';
 import { SegmentManagementScreen } from '../screens/SegmentManagementScreen';
 import { SegmentDetailScreen } from '../screens/SegmentDetailScreen';
 import { GamificationScreen } from '../screens/GamificationScreen';
+import WebhookSettingsScreen from '../screens/WebhookSettingsScreen';
 import { colors } from '../utils/constants';
 import { RootStackParamList, TabParamList } from './types';
 
@@ -115,6 +116,11 @@ const SettingsStack = () => (
       name="ErrorDashboard"
       component={ErrorDashboardScreen}
       options={{ title: 'Error Dashboard', headerShown: true }}
+    />
+    <Stack.Screen
+      name="WebhookSettings"
+      component={WebhookSettingsScreen}
+      options={{ title: 'Webhooks', headerShown: true }}
     />
   </Stack.Navigator>
 );
