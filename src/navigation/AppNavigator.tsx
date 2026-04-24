@@ -12,6 +12,7 @@ import CommunityScreen from '../screens/CommunityScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import SubscriptionDetailScreen from '../screens/SubscriptionDetailScreen';
 import AnalyticsScreen from '../screens/AnalyticsScreen';
+import SlaDashboard from '../screens/SlaDashboard';
 import GDPRSettingsScreen from '../screens/GDPRSettingsScreen';
 import LanguageSettingsScreen from '../screens/LanguageSettingsScreen';
 import SessionManagementScreen from '../screens/SessionManagementScreen';
@@ -54,6 +55,11 @@ const HomeStack = () => (
       name="Community"
       component={CommunityScreen}
       options={{ title: 'Community', headerShown: true }}
+    />
+    <Stack.Screen
+      name="SlaDashboard"
+      component={SlaDashboard}
+      options={{ title: 'SLA Dashboard', headerShown: true }}
     />
     <Stack.Screen
       name="Profile"

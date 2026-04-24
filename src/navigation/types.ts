@@ -9,6 +9,7 @@ export type RootStackParamList = {
   Community: undefined;
   Profile: { subscriber?: string } | undefined;
   Analytics: undefined;
+  SlaDashboard: undefined;
   GDPRSettings: undefined;
   Settings: undefined;
   AdminDashboard: undefined;
