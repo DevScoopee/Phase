@@ -242,6 +242,17 @@ const SettingsScreen: React.FC = () => {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.linkRow}
+            onPress={() => navigation.navigate('SlaDashboard')}
+            accessibilityRole="button"
+            accessibilityLabel="SLA dashboard"
+            accessibilityHint="Opens the SLA management dashboard">
+            <Text style={styles.linkText}>SLA Dashboard</Text>
+            <Text style={styles.linkArrow} accessibilityElementsHidden={true}>
+              →
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.linkRow}
             onPress={() => navigation.navigate('LanguageSettings')}
             accessibilityRole="button"
             accessibilityLabel="Language settings"
