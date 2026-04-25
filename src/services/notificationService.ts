@@ -193,6 +193,26 @@ export async function presentTransactionQueueNotification(
   });
 }
 
+export async function presentLocalNotification(input: {
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+}): Promise<void> {
+  if (!isNotificationsSupported()) return;
+  const status = await getPermissionStatus();
+  if (status !== Notifications.PermissionStatus.GRANTED) return;
+
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: input.title,
+      body: input.body,
+      data: input.data ?? {},
+      sound: 'default',
+    },
+    trigger: null,
+  });
+}
+
 export function navigateToSubscriptionFromNotification(subscriptionId: string): void {
   if (!navigationRef.isReady()) return;
   navigationRef.navigate('HomeTab', {
