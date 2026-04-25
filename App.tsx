@@ -1,6 +1,7 @@
 import React from 'react';
 import { View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { useNotifications } from './src/hooks/useNotifications';
 import { useTransactionQueue } from './src/hooks/useTransactionQueue';
@@ -82,13 +83,15 @@ function NotificationBootstrap() {
 
 export default function App() {
   return (
-    <View style={{ flex: 1 }} testID="app-root">
-      <StatusBar style="light" />
-      <ErrorBoundary>
-        <NotificationBootstrap />
-        <AppNavigator />
-      </ErrorBoundary>
-      <AppKit />
-    </View>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <View style={{ flex: 1 }} testID="app-root">
+        <StatusBar style="light" />
+        <ErrorBoundary>
+          <NotificationBootstrap />
+          <AppNavigator />
+        </ErrorBoundary>
+        <AppKit />
+      </View>
+    </GestureHandlerRootView>
   );
 }
