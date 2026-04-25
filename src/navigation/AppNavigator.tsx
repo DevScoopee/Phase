@@ -21,6 +21,7 @@ import AdminDashboardScreen from '../screens/AdminDashboardScreen';
 import { SegmentManagementScreen } from '../screens/SegmentManagementScreen';
 import { SegmentDetailScreen } from '../screens/SegmentDetailScreen';
 import { GamificationScreen } from '../screens/GamificationScreen';
+import RevenueReportScreen from '../screens/RevenueReportScreen';
 import { colors } from '../utils/constants';
 import { RootStackParamList, TabParamList } from './types';
 
@@ -168,6 +169,16 @@ const TabNavigator = () => (
         tabBarLabel: 'Analytics',
         tabBarIcon: ({ color, size }) => (
           <Text style={{ color, fontSize: size, fontWeight: 'bold' }}>📊</Text>
+        ),
+      }}
+    />
+    <Tab.Screen
+      name="RevenueTab"
+      component={RevenueReportScreen}
+      options={{
+        tabBarLabel: 'Revenue',
+        tabBarIcon: ({ color, size }) => (
+          <Text style={{ color, fontSize: size, fontWeight: 'bold' }}>💰</Text>
         ),
       }}
     />
