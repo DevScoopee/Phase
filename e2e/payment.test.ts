@@ -22,7 +22,9 @@ describe('Subscription Charging Flow E2E', () => {
     await expect(element(by.id('simulate-charge-success-button'))).toBeVisible();
     await element(by.id('simulate-charge-success-button')).tap();
 
-    await waitFor(element(by.id('simulate-charge-failed-button'))).toBeVisible().withTimeout(5000);
+    await waitFor(element(by.id('simulate-charge-failed-button')))
+      .toBeVisible()
+      .withTimeout(5000);
     await element(by.id('simulate-charge-failed-button')).tap();
 
     // Validate action controls still available after charging operations.

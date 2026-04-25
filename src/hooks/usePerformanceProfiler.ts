@@ -1,10 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { performanceMonitor } from '../services/performanceMonitor';
 
-export const usePerformanceProfiler = (
-  name: string,
-  metadata?: Record<string, unknown>
-): void => {
+export const usePerformanceProfiler = (name: string, metadata?: Record<string, unknown>): void => {
   const start = useRef<number>(Date.now());
 
   useEffect(() => {

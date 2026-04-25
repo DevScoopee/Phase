@@ -1,5 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, RefreshControl, TouchableOpacity } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  SafeAreaView,
+  RefreshControl,
+  TouchableOpacity,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -19,10 +27,6 @@ import { FilterBar } from '../components/home/FilterBar';
 import { FilterModal } from '../components/home/FilterModal';
 import { StatsCard } from '../components/home/StatsCard';
 import { SubscriptionList } from '../components/home/SubscriptionList';
-import { ScreenTransition, StaggeredList } from '../components/common/ScreenTransitions';
-import { SharedElement } from '../components/common/SharedElement';
-
-type HomeNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 type HomeNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -51,18 +55,9 @@ const HomeScreen: React.FC = () => {
   });
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        await fetchSubscriptions();
-        calculateStats();
-        if (subscriptions) setUpcomingSubscriptions(getUpcomingSubscriptions(subscriptions));
-      } catch (error) {
-        console.error('Failed to load subscriptions:', error);
-      }
-    };
-
-    loadData();
-  }, [fetchSubscriptions, calculateStats, subscriptions]);
+    calculateStats();
+    if (subscriptions) setUpcomingSubscriptions(getUpcomingSubscriptions(subscriptions));
+  }, [subscriptions, calculateStats]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -89,40 +84,73 @@ const HomeScreen: React.FC = () => {
             accessibilityLabel={refreshing ? 'Refreshing subscriptions' : 'Pull to refresh'}
           />
         }>
-        <ScreenTransition type="fade" duration={500}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <View style={styles.header}>
+          <View
+            style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <SharedElement id="app-title">
-                  <Text style={styles.title} accessibilityRole="header">
-                    SubTrackr
-                  </Text>
-                </SharedElement>
+                <Text style={styles.title} accessibilityRole="header">
+                  SubTrackr
+                </Text>
                 <TouchableOpacity
                   onPress={() => navigation.navigate('Gamification')}
-                  style={{ backgroundColor: colors.primary, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2, marginLeft: 10 }}
-                >
-                  <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>Lvl {level}</Text>
+                  style={{
+                    backgroundColor: colors.primary,
+                    borderRadius: 12,
+                    paddingHorizontal: 8,
+                    paddingVertical: 2,
+                    marginLeft: 10,
+                  }}>
+                  <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>
+                    Lvl {level}
+                  </Text>
                 </TouchableOpacity>
               </View>
               <Text style={styles.subtitle}>Manage your subscriptions</Text>
             </View>
-            <TouchableOpacity
-              onPress={() => navigation.navigate('SegmentManagement')}
-              style={{ backgroundColor: colors.accent, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
-            >
-              <Text style={{ color: '#fff', fontWeight: 'bold' }}>Segments</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('Community')}
+                style={{
+                  backgroundColor: colors.primary,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 8,
+                }}>
+                <Text style={{ color: '#fff', fontWeight: 'bold' }}>Community</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('SegmentManagement')}
+                style={{
+                  backgroundColor: colors.accent,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 8,
+                }}>
+                <Text style={{ color: '#fff', fontWeight: 'bold' }}>Segments</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('InvoiceList')}
+                style={{
+                  backgroundColor: colors.surface,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}>
+                <Text style={{ color: colors.text, fontWeight: 'bold' }}>Invoices</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </ScreenTransition>
-          <FilterBar
-            searchQuery={filters.searchQuery}
-            setSearchQuery={filters.setSearchQuery}
-            onFilterPress={() => setShowFilterModal(true)}
-            hasActiveFilters={hasActiveFilters}
-            activeFilterCount={activeFilterCount}
-          />
         </View>
+        <FilterBar
+          searchQuery={filters.searchQuery}
+          setSearchQuery={filters.setSearchQuery}
+          onFilterPress={() => setShowFilterModal(true)}
+          hasActiveFilters={hasActiveFilters}
+          activeFilterCount={activeFilterCount}
+        />
 
         <StatsCard
           totalMonthlySpend={stats.totalMonthlySpend}
