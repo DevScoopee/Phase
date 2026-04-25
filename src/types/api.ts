@@ -211,8 +211,10 @@ export const ExecuteOrQueueResultSchema = z.object({
   txHash: z.string().optional(),
 });
 
-export type ApiResponse<T> = z.infer<ReturnType<typeof ApiResponseSchema>>;
-export type PaginatedResponse<T> = z.infer<ReturnType<typeof PaginatedResponseSchema>>;
+export type ApiResponse<T = unknown> = z.infer<ReturnType<typeof ApiResponseSchema<z.ZodType<T>>>>;
+export type PaginatedResponse<T = unknown> = z.infer<
+  ReturnType<typeof PaginatedResponseSchema<z.ZodType<T>>>
+>;
 export type NotificationPreferences = z.infer<typeof NotificationPreferencesSchema>;
 export type UserProfile = z.infer<typeof UserProfileSchema>;
 export type AppSettings = z.infer<typeof AppSettingsSchema>;
