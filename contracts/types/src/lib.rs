@@ -156,6 +156,127 @@ pub struct UpgradeEvent {
     pub executed_at: Timestamp,
 }
 
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub enum WebhookEventType {
+    SubscriptionCreated,
+    SubscriptionUpdated,
+    SubscriptionCancelled,
+    SubscriptionPaused,
+    SubscriptionResumed,
+    SubscriptionCharged,
+    RefundRequested,
+    RefundApproved,
+    RefundRejected,
+    TransferRequested,
+    TransferAccepted,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub enum WebhookDeliveryStatus {
+    Pending,
+    Retrying,
+    Delivered,
+    Failed,
+    Paused,
+    Skipped,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct WebhookRetryPolicy {
+    pub max_retries: u32,
+    pub initial_delay_secs: u64,
+    pub max_delay_secs: u64,
+    pub backoff_factor: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct WebhookSubscriptionSnapshot {
+    pub id: u64,
+    pub plan_id: u64,
+    pub subscriber: Address,
+    pub status: SubscriptionStatus,
+    pub started_at: u64,
+    pub last_charged_at: u64,
+    pub next_charge_at: u64,
+    pub total_paid: i128,
+    pub total_gas_spent: u64,
+    pub charge_count: u32,
+    pub paused_at: u64,
+    pub pause_duration: u64,
+    pub refund_requested_amount: i128,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct WebhookPlanSnapshot {
+    pub id: u64,
+    pub merchant: Address,
+    pub name: String,
+    pub price: i128,
+    pub token: Address,
+    pub interval: Interval,
+    pub active: bool,
+    pub subscriber_count: u32,
+    pub created_at: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct WebhookConfig {
+    pub id: u64,
+    pub merchant: Address,
+    pub url: String,
+    pub events: Vec<WebhookEventType>,
+    pub secret_key: String,
+    pub retry_policy: WebhookRetryPolicy,
+    pub is_paused: bool,
+    pub created_at: u64,
+    pub updated_at: u64,
+    pub health_check_at: u64,
+    pub healthy: bool,
+    pub success_count: u64,
+    pub failure_count: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct WebhookEventPayload {
+    pub id: u64,
+    pub webhook_id: u64,
+    pub event_type: WebhookEventType,
+    pub merchant: Address,
+    pub occurred_at: u64,
+    pub subscription: WebhookSubscriptionSnapshot,
+    pub plan: WebhookPlanSnapshot,
+    pub previous_status: SubscriptionStatus,
+    pub current_status: SubscriptionStatus,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct WebhookDelivery {
+    pub id: u64,
+    pub webhook_id: u64,
+    pub event_id: u64,
+    pub event_type: WebhookEventType,
+    pub payload: WebhookEventPayload,
+    pub status: WebhookDeliveryStatus,
+    pub attempts: u32,
+    pub max_attempts: u32,
+    pub next_retry_at: u64,
+    pub last_attempt_at: u64,
+    pub delivered_at: u64,
+    pub response_code: i32,
+    pub error_message: String,
+    pub signature: String,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
 /// Storage keys for the proxy contract state.
 ///
 /// IMPORTANT: Never reorder existing variants. Append new variants only.
@@ -200,6 +321,14 @@ pub enum StorageKey {
     // ── Added in storage version 2 ──
     /// Index: (subscriber, plan_id) -> subscription_id (active/non-cancelled)
     UserPlanIndex(Address, u64),
+
+    // ── Added in storage version 3 ──
+    WebhookCount,
+    Webhook(u64),
+    MerchantWebhooks(Address),
+    WebhookDeliveryCount,
+    WebhookDelivery(u64),
+    WebhookDeliveriesByWebhook(u64),
 
     /// Proxy pointer to the state storage contract.
     ProxyStorage,
