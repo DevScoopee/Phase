@@ -85,15 +85,51 @@ const sampleTransactions: TransactionEvent[] = [
 sampleTransactions.forEach((event) => monitoring.recordTransaction(event));
 
 const merchants: MerchantRecord[] = [
-  { id: 'merch_1', name: 'Northstar Studio', status: 'active', activePlans: 12, monthlyRevenue: 4820 },
+  {
+    id: 'merch_1',
+    name: 'Northstar Studio',
+    status: 'active',
+    activePlans: 12,
+    monthlyRevenue: 4820,
+  },
   { id: 'merch_2', name: 'Ledger Loft', status: 'at-risk', activePlans: 4, monthlyRevenue: 910 },
-  { id: 'merch_3', name: 'Orbit Fitness', status: 'suspended', activePlans: 2, monthlyRevenue: 320 },
+  {
+    id: 'merch_3',
+    name: 'Orbit Fitness',
+    status: 'suspended',
+    activePlans: 2,
+    monthlyRevenue: 320,
+  },
 ];
 
 const subscriptions: SubscriptionAdminRecord[] = [
-  { id: 'sub_1', name: 'Pro Analytics', merchantId: 'merch_1', merchantName: 'Northstar Studio', amount: 29, currency: 'USD', status: 'active' },
-  { id: 'sub_2', name: 'Growth CRM', merchantId: 'merch_2', merchantName: 'Ledger Loft', amount: 59, currency: 'USD', status: 'paused' },
-  { id: 'sub_3', name: 'Focus Gym', merchantId: 'merch_3', merchantName: 'Orbit Fitness', amount: 12, currency: 'USD', status: 'draft' },
+  {
+    id: 'sub_1',
+    name: 'Pro Analytics',
+    merchantId: 'merch_1',
+    merchantName: 'Northstar Studio',
+    amount: 29,
+    currency: 'USD',
+    status: 'active',
+  },
+  {
+    id: 'sub_2',
+    name: 'Growth CRM',
+    merchantId: 'merch_2',
+    merchantName: 'Ledger Loft',
+    amount: 59,
+    currency: 'USD',
+    status: 'paused',
+  },
+  {
+    id: 'sub_3',
+    name: 'Focus Gym',
+    merchantId: 'merch_3',
+    merchantName: 'Orbit Fitness',
+    amount: 12,
+    currency: 'USD',
+    status: 'draft',
+  },
 ];
 
 const users: AdminUserRecord[] = [
@@ -149,10 +185,7 @@ export function getAdminDashboardData(role: DashboardRole): AdminDashboardData {
   };
 }
 
-export function toggleMerchantStatus(
-  current: MerchantRecord,
-  role: DashboardRole
-): MerchantRecord {
+export function toggleMerchantStatus(current: MerchantRecord, role: DashboardRole): MerchantRecord {
   if (role !== 'admin') return current;
 
   if (current.status === 'active') {
@@ -225,7 +258,10 @@ export function updateUserRole(
 
   return current.map((user) =>
     user.id === id
-      ? { ...user, role: user.role === 'viewer' ? 'analyst' : user.role === 'analyst' ? 'support' : 'viewer' }
+      ? {
+          ...user,
+          role: user.role === 'viewer' ? 'analyst' : user.role === 'analyst' ? 'support' : 'viewer',
+        }
       : user
   );
 }

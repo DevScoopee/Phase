@@ -79,4 +79,5 @@ export interface SubscriptionStats {
   totalMonthlySpend: number;
   totalYearlySpend: number;
   categoryBreakdown: Record<SubscriptionCategory, number>;
+  totalGasSpent?: number;
 }
