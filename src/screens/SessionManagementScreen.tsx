@@ -1,5 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  Alert,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { colors, spacing, typography, borderRadius } from '../utils/constants';
 import { sessionService, SessionRecord, SessionSettings } from '../services/auth/session';
 import { Card } from '../components/common/Card';
@@ -27,8 +35,14 @@ const SessionManagementScreen: React.FC = () => {
     void refresh();
   }, [refresh]);
 
-  const activeSessions = useMemo(() => sessions.filter((session) => !session.revokedAt), [sessions]);
-  const currentSession = useMemo(() => activeSessions.find((session) => session.isCurrent), [activeSessions]);
+  const activeSessions = useMemo(
+    () => sessions.filter((session) => !session.revokedAt),
+    [sessions]
+  );
+  const currentSession = useMemo(
+    () => activeSessions.find((session) => session.isCurrent),
+    [activeSessions]
+  );
 
   const handleTimeoutChange = async (minutes: number) => {
     const updated = await sessionService.updateSettings({ timeoutMinutes: minutes });
@@ -95,8 +109,12 @@ const SessionManagementScreen: React.FC = () => {
                 <Text style={styles.sessionName}>
                   {session.deviceName} {session.isCurrent ? '(Current)' : ''}
                 </Text>
-                <Text style={styles.sessionMeta}>Last active: {formatDateTime(session.lastActiveAt)}</Text>
-                {session.suspicious && <Text style={styles.suspiciousText}>Suspicious: {session.reason}</Text>}
+                <Text style={styles.sessionMeta}>
+                  Last active: {formatDateTime(session.lastActiveAt)}
+                </Text>
+                {session.suspicious && (
+                  <Text style={styles.suspiciousText}>Suspicious: {session.reason}</Text>
+                )}
               </View>
               {!session.isCurrent && (
                 <TouchableOpacity style={styles.revokeButton} onPress={() => handleRevoke(session)}>
@@ -106,7 +124,9 @@ const SessionManagementScreen: React.FC = () => {
             </View>
           ))}
 
-          <TouchableOpacity style={styles.forceLogoutButton} onPress={() => void handleForceLogoutOthers()}>
+          <TouchableOpacity
+            style={styles.forceLogoutButton}
+            onPress={() => void handleForceLogoutOthers()}>
             <Text style={styles.forceLogoutText}>Force Logout Other Sessions</Text>
           </TouchableOpacity>
         </Card>
