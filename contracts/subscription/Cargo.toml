@@ -6,6 +6,7 @@ authors = ["SubTrackr Team"]
 description = "SubTrackr subscription implementation contract (Soroban)"
 
 [lib]
+name = "subtrackr_subscription"
 path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
