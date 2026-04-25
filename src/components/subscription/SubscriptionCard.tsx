@@ -1,12 +1,5 @@
 import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Alert,
-  GestureResponderEvent,
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { colors, spacing, typography, borderRadius, shadows } from '../../utils/constants';
 import { Subscription } from '../../types/subscription';
 import {
@@ -21,67 +14,54 @@ import {
   getBillingCycleColor,
   isUpcomingBilling,
 } from '../../utils/subscriptionHelpers';
-import { SwipeableCard } from '../common/SwipeableCard';
 
 export interface SubscriptionCardProps {
   subscription: Subscription;
   onPress: (subscription: Subscription) => void;
   onToggleStatus?: (id: string) => void;
-  debugGestures?: boolean;
 }
 
-export const SubscriptionCard: React.FC<SubscriptionCardProps> = React.memo(({
-  subscription,
-  onPress,
-  onToggleStatus,
-  debugGestures = false,
-}) => {
-  const handleToggleStatus = () => {
-    if (onToggleStatus) {
-      Alert.alert(
-        subscription.isActive ? 'Pause Subscription' : 'Activate Subscription',
-        `Are you sure you want to ${subscription.isActive ? 'pause' : 'activate'} ${subscription.name}?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Confirm', onPress: () => onToggleStatus(subscription.id) },
-        ]
-      );
-    }
-  };
+export const SubscriptionCard: React.FC<SubscriptionCardProps> = React.memo(
+  ({ subscription, onPress, onToggleStatus }) => {
+    const handleToggleStatus = () => {
+      if (onToggleStatus) {
+        Alert.alert(
+          subscription.isActive ? 'Pause Subscription' : 'Activate Subscription',
+          `Are you sure you want to ${subscription.isActive ? 'pause' : 'activate'} ${subscription.name}?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Confirm', onPress: () => onToggleStatus(subscription.id) },
+          ]
+        );
+      }
+    };
 
-  const handleLongPress = () => {
-    Alert.alert(subscription.name, 'Choose a quick action for this subscription.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Open details', onPress: () => onPress(subscription) },
-      {
-        text: subscription.isActive ? 'Pause' : 'Activate',
-        onPress: () => handleToggleStatus(),
-      },
-    ]);
-  };
+    const upcoming = isUpcomingBilling(subscription.nextBillingDate);
 
-  const upcoming = isUpcomingBilling(subscription.nextBillingDate);
-
-  return (
-    <SwipeableCard
-      accessibilityLabel={`${subscription.name}, ${formatCurrency(
-        subscription.price,
-        subscription.currency
-      )} per ${formatBillingCycle(subscription.billingCycle)}, ${
-        subscription.isActive ? 'Active' : 'Paused'
-      }`}
-      debugEnabled={debugGestures}
-      onLongPress={handleLongPress}
-      onPress={() => onPress(subscription)}
-      onSwipeLeft={() => onPress(subscription)}
-      onSwipeRight={() => handleToggleStatus()}>
-      <View style={[styles.container, upcoming && styles.upcomingContainer]}>
+    return (
+      <TouchableOpacity
+        testID={`subscription-card-${subscription.id}`}
+        accessible={true}
+        accessibilityRole="button"
+        accessibilityLabel={`${subscription.name}, ${formatCurrency(
+          subscription.price,
+          subscription.currency
+        )} per ${formatBillingCycle(subscription.billingCycle)}, ${
+          subscription.isActive ? 'Active' : 'Paused'
+        }`}
+        style={[styles.container, upcoming && styles.upcomingContainer]}
+        onPress={() => onPress(subscription)}
+        activeOpacity={0.8}>
         <View style={styles.header}>
           <View style={styles.iconContainer}>
             <Text style={styles.icon}>{getCategoryIcon(subscription.category)}</Text>
           </View>
+
           <View style={styles.titleContainer}>
-            <Text testID={`subscription-name-${subscription.id}`} style={styles.name} numberOfLines={1}>
+            <Text
+              testID={`subscription-name-${subscription.id}`}
+              style={styles.name}
+              numberOfLines={1}>
               {subscription.name}
             </Text>
             <Text style={styles.category} numberOfLines={1}>
@@ -150,31 +130,27 @@ export const SubscriptionCard: React.FC<SubscriptionCardProps> = React.memo(({
         {onToggleStatus && (
           <TouchableOpacity
             style={styles.toggleButton}
-            onPress={(event: GestureResponderEvent) => {
-              event.stopPropagation();
-              handleToggleStatus();
-            }}
+            onPress={handleToggleStatus}
             activeOpacity={0.7}
             testID={`subscription-toggle-${subscription.id}`}
             accessibilityRole="button"
             accessibilityLabel={
-              subscription.isActive
-                ? `Pause ${subscription.name}`
-                : `Activate ${subscription.name}`
+              subscription.isActive ? `Pause ${subscription.name}` : `Activate ${subscription.name}`
             }>
             <Text style={styles.toggleText}>{subscription.isActive ? 'Pause' : 'Activate'}</Text>
           </TouchableOpacity>
         )}
-      </View>
-    </SwipeableCard>
-  );
-});
+      </TouchableOpacity>
+    );
+  }
+);
 
 const styles = StyleSheet.create({
   container: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
     padding: spacing.md,
+    marginBottom: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
     ...shadows.sm,

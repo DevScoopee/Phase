@@ -124,7 +124,9 @@ const AddSubscriptionScreen: React.FC = () => {
       formData.price <= 0 ||
       Number.isNaN(formData.price)
     ) {
-      const validationError = new Error(formData.priceError || 'Invalid price: must be greater than 0');
+      const validationError = new Error(
+        formData.priceError || 'Invalid price: must be greater than 0'
+      );
       const appError = errorHandler.handleError(validationError, {
         action: 'validateSubscription',
         component: 'AddSubscriptionScreen',

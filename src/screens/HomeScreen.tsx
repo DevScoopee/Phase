@@ -1,5 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, RefreshControl, TouchableOpacity } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  SafeAreaView,
+  RefreshControl,
+  TouchableOpacity,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -77,39 +85,72 @@ const HomeScreen: React.FC = () => {
           />
         }>
         <View style={styles.header}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <View
+            style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Text style={styles.title} accessibilityRole="header">
                   SubTrackr
                 </Text>
-                <TouchableOpacity 
+                <TouchableOpacity
                   onPress={() => navigation.navigate('Gamification')}
-                  style={{ backgroundColor: colors.primary, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2, marginLeft: 10 }}
-                >
-                  <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>Lvl {level}</Text>
+                  style={{
+                    backgroundColor: colors.primary,
+                    borderRadius: 12,
+                    paddingHorizontal: 8,
+                    paddingVertical: 2,
+                    marginLeft: 10,
+                  }}>
+                  <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>
+                    Lvl {level}
+                  </Text>
                 </TouchableOpacity>
               </View>
               <Text style={styles.subtitle}>Manage your subscriptions</Text>
             </View>
-            <TouchableOpacity
-              onPress={() => navigation.navigate('SegmentManagement')}
-              style={{ backgroundColor: colors.accent, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
-            >
-              <Text style={{ color: '#fff', fontWeight: 'bold' }}>Segments</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('Community')}
+                style={{
+                  backgroundColor: colors.primary,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 8,
+                }}>
+                <Text style={{ color: '#fff', fontWeight: 'bold' }}>Community</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('SegmentManagement')}
+                style={{
+                  backgroundColor: colors.accent,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 8,
+                }}>
+                <Text style={{ color: '#fff', fontWeight: 'bold' }}>Segments</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('InvoiceList')}
+                style={{
+                  backgroundColor: colors.surface,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}>
+                <Text style={{ color: colors.text, fontWeight: 'bold' }}>Invoices</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-          <Text style={styles.gestureHint}>
-            Swipe right to toggle a subscription or long-press a card for quick actions.
-          </Text>
-          <FilterBar
-            searchQuery={filters.searchQuery}
-            setSearchQuery={filters.setSearchQuery}
-            onFilterPress={() => setShowFilterModal(true)}
-            hasActiveFilters={hasActiveFilters}
-            activeFilterCount={activeFilterCount}
-          />
         </View>
+        <FilterBar
+          searchQuery={filters.searchQuery}
+          setSearchQuery={filters.setSearchQuery}
+          onFilterPress={() => setShowFilterModal(true)}
+          hasActiveFilters={hasActiveFilters}
+          activeFilterCount={activeFilterCount}
+        />
 
         <StatsCard
           totalMonthlySpend={stats.totalMonthlySpend}
@@ -137,7 +178,6 @@ const HomeScreen: React.FC = () => {
           onSubscriptionPress={(sub) => navigation.navigate('SubscriptionDetail', { id: sub.id })}
           onToggleStatus={handleToggleStatus}
           onAddFirstPress={() => navigation.navigate('AddSubscription')}
-          debugGestures={__DEV__}
         />
       </ScrollView>
 
@@ -176,12 +216,6 @@ const styles = StyleSheet.create({
   header: { padding: spacing.lg, paddingBottom: spacing.md },
   title: { ...typography.h1, color: colors.text, marginBottom: spacing.xs },
   subtitle: { ...typography.body, color: colors.textSecondary },
-  gestureHint: {
-    ...typography.caption,
-    color: colors.accent,
-    marginTop: spacing.xs,
-    marginBottom: spacing.md,
-  },
   errorContainer: {
     backgroundColor: colors.error,
     padding: spacing.md,
