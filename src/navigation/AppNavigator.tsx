@@ -8,6 +8,8 @@ import HomeScreen from '../screens/HomeScreen';
 import AddSubscriptionScreen from '../screens/AddSubscriptionScreen';
 import WalletConnectScreen from '../screens/WalletConnectScreen';
 import CryptoPaymentScreen from '../screens/CryptoPaymentScreen';
+import CommunityScreen from '../screens/CommunityScreen';
+import ProfileScreen from '../screens/ProfileScreen';
 import SubscriptionDetailScreen from '../screens/SubscriptionDetailScreen';
 import AnalyticsScreen from '../screens/AnalyticsScreen';
 import GDPRSettingsScreen from '../screens/GDPRSettingsScreen';
@@ -16,9 +18,12 @@ import SessionManagementScreen from '../screens/SessionManagementScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import ErrorDashboardScreen from '../screens/ErrorDashboardScreen';
 import AdminDashboardScreen from '../screens/AdminDashboardScreen';
+import InvoiceListScreen from '../screens/InvoiceListScreen';
+import InvoiceDetailScreen from '../screens/InvoiceDetailScreen';
 import { SegmentManagementScreen } from '../screens/SegmentManagementScreen';
 import { SegmentDetailScreen } from '../screens/SegmentDetailScreen';
 import { GamificationScreen } from '../screens/GamificationScreen';
+import RevenueReportScreen from '../screens/RevenueReportScreen';
 import { colors } from '../utils/constants';
 import { RootStackParamList, TabParamList } from './types';
 
@@ -49,6 +54,16 @@ const HomeStack = () => (
       options={{ headerShown: false }}
     />
     <Stack.Screen
+      name="Community"
+      component={CommunityScreen}
+      options={{ title: 'Community', headerShown: true }}
+    />
+    <Stack.Screen
+      name="Profile"
+      component={ProfileScreen}
+      options={{ title: 'Profile', headerShown: true }}
+    />
+    <Stack.Screen
       name="SegmentManagement"
       component={SegmentManagementScreen}
       options={{ title: 'Segments', headerShown: true }}
@@ -63,6 +78,16 @@ const HomeStack = () => (
       component={GamificationScreen}
       options={{ title: 'Achievements', headerShown: true }}
     />
+    <Stack.Screen
+      name="InvoiceList"
+      component={InvoiceListScreen}
+      options={{ title: 'Invoices', headerShown: true }}
+    />
+    <Stack.Screen
+      name="InvoiceDetail"
+      component={InvoiceDetailScreen}
+      options={{ title: 'Invoice Detail', headerShown: true }}
+    />
   </Stack.Navigator>
 );
 
@@ -70,14 +95,24 @@ const SettingsStack = () => (
   <Stack.Navigator>
     <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
     <Stack.Screen
+      name="Community"
+      component={CommunityScreen}
+      options={{ title: 'Community', headerShown: true }}
+    />
+    <Stack.Screen
+      name="Profile"
+      component={ProfileScreen}
+      options={{ title: 'Profile', headerShown: true }}
+    />
+    <Stack.Screen
       name="GDPRSettings"
       component={GDPRSettingsScreen}
       options={{ title: 'Privacy Settings', headerShown: true }}
     />
     <Stack.Screen
-      name="LanguageSettings" 
-      component={LanguageSettingsScreen} 
-      options={{ title: 'Language', headerShown: true }} 
+      name="LanguageSettings"
+      component={LanguageSettingsScreen}
+      options={{ title: 'Language', headerShown: true }}
     />
     <Stack.Screen
       name="SessionManagement"
@@ -89,10 +124,10 @@ const SettingsStack = () => (
       component={AdminDashboardScreen}
       options={{ title: 'Admin Dashboard', headerShown: true }}
     />
-    <Stack.Screen 
-      name="ErrorDashboard" 
-      component={ErrorDashboardScreen} 
-      options={{ title: 'Error Dashboard', headerShown: true }} 
+    <Stack.Screen
+      name="ErrorDashboard"
+      component={ErrorDashboardScreen}
+      options={{ title: 'Error Dashboard', headerShown: true }}
     />
   </Stack.Navigator>
 );
@@ -146,6 +181,16 @@ const TabNavigator = () => (
         tabBarLabel: 'Analytics',
         tabBarIcon: ({ color, size }) => (
           <Text style={{ color, fontSize: size, fontWeight: 'bold' }}>📊</Text>
+        ),
+      }}
+    />
+    <Tab.Screen
+      name="RevenueTab"
+      component={RevenueReportScreen}
+      options={{
+        tabBarLabel: 'Revenue',
+        tabBarIcon: ({ color, size }) => (
+          <Text style={{ color, fontSize: size, fontWeight: 'bold' }}>💰</Text>
         ),
       }}
     />

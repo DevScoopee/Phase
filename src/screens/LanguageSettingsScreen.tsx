@@ -1,12 +1,5 @@
 import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Alert,
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { languageService } from '../services/i18n';
 
@@ -48,34 +41,26 @@ const LanguageSettingsScreen = () => {
         {LANGUAGES.map((lang) => (
           <TouchableOpacity
             key={lang.code}
-            style={[
-              styles.item,
-              currentLanguage === lang.code && styles.activeItem,
-            ]}
+            style={[styles.item, currentLanguage === lang.code && styles.activeItem]}
             onPress={() => handleLanguageChange(lang.code)}
             accessibilityRole="radio"
             accessibilityLabel={`${lang.name}, ${lang.nativeName}`}
-            accessibilityState={{ checked: currentLanguage === lang.code }}
-          >
+            accessibilityState={{ checked: currentLanguage === lang.code }}>
             <View>
-              <Text style={[
-                styles.nativeName,
-                currentLanguage === lang.code && styles.activeText
-              ]}>
+              <Text style={[styles.nativeName, currentLanguage === lang.code && styles.activeText]}>
                 {lang.nativeName}
               </Text>
               <Text style={styles.englishName}>{lang.name}</Text>
             </View>
-            {currentLanguage === lang.code && (
-              <Text style={styles.checkmark}>✓</Text>
-            )}
+            {currentLanguage === lang.code && <Text style={styles.checkmark}>✓</Text>}
           </TouchableOpacity>
         ))}
       </View>
 
       <View style={styles.footer}>
         <Text style={styles.footerText}>
-          SubTrackr supports RTL layouts for Arabic and localized formatting for dates and currencies.
+          SubTrackr supports RTL layouts for Arabic and localized formatting for dates and
+          currencies.
         </Text>
       </View>
     </ScrollView>
