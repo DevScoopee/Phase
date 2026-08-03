@@ -178,7 +178,7 @@ export function ColophonSection() {
             <ul className="flex flex-col gap-2">
               <li>
                 <a
-                  href="https://github.com/klorenn/"
+                  href="https://github.com/PHASE-STELLAR/Phase"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex w-full items-center justify-between gap-2 border border-violet-500/30 bg-black/30 px-3 py-2.5 font-mono text-[11px] text-zinc-300/90 transition-colors hover:border-violet-400/55 hover:bg-violet-950/20 hover:text-white"
