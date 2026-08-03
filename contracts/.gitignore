@@ -1,8 +1,0 @@
-target/
-Cargo.lock
-
-# Soroban test snapshots (generated at runtime, not source)
-test_snapshots/
-
-# Proptest regression files (generated at runtime)
-**/*.proptest-regressions
