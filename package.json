@@ -15,9 +15,7 @@
     "reset:phase": "cd scripts && npm run reset:phase",
     "deploy:phase-sep50": "cd scripts && npx tsx deploy-phase-sep50.ts",
     "seed:phaser-prueba": "cd scripts && npx tsx seed-phaser-prueba.ts",
-    "start": "next start",
-    "security:audit": "npm audit --audit-level=high",
-    "security:secret-rotation": "tsx scripts/check-secret-rotation.ts"
+    "start": "next start",`n    "security:audit": "npm audit --audit-level=high",`n    "security:secret-rotation": "tsx scripts/check-secret-rotation.ts"
   },
   "dependencies": {
     "@albedo-link/intent": "0.12.0",
