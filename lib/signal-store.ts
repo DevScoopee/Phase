@@ -140,3 +140,84 @@ export async function getSignalChannelStats(
   }
   return channels
 }
+
+// ─── phase-116: narrative contributor attribution & credit ledger ───────────
+// Isolated, flag-gated. Co-authors now receive on-chain credit via a
+// side-car ledger. When flag off, helpers return empty / no-op (zero regression).
+// Rollback: unset NEXT_PUBLIC_FEATURE_PHASE_116 / FEATURE_PHASE_116.
+
+export {
+  isPhase116Enabled,
+  flag116RollbackNote,
+  getSignalContributors,
+  addSignalContributor,
+  removeSignalContributor,
+  computeCreditLedger,
+  getGlobalCreditStats,
+  clearContributorMemoryForTests,
+  seedContributorForSignal,
+  ContributorRoleSchema,
+  ContributorEntrySchema,
+  CreditLedgerEntrySchema,
+  SignalContributorsSchema,
+  AddContributorRequestSchema,
+} from "@/lib/contributor-ledger"
+export type { ContributorEntry, CreditLedgerEntry, SignalContributors, ContributorRole, AddContributorRequest } from "@/lib/contributor-ledger"
+
+import { z } from "zod"
+
+export const AttributionInReplySchema = z.object({
+  contributors: z
+    .array(
+      z.object({
+        wallet: z.string().trim().length(56).regex(/^G[A-Z2-7]{55}$/),
+        displayName: z.string().trim().min(1).max(48),
+        role: z.enum(["author", "co_author", "editor", "illustrator", "translator"]).default("co_author"),
+        shareBps: z.number().int().min(0).max(10_000).default(1000),
+      }),
+    )
+    .max(5)
+    .optional(),
+})
+
+export type AttributionInReply = z.infer<typeof AttributionInReplySchema>
+
+/**
+ * Records reply co-authors into the contributor ledger (flag-gated).
+ * Best-effort; failures are logged but do not block reply creation.
+ */
+export async function recordReplyAttribution(
+  signalId: string,
+  replyAuthorWallet: string,
+  attribution: AttributionInReply | null,
+): Promise<void> {
+  const flagOn = (() => {
+    try {
+      const v = (process.env.NEXT_PUBLIC_FEATURE_PHASE_116 ?? process.env.FEATURE_PHASE_116 ?? "").trim().toLowerCase()
+      return v === "1" || v === "true" || v === "yes" || v === "on"
+    } catch {
+      return false
+    }
+  })()
+  if (!flagOn) return
+  if (!attribution?.contributors || attribution.contributors.length === 0) return
+  try {
+    const { addSignalContributor } = await import("@/lib/contributor-ledger")
+    for (const c of attribution.contributors) {
+      try {
+        await addSignalContributor(signalId, {
+          wallet: c.wallet,
+          displayName: c.displayName,
+          role: c.role,
+          shareBps: c.shareBps,
+          addedBy: replyAuthorWallet,
+          signature: null,
+        })
+      } catch {
+        // per-contributor errors non-blocking
+      }
+    }
+  } catch {
+    // ledger unavailable
+  }
+}

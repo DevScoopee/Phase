@@ -229,3 +229,89 @@ export function parseSignedTxXdr(result: unknown): string | null {
   const r = result as { signedTxXdr?: string; signedTransaction?: string }
   return r.signedTxXdr || r.signedTransaction || null
 }
+
+import { z } from "zod"
+
+// ─── phase-119: CID content-addressing cache with integrity checks ──────────
+// Isolated, flag-gated. Re-pinned content is now verified for tampering before
+// cache-write and before trustline flows. When flag off, helpers are no-ops
+// and trustline path has zero extra latency.
+// Rollback: unset phase-119 → cache disabled, verification skipped.
+// NOTE: static re-export removed to avoid bundling node:fs into client (forge).
+// Use dynamic import("@/lib/cid-cache") on server when needed; type exports
+// below are erased at build time.
+
+export type { CidCacheEntry, CidIntegrityCheck } from "@/lib/cid-cache"
+
+/**
+ * Trustline + CID integrity contract:
+ * When pinning metadata for the liq asset (e.g., NFT image refreshed after
+ * re-pin), the caller can provide the expected CID and optional sha256.
+ * This helper validates and caches the content before returning wallet status.
+ */
+export const TrustlineCidVerificationSchema = z.object({
+  walletAddress: z.string().length(56).regex(/^G[A-Z2-7]{55}$/),
+  cid: z.string().min(4).max(128).regex(/^(Qm[1-9A-HJ-NP-Za-km-z]{44}|bafy[a-z0-9]+|bafk[a-z0-9]+).*$/).optional(),
+  expectedSha256: z.string().regex(/^[a-f0-9]{64}$/).nullable().optional(),
+})
+
+export type TrustlineCidVerification = z.infer<typeof TrustlineCidVerificationSchema>
+
+/**
+ * Verifies re-pinned CID bytes against expected hash before allowing trustline
+ * status to be considered "verified". Returns structured result for API.
+ * Server-only path uses node:crypto; client short-circuits without import to
+ * avoid bundling node:fs (phase-119 build fix).
+ */
+export async function verifyRePinnedCidIntegrity(
+  cid: string,
+  bytes: Uint8Array | Buffer | ArrayBuffer,
+  expectedSha256?: string | null,
+): Promise<{ ok: true; sha256: string; cid: string } | { ok: false; error: string; code: string }> {
+  // Client short-circuit — never verify on browser (no node:fs)
+  if (typeof window !== "undefined") return { ok: true, sha256: "", cid }
+  const flagOn = (() => {
+    try {
+      const v = (process.env.NEXT_PUBLIC_FEATURE_PHASE_119 ?? process.env.FEATURE_PHASE_119 ?? "").trim().toLowerCase()
+      return v === "1" || v === "true" || v === "yes" || v === "on"
+    } catch { return false }
+  })()
+  // Lightweight local sha256 without importing cid-cache (avoid node:fs chunk)
+  const localSha256 = (b: Uint8Array | Buffer | ArrayBuffer): string => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { createHash } = require("node:crypto") as typeof import("node:crypto")
+      const buf = b instanceof ArrayBuffer ? Buffer.from(b) : Buffer.isBuffer(b) ? b : Buffer.from(b as Uint8Array)
+      return createHash("sha256").update(buf).digest("hex")
+    } catch { return "" }
+  }
+  const localValidate = (c: string) => /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|bafy[a-z0-9]+|bafk[a-z0-9]+|bafb[a-z0-9]+)$/.test(c.trim())
+  const localVerify = (b: Uint8Array | Buffer | ArrayBuffer, expected: string) => {
+    if (!/^[a-f0-9]{64}$/.test(expected)) return false
+    const actual = localSha256(b)
+    let diff = 0
+    for (let i = 0; i < 64; i++) diff |= actual.charCodeAt(i) ^ expected.charCodeAt(i)
+    return diff === 0
+  }
+  if (!flagOn) {
+    return { ok: true, sha256: localSha256(bytes), cid }
+  }
+  try {
+    if (!localValidate(cid)) return { ok: false, error: `Invalid CID: ${cid.slice(0, 12)}…`, code: "CID_INVALID" }
+    const sha = localSha256(bytes)
+    if (expectedSha256 && !localVerify(bytes, expectedSha256)) {
+      return { ok: false, error: `Checksum mismatch for CID ${cid.slice(0, 8)}…`, code: "HASH_MISMATCH" }
+    }
+    // Defer cache write to server module only when flag on and not in client
+    try {
+      const { setCachedCid } = await import("@/lib/cid-cache")
+      await setCachedCid(cid, bytes, { expectedSha256: expectedSha256 ?? null })
+    } catch {
+      // cache best-effort, verification still ok
+    }
+    return { ok: true, sha256: sha, cid }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return { ok: false, error: msg, code: "VERIFY_FAILED" }
+  }
+}

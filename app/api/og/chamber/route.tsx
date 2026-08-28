@@ -1,7 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { readFile } from "node:fs/promises"
+import { existsSync } from "node:fs"
 import path from "node:path"
 import sharp from "sharp"
+import { z } from "zod"
 import {
   fetchCollectionInfo,
   extractIpfsGatewaySubpath,
@@ -11,6 +13,51 @@ import {
 import { publicPhaseSiteBaseUrl } from "@/lib/phase-nft-metadata-build"
 
 export const runtime = "nodejs"
+
+// ─── phase-120: shared retry wiring (chamber also benefits) ────────────────
+// Preserves public/og-template.png wiring; prefers template over legacy monitor.
+// Chamber and profile share the same retry+checksum helper via lib/ipfs-upload-retry.
+
+const OgChamberQuerySchema = z.object({
+  token_id: z.coerce.number().int().min(1).optional(),
+  token: z.coerce.number().int().min(1).optional(),
+  collection: z.coerce.number().int().min(1).optional(),
+  pin: z.enum(["0", "1", "true", "false"]).optional(),
+  retries: z.coerce.number().int().min(0).max(6).optional(),
+})
+
+function isPhase120Enabled(): boolean {
+  const v = (process.env.NEXT_PUBLIC_FEATURE_PHASE_120 ?? process.env.FEATURE_PHASE_120 ?? "").trim().toLowerCase()
+  return v === "1" || v === "true" || v === "yes" || v === "on"
+}
+
+function resolveChamberTemplatePath(): string {
+  const template = path.join(process.cwd(), "public", "og-template.png")
+  if (existsSync(template)) return template
+  return path.join(process.cwd(), "public", "og-monitor.png")
+}
+
+export async function pinOgChamberPngWithRetry(
+  pngBuffer: Buffer,
+  opts: { retries?: number } = {},
+): Promise<{ pinned: boolean; uri?: string; checksum?: string; attempts?: number; error?: string }> {
+  if (!isPhase120Enabled()) return { pinned: false, error: "phase-120 flag disabled" }
+  const jwt = (process.env.PINATA_JWT ?? process.env.PINATA_API_JWT ?? "").trim()
+  if (!jwt) return { pinned: false, error: "PINATA_JWT not configured" }
+  try {
+    const { pinFileToIpfsWithRetry, computeSha256Hex } = await import("@/lib/ipfs-upload-retry")
+    const checksum = computeSha256Hex(pngBuffer)
+    const blob = new Blob([new Uint8Array(pngBuffer)], { type: "image/png" })
+    const result = await pinFileToIpfsWithRetry(blob, jwt, {
+      config: opts.retries != null ? { maxRetries: opts.retries } : undefined,
+      expectedChecksum: checksum,
+      fileName: `og-chamber-${Date.now()}.png`,
+    })
+    return { pinned: true, uri: result.uri, checksum: result.checksum.hex, attempts: result.attempts }
+  } catch (e) {
+    return { pinned: false, error: e instanceof Error ? e.message : String(e) }
+  }
+}
 
 const OG_W = 1200
 const OG_H = 630
@@ -116,7 +163,7 @@ async function renderTokenOg(
   tokenId: number,
   base: string,
 ): Promise<NextResponse> {
-  const monitorPath = path.join(process.cwd(), "public", "og-monitor.png")
+  const monitorPath = resolveChamberTemplatePath()
   const monitorBuf = await readFile(monitorPath)
   const baseBuf = await sharp(monitorBuf)
     .resize(OG_W, OG_H, { fit: "cover", position: "centre" })
@@ -186,15 +233,19 @@ async function renderTokenOg(
 
   const pngBuffer = await sharp(baseBuf).composite(layers).png().toBuffer()
 
+  // phase-120 observability: which template is active
+  const tpl = resolveChamberTemplatePath().endsWith("og-template.png") ? "og-template.png" : "og-monitor.png"
   return new NextResponse(new Uint8Array(pngBuffer), {
     headers: {
       "Content-Type": "image/png",
       "Cache-Control": "no-store, must-revalidate",
+      "X-Phase-Og-Template": tpl,
+      ...(isPhase120Enabled() ? { "X-Phase120": "enabled" } : {}),
     },
   })
 }
 
-/** Resuelve imagen y nombre para un URI de imagen o metadata. */
+ /** Resuelve imagen y nombre para un URI de imagen o metadata. */
 function resolveImageUrl(uri: string, base: string): string | null {
   if (!uri) return null
   if (/^https?:\/\//i.test(uri)) return uri
@@ -208,7 +259,7 @@ async function renderCollectionOg(
   collectionId: number,
   base: string,
 ): Promise<NextResponse> {
-  const monitorPath = path.join(process.cwd(), "public", "og-monitor.png")
+  const monitorPath = resolveChamberTemplatePath()
   const monitorBuf = await readFile(monitorPath)
   const baseBuf = await sharp(monitorBuf)
     .resize(OG_W, OG_H, { fit: "cover", position: "centre" })
@@ -277,10 +328,13 @@ async function renderCollectionOg(
 
   const pngBuffer = await sharp(baseBuf).composite(layers).png().toBuffer()
 
+  const tpl2 = resolveChamberTemplatePath().endsWith("og-template.png") ? "og-template.png" : "og-monitor.png"
   return new NextResponse(new Uint8Array(pngBuffer), {
     headers: {
       "Content-Type": "image/png",
       "Cache-Control": "no-store, must-revalidate",
+      "X-Phase-Og-Template": tpl2,
+      ...(isPhase120Enabled() ? { "X-Phase120": "enabled" } : {}),
     },
   })
 }
@@ -291,11 +345,41 @@ export async function GET(request: NextRequest) {
   const base = publicPhaseSiteBaseUrl()
   const { searchParams } = request.nextUrl
 
+  // phase-120: parse pin intent (does not affect primary image bytes)
+  const parsed = OgChamberQuerySchema.safeParse({
+    token_id: searchParams.get("token_id") ?? undefined,
+    token: searchParams.get("token") ?? undefined,
+    collection: searchParams.get("collection") ?? undefined,
+    pin: searchParams.get("pin") ?? undefined,
+    retries: searchParams.get("retries") ?? undefined,
+  })
+  const shouldPin = parsed.success && (parsed.data.pin === "1" || parsed.data.pin === "true")
+  const pinRetries = parsed.success ? parsed.data.retries : undefined
+  // helper to optionally pin after render (only if pin requested and flag enabled)
+  const maybePin = async (resp: NextResponse): Promise<NextResponse> => {
+    if (!shouldPin) return resp
+    if (!isPhase120Enabled()) {
+      resp.headers.set("X-Phase-Pin-Error", "phase-120 flag disabled")
+      return resp
+    }
+    const buf = Buffer.from(await resp.clone().arrayBuffer())
+    const pinned = await pinOgChamberPngWithRetry(buf, { retries: pinRetries })
+    if (pinned.pinned) {
+      resp.headers.set("X-Phase-Pin-URI", pinned.uri!)
+      resp.headers.set("X-Phase-Pin-Checksum", pinned.checksum!)
+      resp.headers.set("X-Phase-Pin-Attempts", String(pinned.attempts!))
+    } else {
+      resp.headers.set("X-Phase-Pin-Error", (pinned.error ?? "pin failed").slice(0, 120))
+    }
+    return resp
+  }
+
   // Token-level OG (individual NFT)
   const rawToken = searchParams.get("token_id") ?? searchParams.get("token")
   const tokenId = rawToken ? parseInt(rawToken, 10) : NaN
   if (Number.isFinite(tokenId) && tokenId > 0) {
-    return renderTokenOg(tokenId, base)
+    const resp = await renderTokenOg(tokenId, base)
+    return maybePin(resp)
   }
 
   // Collection-level OG — monitor frame with best-effort token metadata
@@ -303,17 +387,25 @@ export async function GET(request: NextRequest) {
   const collectionId = rawCollection ? parseInt(rawCollection, 10) : NaN
 
   if (!Number.isFinite(collectionId) || collectionId <= 0) {
-    // No params — serve the bare monitor as fallback
-    const monitorPath = path.join(process.cwd(), "public", "og-monitor.png")
+    // No params — serve the bare monitor as fallback (template-aware)
+    const monitorPath = resolveChamberTemplatePath()
     const monitorBuf = await readFile(monitorPath)
     const pngBuffer = await sharp(monitorBuf)
       .resize(OG_W, OG_H, { fit: "cover", position: "centre" })
       .png()
       .toBuffer()
-    return new NextResponse(new Uint8Array(pngBuffer), {
-      headers: { "Content-Type": "image/png", "Cache-Control": "no-store, must-revalidate" },
+    const tpl = monitorPath.endsWith("og-template.png") ? "og-template.png" : "og-monitor.png"
+    const resp = new NextResponse(new Uint8Array(pngBuffer), {
+      headers: {
+        "Content-Type": "image/png",
+        "Cache-Control": "no-store, must-revalidate",
+        "X-Phase-Og-Template": tpl,
+        ...(isPhase120Enabled() ? { "X-Phase120": "enabled" } : {}),
+      },
     })
+    return maybePin(resp)
   }
 
-  return renderCollectionOg(collectionId, base)
+  const resp = await renderCollectionOg(collectionId, base)
+  return maybePin(resp)
 }

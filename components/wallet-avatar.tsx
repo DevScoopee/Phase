@@ -2,6 +2,34 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 
+// ─── phase-117: multi-gateway fallback client wiring ────────────────────────
+// Preserves original lazy-load + initials fallback. When an image fails,
+// tries alternate gateways for the same CID (redundancy).
+
+const FALLBACK_GATEWAYS = [
+  "https://gateway.pinata.cloud/ipfs",
+  "https://w3s.link/ipfs",
+  "https://dweb.link/ipfs",
+  "https://ipfs.io/ipfs",
+  "https://cloudflare-ipfs.com/ipfs",
+] as const
+
+function extractCidPath(url: string): string | null {
+  const m = url.match(/\/ipfs\/([A-Za-z0-9._\/-]+)/)
+  if (m) return m[1]!
+  const n = url.match(/ipfs:\/\/([A-Za-z0-9._\/-]+)/)
+  if (n) return n[1]!
+  return null
+}
+
+function buildFallbackUrls(original: string): string[] {
+  const cidPath = extractCidPath(original)
+  if (!cidPath) return []
+  // rotate gateways that aren't already the current one
+  const currentGw = original.match(/(https:\/\/[^\/]+\/ipfs)/)?.[1] ?? ""
+  return FALLBACK_GATEWAYS.filter((g) => !original.startsWith(g) && g !== currentGw).map((g) => `${g}/${cidPath}`)
+}
+
 type AvatarData = {
   tokenId: number
   image?: string
@@ -33,6 +61,8 @@ export function WalletAvatar({
   const [avatar, setAvatar] = useState<AvatarData | null>(null)
   const [loading, setLoading] = useState(true)
   const [visible, setVisible] = useState(false)
+  const [fallbackIndex, setFallbackIndex] = useState(0)
+  const [fallbackUrls, setFallbackUrls] = useState<string[]>([])
   const ref = useRef<HTMLDivElement>(null)
 
   // IntersectionObserver for lazy loading
@@ -59,11 +89,18 @@ export function WalletAvatar({
 
     let aborted = false
     setLoading(true)
+    setFallbackIndex(0)
+    setFallbackUrls([])
 
     fetch(`/api/profile/avatar?wallet=${encodeURIComponent(wallet)}`)
       .then((r) => r.json() as Promise<{ avatar: AvatarData | null }>)
       .then((data) => {
-        if (!aborted) setAvatar(data.avatar)
+        if (!aborted) {
+          setAvatar(data.avatar)
+          if (data.avatar?.image) {
+            setFallbackUrls(buildFallbackUrls(data.avatar.image))
+          }
+        }
       })
       .catch(() => {
         // Silently fail - will show initials
@@ -74,6 +111,14 @@ export function WalletAvatar({
 
     return () => { aborted = true }
   }, [visible, wallet])
+
+  const handleImgError = useCallback(() => {
+    if (fallbackIndex < fallbackUrls.length && avatar?.image) {
+      const nextUrl = fallbackUrls[fallbackIndex]
+      setFallbackIndex((i) => i + 1)
+      setAvatar((prev) => (prev ? { ...prev, image: nextUrl } : prev))
+    }
+  }, [fallbackIndex, fallbackUrls, avatar?.image])
 
   const initials = getInitials(wallet, displayName)
   const hasImage = avatar?.image && avatar.image.length > 0
@@ -89,7 +134,7 @@ export function WalletAvatar({
     )
   }
 
-  // Has NFT image: show circular image
+  // Has NFT image: show circular image (phase-117: fallback on error)
   if (hasImage) {
     return (
       <div
@@ -103,6 +148,8 @@ export function WalletAvatar({
           src={avatar.image}
           alt={avatar.name}
           className="w-full h-full object-cover"
+          onError={handleImgError}
+          loading="lazy"
         />
       </div>
     )
