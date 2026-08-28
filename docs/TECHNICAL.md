@@ -71,7 +71,11 @@ flowchart TB
 | `lib/classic-liq.ts` | Classic asset trustline utilities (`changeTrust` XDR, Horizon checks) + CID integrity helpers via `cid-cache` (phase-119) |
 | `lib/phase-copy.ts` | Centralized i18n dictionary (EN/ES) |
 | `lib/server-data-paths.ts` | Writable data location abstraction |
-| `lib/feature-flags.ts` | Flag registry (phase-116,117,119,120 + 121..124, env resolution, rollback notes) |
+| `lib/feature-flags.ts` | Flag registry (phase-104,105,106,110 + 116,117,119,120 + 121..124, env resolution, rollback notes) |
+| `lib/profile-2fa.ts` | Two-factor confirmation codes for high-value profile changes (phase-104) |
+| `lib/world-conflict.ts` | Optimistic concurrency conflict detection for co-authored worlds (phase-105) |
+| `lib/lore-versioning.ts` | Narrative version history + word-level diffing spike (phase-106) |
+| `lib/narrative-search.ts` | Narrative search indexed by entity (token) and location (world) (phase-110) |
 | `lib/ipfs-upload-retry.ts` | IPFS upload retry w/ exponential backoff + sha256 checksum (phase-120) |
 | `lib/cid-cache.ts` | CID content-addressing cache with integrity verification (phase-119) |
 | `lib/ipfs-pinning.ts` | Multi-gateway pinning with quorum + fallback fetch (phase-117) |
@@ -127,6 +131,10 @@ All handlers live in `app/api/**/route.ts`.
 
 | Flag | Route | Extension | Flag off |
 |------|-------|-----------|----------|
+| `phase-104` | `POST /api/profile/request-change` & `POST /api/profile` | Two-step confirmation: `request-change` issues a short-lived code bound to wallet + high-value fields; `POST /api/profile` requires a matching `confirmation_code` before applying those fields | `POST /api/profile/request-change` returns `404`; `/api/profile` applies changes immediately |
+| `phase-105` | `POST /api/world` | Accepts `expected_version`; returns `409` with `serverVersion`/`current` when the world diverged since the client last read it | Unconditional overwrite (`expected_version` ignored) |
+| `phase-106` | `POST /api/narrator` & `GET /api/world/narrative/[token_id]/versions` | Records an additive version-history entry per narrative generation; versions endpoint exposes history + word-level diff between two versions | Versions endpoint `404`, no history recorded |
+| `phase-110` | `GET /api/world/search` | Search narratives by `entity` (token id), `location` (world name substring), or `q` (free text) | `404` disabled |
 | `phase-116` | `POST/GET /api/signals/[id]/replies` | Narrative contributor attribution: `contributors`, `creditLedger` on reply create; `GET` ledger endpoint with shareBps/roles | `404` disabled, ledger empty |
 | `phase-117` | `GET/POST /api/profile/avatar` | Multi-gateway redundancy: `GET` rewrites avatar URL via verified gateway (headers `X-Phase117`), `POST` pins with quorum (`quorum`, `achieved`, `checksum`) | Single gateway, no quorum |
 | `phase-119` | `POST/GET /api/classic-liq/trustline` | CID cache + integrity: validates `cid`/`expectedSha256`/`cidPath`, `GET` exposes cache stats, headers `X-Phase119` | Direct submit, no verification |
@@ -193,12 +201,16 @@ Critical groups:
 - Gemini runtime (`GEMINI_API_KEY`)
 - Writable server data directory (`PHASE_SERVER_DATA_DIR`)
 
-### 9.1 Feature flags (phase-116..124)
+### 9.1 Feature flags (phase-104,105,106,110 + 116..124)
 
 All flags default to **off** (safe rollback). Set to `1`/`true` to enable.
 
 ```
-# Enable all eight (example)
+# Enable all twelve (example)
+NEXT_PUBLIC_FEATURE_PHASE_104=1
+NEXT_PUBLIC_FEATURE_PHASE_105=1
+NEXT_PUBLIC_FEATURE_PHASE_106=1
+NEXT_PUBLIC_FEATURE_PHASE_110=1
 NEXT_PUBLIC_FEATURE_PHASE_116=1
 NEXT_PUBLIC_FEATURE_PHASE_117=1
 NEXT_PUBLIC_FEATURE_PHASE_119=1
@@ -207,7 +219,7 @@ NEXT_PUBLIC_FEATURE_PHASE_121=1
 NEXT_PUBLIC_FEATURE_PHASE_122=1
 NEXT_PUBLIC_FEATURE_PHASE_123=1
 NEXT_PUBLIC_FEATURE_PHASE_124=1
-# Server-only aliases also accepted: FEATURE_PHASE_116, etc.
+# Server-only aliases also accepted: FEATURE_PHASE_104, etc.
 ```
 
 Rollback: unset the var or set `0` and restart. No ledger migration to revert; off-chain stores remain but are ignored when flag off. See `PROJECT_ARCHITECTURE.md` §10.

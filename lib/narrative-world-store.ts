@@ -9,6 +9,8 @@ export type WorldCollectionData = {
   world_prompt: string
   created_at: number
   narrator_tone?: NarratorTone
+  /** Monotonically increasing revision, used for conflict detection (phase-105). */
+  version?: number
 }
 
 export type WorldNarrativeData = {
@@ -55,6 +57,7 @@ export async function saveWorldForCollection(
     world_prompt: data.world_prompt,
     ...(data.narrator_tone !== undefined ? { narrator_tone: data.narrator_tone } : {}),
     created_at: existing?.created_at ?? Date.now(),
+    version: (existing?.version ?? 0) + 1,
   }
   await writeJsonStore(filePath, store)
 }
@@ -137,4 +140,10 @@ export async function getRecentNarrativesForCollection(
     .filter((v) => v.collection_id === collectionId)
     .sort((a, b) => b.generated_at - a.generated_at)
     .slice(0, limit)
+}
+
+/** Returns every narrative with its token id attached (used to build search indexes, e.g. phase-110). */
+export async function getAllNarrativesWithTokenIds(): Promise<Array<WorldNarrativeData & { tokenId: number }>> {
+  const store = await readJsonStore<WorldNarrativesStore>(serverDataJsonPath("worldNarratives"))
+  return Object.entries(store).map(([tokenId, data]) => ({ tokenId: Number(tokenId), ...data }))
 }
