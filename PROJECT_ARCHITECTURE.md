@@ -126,6 +126,10 @@ Owns:
 
 | Flag | Env | Purpose | Default | Rollback |
 |------|-----|---------|---------|----------|
+| `phase-108` | `NEXT_PUBLIC_FEATURE_PHASE_108` / `FEATURE_PHASE_108` | Reader-progression tracking for narrative worlds (per-wallet artifact read state) | off | Unset var, restart — progress route returns 404; JSON sidecar remains on disk |
+| `phase-109` | `NEXT_PUBLIC_FEATURE_PHASE_109` / `FEATURE_PHASE_109` | Collaborative world permissions with role tiers (owner/editor/viewer) | off | Unset var, restart — roles route returns 404; JSON sidecar remains on disk |
+| `phase-112` | `NEXT_PUBLIC_FEATURE_PHASE_112` / `FEATURE_PHASE_112` | World export to portable markdown and JSON | off | Unset var, restart — export route returns 404; no stored state to revert |
+| `phase-115` | `NEXT_PUBLIC_FEATURE_PHASE_115` / `FEATURE_PHASE_115` | Cross-artifact lore linking with back-references | off | Unset var, restart — links route returns 404; JSON sidecar remains on disk |
 | `phase-116` | `NEXT_PUBLIC_FEATURE_PHASE_116` / `FEATURE_PHASE_116` | Narrative contributor attribution & credit ledger (co-author on-chain credit) | off | Unset var, restart — ledger reads return empty, writes no-op; JSON sidecar remains on disk (no ledger revert) |
 | `phase-117` | `NEXT_PUBLIC_FEATURE_PHASE_117` / `FEATURE_PHASE_117` | Multi-gateway IPFS pinning with redundancy (quorum, gateway fallback) | off | Unset var, restart — pin reverts to single Pinata gateway, avatar reads use legacy single URL |
 | `phase-119` | `NEXT_PUBLIC_FEATURE_PHASE_119` / `FEATURE_PHASE_119` | CID content-addressing cache with integrity checks (tamper-evident) | off | Unset var, restart — cache disabled, verification skipped; cached files remain inert |

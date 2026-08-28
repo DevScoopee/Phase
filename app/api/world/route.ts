@@ -6,6 +6,7 @@ import {
   countCollectorsInWorlds,
   getRecentNarrativesForCollection,
   saveWorldForCollection,
+  ensureWorldOwner,
   type NarratorTone,
 } from "@/lib/narrative-world-store"
 import { checkAndUnlock } from "@/lib/achievement-store"
@@ -116,15 +117,23 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  const creatorWallet =
+    typeof body.creator_wallet === "string" && StrKey.isValidEd25519PublicKey(body.creator_wallet)
+      ? body.creator_wallet
+      : undefined
+
   await saveWorldForCollection(collectionId, {
     world_name: body.world_name.trim(),
     world_prompt: body.world_prompt.trim(),
     narrator_tone: isValidTone(body.narrator_tone) ? body.narrator_tone : undefined,
+    creator_wallet: creatorWallet,
   })
 
-  // Achievements: fire-and-forget
-  if (typeof body.creator_wallet === "string" && StrKey.isValidEd25519PublicKey(body.creator_wallet)) {
-    void checkAndUnlock(body.creator_wallet, { has_world: true }).catch(() => { /* silent */ })
+  if (creatorWallet) {
+    // phase-109: the creating wallet becomes the world's owner for role checks.
+    void ensureWorldOwner(collectionId, creatorWallet).catch(() => { /* silent */ })
+    // Achievements: fire-and-forget
+    void checkAndUnlock(creatorWallet, { has_world: true }).catch(() => { /* silent */ })
   }
 
   return NextResponse.json({ ok: true, collection_id: collectionId })
