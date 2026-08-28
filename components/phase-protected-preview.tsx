@@ -4,6 +4,23 @@ import { IpfsDisplayImg } from "@/components/ipfs-display-img"
 import { cn } from "@/lib/utils"
 import { viewerSignatureShort } from "@/lib/viewer-signature"
 
+// ── phase-122: off-chain delta display hint (flag-gated, zero regression when off) ──
+function isPhase122Enabled(): boolean {
+  const v = (typeof process !== "undefined" ? (process.env.NEXT_PUBLIC_FEATURE_PHASE_122 ?? "") : "")?.trim().toLowerCase()
+  return v === "1" || v === "true" || v === "yes" || v === "on"
+}
+
+function isDeltaStub(uri: string): boolean {
+  return /^delta:\d+:[a-f0-9]{8}$/i.test(uri.trim())
+}
+
+function resolveDisplayUri(uri: string): string {
+  // Delta stub is resolved server-side via /api/phase-nft/verify delta probe;
+  // here we just pass through unless flag enables delta-aware proxy.
+  if (isPhase122Enabled() && isDeltaStub(uri)) return "" // caller should fetch full metadata off-chain
+  return uri
+}
+
 export type PhaseProtectedPreviewLabels = {
   pendingFusion: string
   unverifiedCopy: string
@@ -27,6 +44,8 @@ type Props = {
  */
 export function PhaseProtectedPreview({ uri, className, chainVerified, viewerAddress, labels }: Props) {
   const sig = viewerSignatureShort(viewerAddress)
+  const displayUri = resolveDisplayUri(uri)
+  const isDelta = isPhase122Enabled() && isDeltaStub(uri)
 
   return (
     <div
@@ -36,7 +55,7 @@ export function PhaseProtectedPreview({ uri, className, chainVerified, viewerAdd
       )}
     >
       <IpfsDisplayImg
-        uri={uri}
+        uri={displayUri || uri}
         className={cn(
           "relative z-0 max-h-full max-w-full object-contain p-2 transition-[filter] duration-300",
           chainVerified
@@ -45,6 +64,11 @@ export function PhaseProtectedPreview({ uri, className, chainVerified, viewerAdd
         )}
         loading="lazy"
       />
+      {isDelta ? (
+        <div className="pointer-events-none absolute left-1.5 top-1.5 z-[4] rounded-sm border border-cyan-500/40 bg-black/80 px-1 py-0.5 font-mono text-[6px] font-bold uppercase tracking-widest text-cyan-300/90">
+          Δ off-chain
+        </div>
+      ) : null}
 
       {!chainVerified && (
         <>

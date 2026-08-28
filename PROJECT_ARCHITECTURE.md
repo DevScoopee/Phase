@@ -122,10 +122,22 @@ Owns:
 - Testnet-only assumptions must be explicit in docs and code comments.
 - Any privileged operation must validate input shape and origin intent.
 
-## 10) Change-management rules
+## 10) Feature flags (rolling delivery)
+
+| Flag | Env | Purpose | Default | Rollback |
+|------|-----|---------|---------|----------|
+| `phase-121` | `NEXT_PUBLIC_FEATURE_PHASE_121` / `FEATURE_PHASE_121` | Gateway health dashboard with latency scoring | off | Unset var, restart — dashboard returns 404, protocol falls back to static gateway list |
+| `phase-122` | `NEXT_PUBLIC_FEATURE_PHASE_122` / `FEATURE_PHASE_122` | Off-chain metadata delta storage (reduce on-chain rent) | off | Unset var, restart — verify falls back to on-chain `token_uri`, off-chain files remain on disk (no ledger revert) |
+| `phase-123` | `NEXT_PUBLIC_FEATURE_PHASE_123` / `FEATURE_PHASE_123` | IPFS timeout fallback chain across providers | off | Unset var, restart — reverts to 8s sequential fallback; no data migration |
+| `phase-124` | `NEXT_PUBLIC_FEATURE_PHASE_124` / `FEATURE_PHASE_124` | Metadata version migration tool (v1→v2) | off | Unset var, restart — v2 payloads remain readable as v1 where additive; no destructive rewrite without `--apply` |
+
+Flags are read via `lib/feature-flags.ts:isFeatureEnabled`. Client flags use `NEXT_PUBLIC_*`, server also accepts `FEATURE_*`. Zero regression when off.
+
+## 11) Change-management rules
 
 - Architectural changes require updates to:
   - `PROJECT_ARCHITECTURE.md` (this file)
   - `docs/TECHNICAL.md`
   - relevant API docs
 - Contract/address changes require synchronized env and docs updates.
+- Flag-gated features must document rollback in this table and in `docs/TECHNICAL.md` § Feature Flags.

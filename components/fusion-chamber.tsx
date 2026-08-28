@@ -18,6 +18,7 @@ import { fetchArtistAlias } from "@/lib/artist-profile-client"
 import { humanizePhaseHostErrorMessage } from "@/lib/phase-host-error"
 import { pickCopy } from "@/lib/phase-copy"
 import { cn } from "@/lib/utils"
+import { GatewayHealthDashboard } from "@/components/gateway-health-dashboard"
 import {
   buildClassicTrustlineTransactionXdr,
   classicLiqAssetConfigFromPublicEnv,
@@ -2634,22 +2635,25 @@ export function FusionChamber() {
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 sm:px-4 sm:pb-5">
                   {address ? (
-                    <LiquidityFaucetControl
-                      address={address}
-                      tokenBalance={tokenBalance}
-                      onNarrativeLog={appendLog}
-                      onRefreshBalance={refreshStatus}
-                      compact
-                      freighterNftCollect={
-                        phased && phaseId != null && tokenOwnerLookupDone ? { tokenId: phaseId } : null
-                      }
-                      hideInlineMissionToggle={false}
-                      omitHeader={false}
-                      omitMissionChain={false}
-                      omitLiquidityLane={false}
-                      omitFreighterNftBlock={Boolean(issuerCustodyForCollect || isOwnerOnChain)}
-                      className="border-zinc-800/80 bg-zinc-900/30"
-                    />
+                    <>
+                      <LiquidityFaucetControl
+                        address={address}
+                        tokenBalance={tokenBalance}
+                        onNarrativeLog={appendLog}
+                        onRefreshBalance={refreshStatus}
+                        compact
+                        freighterNftCollect={
+                          phased && phaseId != null && tokenOwnerLookupDone ? { tokenId: phaseId } : null
+                        }
+                        hideInlineMissionToggle={false}
+                        omitHeader={false}
+                        omitMissionChain={false}
+                        omitLiquidityLane={false}
+                        omitFreighterNftBlock={Boolean(issuerCustodyForCollect || isOwnerOnChain)}
+                        className="border-zinc-800/80 bg-zinc-900/30"
+                      />
+                      <GatewayHealthDashboard className="mt-3" />
+                    </>
                   ) : (
                     <p className="py-8 text-center text-[12px] text-zinc-500">{ch.linkWallet}</p>
                   )}

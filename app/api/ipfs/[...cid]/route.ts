@@ -1,4 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { z } from "zod"
+import { fetchWithIpfsFallback } from "@/lib/phase-nft-metadata-build"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -9,12 +11,13 @@ const CORS = {
   "Access-Control-Allow-Headers": "Content-Type, Accept",
 } as const
 
-const GATEWAYS = [
-  "https://w3s.link/ipfs",
-  "https://dweb.link/ipfs",
-  "https://ipfs.io/ipfs",
-  "https://cloudflare-ipfs.com/ipfs",
-]
+// phase-123 wiring: uses isolated fallback chain with per-gateway timeout
+const IpfsCidParamSchema = z.array(z.string().min(1).max(128).regex(/^[A-Za-z0-9._-]+$/)).min(1).max(10)
+
+function isPhase123Enabled(): boolean {
+  const v = (process.env.NEXT_PUBLIC_FEATURE_PHASE_123 ?? process.env.FEATURE_PHASE_123 ?? "").trim().toLowerCase()
+  return v === "1" || v === "true" || v === "yes" || v === "on"
+}
 
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS })
@@ -25,37 +28,32 @@ export async function GET(
   context: { params: Promise<{ cid: string[] }> },
 ) {
   const { cid } = await context.params
-  if (!cid || cid.length === 0) {
-    return NextResponse.json({ error: "Missing CID" }, { status: 400, headers: CORS })
+  const parsed = IpfsCidParamSchema.safeParse(cid)
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Missing or invalid CID", details: parsed.error.flatten() }, { status: 400, headers: CORS })
   }
 
-  const ipfsPath = cid.join("/")
+  const ipfsPath = parsed.data.join("/")
 
-  for (const base of GATEWAYS) {
-    const url = `${base}/${ipfsPath}`
-    try {
-      const res = await fetch(url, {
-        signal: AbortSignal.timeout(8000),
-        headers: { Accept: "*/*" },
-      })
-      if (!res.ok) continue
-      const contentType = res.headers.get("content-type") ?? "application/octet-stream"
-      const body = await res.arrayBuffer()
-      return new NextResponse(body, {
-        status: 200,
-        headers: {
-          ...CORS,
-          "Content-Type": contentType,
-          "Cache-Control": "public, s-maxage=31536000, immutable",
-        },
-      })
-    } catch {
-      // try next gateway
-    }
+  // phase-123: isolated fallback chain (timeout per gateway, structured error)
+  const result = await fetchWithIpfsFallback(ipfsPath, {
+    config: isPhase123Enabled() ? { timeoutMs: 4000 } : { timeoutMs: 8000 },
+  })
+
+  if (result.ok) {
+    return new NextResponse(result.bytes, {
+      status: 200,
+      headers: {
+        ...CORS,
+        "Content-Type": result.contentType,
+        "Cache-Control": "public, s-maxage=31536000, immutable",
+        ...(isPhase123Enabled() ? { "X-Phase-Gateway": result.gateway, "X-Phase-Latency-Ms": String(result.latencyMs) } : {}),
+      },
+    })
   }
 
   return NextResponse.json(
-    { error: "IPFS content unavailable from all gateways." },
+    { error: "IPFS content unavailable from all gateways.", detail: result.error, perGateway: isPhase123Enabled() ? result.perGateway : undefined },
     { status: 502, headers: CORS },
   )
 }

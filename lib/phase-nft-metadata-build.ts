@@ -5,6 +5,108 @@ import {
   fetchTokenOwnerAddress,
   extractIpfsGatewaySubpath,
 } from "@/lib/phase-protocol"
+import { z } from "zod"
+
+// ── phase-123: IPFS timeout fallback chain (isolated, flag-gated) ──
+// One slow gateway stalls the whole read. This module provides per-gateway
+// timeout + fallback chain. Used by /api/ipfs and metadata build.
+// Flag: NEXT_PUBLIC_FEATURE_PHASE_123 / FEATURE_PHASE_123 — rollback: unset flag.
+
+function isPhase123Enabled(): boolean {
+  const v = (process.env.NEXT_PUBLIC_FEATURE_PHASE_123 ?? process.env.FEATURE_PHASE_123 ?? "").trim().toLowerCase()
+  return v === "1" || v === "true" || v === "yes" || v === "on"
+}
+
+export const PHASE_IPFS_GATEWAYS = [
+  "https://w3s.link/ipfs",
+  "https://dweb.link/ipfs",
+  "https://ipfs.io/ipfs",
+  "https://cloudflare-ipfs.com/ipfs",
+] as const
+
+export const IpfsFallbackConfigSchema = z.object({
+  gateways: z.array(z.string().url()).min(1).max(8).default([...PHASE_IPFS_GATEWAYS]),
+  timeoutMs: z.number().int().min(500).max(15000).default(4000),
+  retries: z.number().int().min(0).max(2).default(0),
+})
+
+export type IpfsFallbackConfig = z.infer<typeof IpfsFallbackConfigSchema>
+
+export type IpfsFallbackResult =
+  | { ok: true; gateway: string; bytes: ArrayBuffer; contentType: string; latencyMs: number }
+  | { ok: false; error: string; perGateway: Array<{ gateway: string; error: string; latencyMs: number }> }
+
+export function resolveIpfsFallbackConfig(overrides: Partial<IpfsFallbackConfig> = {}): IpfsFallbackConfig {
+  const parsed = IpfsFallbackConfigSchema.safeParse({
+    gateways: overrides.gateways ?? [...PHASE_IPFS_GATEWAYS],
+    timeoutMs: overrides.timeoutMs ?? (isPhase123Enabled() ? 4000 : 8000),
+    retries: overrides.retries ?? 0,
+  })
+  if (!parsed.success) return { gateways: [...PHASE_IPFS_GATEWAYS], timeoutMs: 4000, retries: 0 }
+  return parsed.data
+}
+
+export async function fetchWithIpfsFallback(ipfsPath: string, opts: { config?: Partial<IpfsFallbackConfig>; signal?: AbortSignal } = {}): Promise<IpfsFallbackResult> {
+  const clean = ipfsPath.replace(/^\/+/, "").trim()
+  if (!clean) return { ok: false, error: "Empty IPFS path", perGateway: [] }
+  const cfg = resolveIpfsFallbackConfig(opts.config)
+  const perGateway: Array<{ gateway: string; error: string; latencyMs: number }> = []
+
+  for (const base of cfg.gateways) {
+    const url = `${base.replace(/\/+$/, "")}/${clean}`
+    const start = Date.now()
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(new DOMException(`Timeout ${cfg.timeoutMs}ms`, "TimeoutError")), cfg.timeoutMs)
+    if (opts.signal) {
+      const sig = opts.signal
+      if (sig.aborted) controller.abort((sig as AbortSignal & { reason?: unknown }).reason)
+      else sig.addEventListener("abort", () => controller.abort((sig as AbortSignal & { reason?: unknown }).reason), { once: true })
+    }
+    try {
+      const res = await fetch(url, { signal: controller.signal, headers: { Accept: "*/*" }, cache: "no-store" as RequestCache })
+      clearTimeout(timer)
+      const latencyMs = Date.now() - start
+      if (!res.ok) {
+        perGateway.push({ gateway: base, error: `HTTP ${res.status}`, latencyMs })
+        continue
+      }
+      const contentType = res.headers.get("content-type") ?? "application/octet-stream"
+      const bytes = await res.arrayBuffer()
+      // Record to gateway-health if flag 121 enabled (best-effort)
+      try {
+        const { recordGatewayLatency } = await import("@/lib/gateway-health")
+        recordGatewayLatency(base, latencyMs, true)
+      } catch { /* ignore */ }
+      return { ok: true, gateway: base, bytes, contentType, latencyMs }
+    } catch (e) {
+      clearTimeout(timer)
+      const latencyMs = Date.now() - start
+      const msg = e instanceof Error ? e.message : String(e)
+      const isTimeout = msg.toLowerCase().includes("timeout") || (e as DOMException)?.name === "TimeoutError"
+      perGateway.push({ gateway: base, error: isTimeout ? `timeout@${cfg.timeoutMs}ms` : msg.slice(0, 200), latencyMs })
+      try {
+        const { recordGatewayLatency } = await import("@/lib/gateway-health")
+        recordGatewayLatency(base, latencyMs, false)
+      } catch { /* ignore */ }
+      if (opts.signal?.aborted) return { ok: false, error: `Aborted: ${msg}`, perGateway }
+    }
+  }
+  return { ok: false, error: "All IPFS gateways failed", perGateway }
+}
+
+export const PhaseMetadataRequestSchema = z.object({
+  contractId: z.string().length(56).regex(/^C[A-Z2-7]{55}$/, "Invalid contract strkey"),
+  tokenId: z.number().int().min(1).max(1_000_000),
+})
+
+export class IpfsFallbackError extends Error {
+  code: "TIMEOUT" | "ALL_GATEWAYS_FAILED" | "VALIDATION_FAILED"
+  constructor(code: IpfsFallbackError["code"], message: string) {
+    super(message)
+    this.name = "IpfsFallbackError"
+    this.code = code
+  }
+}
 
 export function publicPhaseSiteBaseUrl(): string {
   const explicit = process.env.NEXT_PUBLIC_SITE_URL?.trim()
