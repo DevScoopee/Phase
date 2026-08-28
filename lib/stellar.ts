@@ -13,6 +13,42 @@ import {
   type ClassicLiqAsset,
 } from "@/lib/classic-liq"
 
+// ── phase-122: off-chain metadata delta storage (isolated, flag-gated) ──
+// Large metadata inflates contract storage rent. Keep full JSON off-chain,
+// store only hash+stub on-chain. Thin re-export keeps stellar.ts as single import.
+import { computeDeltaHash as _computeDeltaHash, buildOnChainStub as _buildOnChainStub } from "@/lib/offchain-delta"
+export {
+  computeDeltaHash,
+  buildOnChainStub,
+  parseOnChainStub,
+  storeOffchainDelta,
+  fetchOffchainDelta,
+  isDeltaEnabled,
+  deltaStorageStats,
+  clearDeltaMemoryStore,
+  OffchainDeltaManifestSchema,
+} from "@/lib/offchain-delta"
+export type { OffchainDeltaManifest, DeltaStoreResult, DeltaFetchResult } from "@/lib/offchain-delta"
+
+function isPhase122Enabled(): boolean {
+  const v = (typeof process !== "undefined" ? (process.env.NEXT_PUBLIC_FEATURE_PHASE_122 ?? process.env.FEATURE_PHASE_122 ?? "") : "")?.trim().toLowerCase()
+  return v === "1" || v === "true" || v === "yes" || v === "on"
+}
+
+/**
+ * Reduce on-chain size by building a minimal stub for token_uri.
+ * When flag off, returns original uri unchanged (zero regression).
+ */
+export function toOnChainDeltaStub(tokenId: number, fullMetadata: unknown): string {
+  if (!isPhase122Enabled()) {
+    // Legacy path: full JSON or ipfs:// (no delta)
+    if (typeof fullMetadata === "string") return fullMetadata.slice(0, 256)
+    try { return JSON.stringify(fullMetadata).slice(0, 256) } catch { return "" }
+  }
+  const hash = _computeDeltaHash(fullMetadata)
+  return _buildOnChainStub(tokenId, hash)
+}
+
 /**
  * Activo clásico para trustline / comprobaciones Horizon: si NEXT_PUBLIC_* está completo,
  * coincide con Freighter; si no, cae al mismo emisor por defecto que `stellar.toml` (GAX… + PHASELQ).

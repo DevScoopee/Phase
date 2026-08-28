@@ -24,6 +24,27 @@ import {
   DEFAULT_PHASE_CONTRACT,
   DEFAULT_TOKEN_CONTRACT,
 } from "@/lib/phase-contract-defaults"
+import { getGatewayHealthSnapshot as _getGatewayHealthSnapshot, recordGatewayLatency as _recordGatewayLatency } from "@/lib/gateway-health"
+
+// ── phase-121: gateway health dashboard (isolated, flag-gated) ──
+// Operators cannot see which gateway is slow. Scoring lives in @/lib/gateway-health;
+// this re-export keeps phase-protocol as the single import for UI/API.
+export { recordGatewayLatency, getGatewayHealthSnapshot, getGatewayRanking, resetGatewayHealth } from "@/lib/gateway-health"
+export type { GatewayHealthEntry, GatewayHealthSnapshot } from "@/lib/gateway-health"
+
+function isPhase121Enabled(): boolean {
+  const v = (typeof process !== "undefined" ? (process.env.NEXT_PUBLIC_FEATURE_PHASE_121 ?? process.env.FEATURE_PHASE_121 ?? "") : "")?.trim().toLowerCase()
+  return v === "1" || v === "true" || v === "yes" || v === "on"
+}
+// Light wrapper for dashboard consumers (adds flag context, structured error)
+export function getGatewayHealthDashboardSafe(): { enabled: boolean; snapshot: import("@/lib/gateway-health").GatewayHealthSnapshot | null; error: string | null } {
+  if (!isPhase121Enabled()) return { enabled: false, snapshot: null, error: "phase-121 flag disabled (set NEXT_PUBLIC_FEATURE_PHASE_121=1)" }
+  try {
+    return { enabled: true, snapshot: _getGatewayHealthSnapshot(), error: null }
+  } catch (e) {
+    return { enabled: true, snapshot: null, error: e instanceof Error ? e.message : String(e) }
+  }
+}
 
 // Validación temprana de entorno en build/startup
 if (typeof process !== "undefined" && process.env.NODE_ENV !== "test") {

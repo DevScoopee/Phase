@@ -71,6 +71,11 @@ flowchart TB
 | `lib/classic-liq.ts` | Classic asset trustline utilities (`changeTrust` XDR, Horizon checks) |
 | `lib/phase-copy.ts` | Centralized i18n dictionary (EN/ES) |
 | `lib/server-data-paths.ts` | Writable data location abstraction |
+| `lib/feature-flags.ts` | Flag registry (phase-121..124, env resolution, rollback notes) |
+| `lib/gateway-health.ts` | Gateway latency scoring + dashboard snapshot (phase-121) |
+| `lib/offchain-delta.ts` | Off-chain delta store, hash/stub helpers (phase-122) |
+| `lib/ipfs-fallback.ts` / `lib/phase-nft-metadata-build.ts` | IPFS timeout fallback chain (phase-123) |
+| `lib/metadata-migration.ts` | Metadata version migration v1→v2 (phase-124) |
 | `contracts/` | Soroban Rust contracts and tooling docs |
 | `docs/` | Technical and operational documentation |
 
@@ -111,6 +116,15 @@ All handlers live in `app/api/**/route.ts`.
 - `forge-agent` and `claim-bounty` now use strict TypeScript response unions.
 - Error payloads are explicit and status-code aligned.
 - No untyped `any` responses should be used for public API contracts.
+
+### 5.3 Flag-gated API extensions
+
+| Flag | Route | Extension | Flag off |
+|------|-------|-----------|----------|
+| `phase-121` | `GET /api/phase-nft/custodian-release` | Gateway health dashboard: sorted gateway list with latency scoring (`score`, `avgLatencyMs`, `uptime`) | `404` disabled |
+| `phase-122` | `POST /api/phase-nft/verify` | Adds `delta` + `storage` fields (off-chain manifest, stub note) | Fields omitted |
+| `phase-123` | `GET /api/metadata/[id]` & `GET /api/ipfs/[...cid]` | Adds `X-Phase-*` headers, per-gateway timeout, structured `perGateway` error | Legacy 8s sequential, no headers |
+| `phase-124` | `scripts/*` | Migration logs, `--migrate-metadata` CLI | No-op with hint |
 
 ---
 
@@ -168,6 +182,21 @@ Critical groups:
 - Classic asset configuration (`CLASSIC_LIQ_*`, `NEXT_PUBLIC_CLASSIC_*`)
 - Gemini runtime (`GEMINI_API_KEY`)
 - Writable server data directory (`PHASE_SERVER_DATA_DIR`)
+
+### 9.1 Feature flags (phase-121..124)
+
+All flags default to **off** (safe rollback). Set to `1`/`true` to enable.
+
+```
+# Enable all four (example)
+NEXT_PUBLIC_FEATURE_PHASE_121=1
+NEXT_PUBLIC_FEATURE_PHASE_122=1
+NEXT_PUBLIC_FEATURE_PHASE_123=1
+NEXT_PUBLIC_FEATURE_PHASE_124=1
+# Server-only aliases also accepted: FEATURE_PHASE_121, etc.
+```
+
+Rollback: unset the var or set `0` and restart. No ledger migration to revert; off-chain stores remain but are ignored when flag off. See `PROJECT_ARCHITECTURE.md` §10.
 
 ---
 
