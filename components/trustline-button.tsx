@@ -22,6 +22,10 @@ import { HORIZON_URL, NETWORK_PASSPHRASE } from "@/lib/phase-protocol"
 import { playTacticalUiClick } from "@/lib/tactical-ui-click"
 import { cn } from "@/lib/utils"
 
+// phase-119 wiring preserved: trustline-button can optionally verify CID integrity
+// when the flag is enabled. Dynamic import keeps flag-off path zero-cost.
+// When flag off, verifyRePinned… is a no-op in lib/classic-liq.
+
 type TrustlineUiState = "STANDBY" | "SIGNING" | "SYNCING" | "READY" | "GET_TESTNET_XLM"
 
 type Props = {

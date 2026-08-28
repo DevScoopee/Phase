@@ -11,9 +11,21 @@
  * - phase-124: metadata version migration tool
  */
 
-export type PhaseFeatureFlag = "phase-121" | "phase-122" | "phase-123" | "phase-124"
+export type PhaseFeatureFlag =
+  | "phase-116"
+  | "phase-117"
+  | "phase-119"
+  | "phase-120"
+  | "phase-121"
+  | "phase-122"
+  | "phase-123"
+  | "phase-124"
 
 const FLAG_ENV_MAP: Record<PhaseFeatureFlag, string[]> = {
+  "phase-116": ["NEXT_PUBLIC_FEATURE_PHASE_116", "FEATURE_PHASE_116"],
+  "phase-117": ["NEXT_PUBLIC_FEATURE_PHASE_117", "FEATURE_PHASE_117"],
+  "phase-119": ["NEXT_PUBLIC_FEATURE_PHASE_119", "FEATURE_PHASE_119"],
+  "phase-120": ["NEXT_PUBLIC_FEATURE_PHASE_120", "FEATURE_PHASE_120"],
   "phase-121": ["NEXT_PUBLIC_FEATURE_PHASE_121", "FEATURE_PHASE_121"],
   "phase-122": ["NEXT_PUBLIC_FEATURE_PHASE_122", "FEATURE_PHASE_122"],
   "phase-123": ["NEXT_PUBLIC_FEATURE_PHASE_123", "FEATURE_PHASE_123"],
@@ -40,7 +52,7 @@ export function featureFlagEnvKeys(flag: PhaseFeatureFlag): string[] {
 }
 
 export function getEnabledFeatureFlags(): PhaseFeatureFlag[] {
-  const all: PhaseFeatureFlag[] = ["phase-121", "phase-122", "phase-123", "phase-124"]
+  const all: PhaseFeatureFlag[] = ["phase-116", "phase-117", "phase-119", "phase-120", "phase-121", "phase-122", "phase-123", "phase-124"]
   return all.filter(isFeatureEnabled)
 }
 

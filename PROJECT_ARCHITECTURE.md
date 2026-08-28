@@ -126,6 +126,10 @@ Owns:
 
 | Flag | Env | Purpose | Default | Rollback |
 |------|-----|---------|---------|----------|
+| `phase-116` | `NEXT_PUBLIC_FEATURE_PHASE_116` / `FEATURE_PHASE_116` | Narrative contributor attribution & credit ledger (co-author on-chain credit) | off | Unset var, restart — ledger reads return empty, writes no-op; JSON sidecar remains on disk (no ledger revert) |
+| `phase-117` | `NEXT_PUBLIC_FEATURE_PHASE_117` / `FEATURE_PHASE_117` | Multi-gateway IPFS pinning with redundancy (quorum, gateway fallback) | off | Unset var, restart — pin reverts to single Pinata gateway, avatar reads use legacy single URL |
+| `phase-119` | `NEXT_PUBLIC_FEATURE_PHASE_119` / `FEATURE_PHASE_119` | CID content-addressing cache with integrity checks (tamper-evident) | off | Unset var, restart — cache disabled, verification skipped; cached files remain inert |
+| `phase-120` | `NEXT_PUBLIC_FEATURE_PHASE_120` / `FEATURE_PHASE_120` | IPFS upload retry with exponential backoff + checksum verification | off | Unset var, restart — upload reverts to single-shot Pinata POST, no retry/checksum; prior pins remain on IPFS |
 | `phase-121` | `NEXT_PUBLIC_FEATURE_PHASE_121` / `FEATURE_PHASE_121` | Gateway health dashboard with latency scoring | off | Unset var, restart — dashboard returns 404, protocol falls back to static gateway list |
 | `phase-122` | `NEXT_PUBLIC_FEATURE_PHASE_122` / `FEATURE_PHASE_122` | Off-chain metadata delta storage (reduce on-chain rent) | off | Unset var, restart — verify falls back to on-chain `token_uri`, off-chain files remain on disk (no ledger revert) |
 | `phase-123` | `NEXT_PUBLIC_FEATURE_PHASE_123` / `FEATURE_PHASE_123` | IPFS timeout fallback chain across providers | off | Unset var, restart — reverts to 8s sequential fallback; no data migration |

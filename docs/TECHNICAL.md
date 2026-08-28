@@ -68,10 +68,16 @@ flowchart TB
 | `app/` | App Router routes, layouts, API handlers, global/tactical styles |
 | `components/` | Feature UI components (forge/chamber/rewards/wallet integration) |
 | `lib/phase-protocol.ts` | Soroban integration helpers, constants, error normalization |
-| `lib/classic-liq.ts` | Classic asset trustline utilities (`changeTrust` XDR, Horizon checks) |
+| `lib/classic-liq.ts` | Classic asset trustline utilities (`changeTrust` XDR, Horizon checks) + CID integrity helpers via `cid-cache` (phase-119) |
 | `lib/phase-copy.ts` | Centralized i18n dictionary (EN/ES) |
 | `lib/server-data-paths.ts` | Writable data location abstraction |
-| `lib/feature-flags.ts` | Flag registry (phase-121..124, env resolution, rollback notes) |
+| `lib/feature-flags.ts` | Flag registry (phase-116,117,119,120 + 121..124, env resolution, rollback notes) |
+| `lib/ipfs-upload-retry.ts` | IPFS upload retry w/ exponential backoff + sha256 checksum (phase-120) |
+| `lib/cid-cache.ts` | CID content-addressing cache with integrity verification (phase-119) |
+| `lib/ipfs-pinning.ts` | Multi-gateway pinning with quorum + fallback fetch (phase-117) |
+| `lib/profile-store.ts` | Profile JSON store + avatar redundancy helpers (phase-117) |
+| `lib/contributor-ledger.ts` | Contributor ledger & credit distribution (phase-116) |
+| `lib/signal-store.ts` | Signals/replies + attribution ledger wiring (phase-116) |
 | `lib/gateway-health.ts` | Gateway latency scoring + dashboard snapshot (phase-121) |
 | `lib/offchain-delta.ts` | Off-chain delta store, hash/stub helpers (phase-122) |
 | `lib/ipfs-fallback.ts` / `lib/phase-nft-metadata-build.ts` | IPFS timeout fallback chain (phase-123) |
@@ -121,6 +127,10 @@ All handlers live in `app/api/**/route.ts`.
 
 | Flag | Route | Extension | Flag off |
 |------|-------|-----------|----------|
+| `phase-116` | `POST/GET /api/signals/[id]/replies` | Narrative contributor attribution: `contributors`, `creditLedger` on reply create; `GET` ledger endpoint with shareBps/roles | `404` disabled, ledger empty |
+| `phase-117` | `GET/POST /api/profile/avatar` | Multi-gateway redundancy: `GET` rewrites avatar URL via verified gateway (headers `X-Phase117`), `POST` pins with quorum (`quorum`, `achieved`, `checksum`) | Single gateway, no quorum |
+| `phase-119` | `POST/GET /api/classic-liq/trustline` | CID cache + integrity: validates `cid`/`expectedSha256`/`cidPath`, `GET` exposes cache stats, headers `X-Phase119` | Direct submit, no verification |
+| `phase-120` | `POST /api/ipfs` & `GET /api/og/*` | Upload retry + checksum: `POST /api/ipfs` retries with backoff (`X-Checksum-Sha256`, `X-Phase120-Attempts`), `GET /api/og/*` supports `?pin=1` & reports `X-Phase-Pin-*`, `X-Phase-Og-Template` | Single-shot Pinata, no pin headers |
 | `phase-121` | `GET /api/phase-nft/custodian-release` | Gateway health dashboard: sorted gateway list with latency scoring (`score`, `avgLatencyMs`, `uptime`) | `404` disabled |
 | `phase-122` | `POST /api/phase-nft/verify` | Adds `delta` + `storage` fields (off-chain manifest, stub note) | Fields omitted |
 | `phase-123` | `GET /api/metadata/[id]` & `GET /api/ipfs/[...cid]` | Adds `X-Phase-*` headers, per-gateway timeout, structured `perGateway` error | Legacy 8s sequential, no headers |
@@ -183,17 +193,21 @@ Critical groups:
 - Gemini runtime (`GEMINI_API_KEY`)
 - Writable server data directory (`PHASE_SERVER_DATA_DIR`)
 
-### 9.1 Feature flags (phase-121..124)
+### 9.1 Feature flags (phase-116..124)
 
 All flags default to **off** (safe rollback). Set to `1`/`true` to enable.
 
 ```
-# Enable all four (example)
+# Enable all eight (example)
+NEXT_PUBLIC_FEATURE_PHASE_116=1
+NEXT_PUBLIC_FEATURE_PHASE_117=1
+NEXT_PUBLIC_FEATURE_PHASE_119=1
+NEXT_PUBLIC_FEATURE_PHASE_120=1
 NEXT_PUBLIC_FEATURE_PHASE_121=1
 NEXT_PUBLIC_FEATURE_PHASE_122=1
 NEXT_PUBLIC_FEATURE_PHASE_123=1
 NEXT_PUBLIC_FEATURE_PHASE_124=1
-# Server-only aliases also accepted: FEATURE_PHASE_121, etc.
+# Server-only aliases also accepted: FEATURE_PHASE_116, etc.
 ```
 
 Rollback: unset the var or set `0` and restart. No ledger migration to revert; off-chain stores remain but are ignored when flag off. See `PROJECT_ARCHITECTURE.md` §10.

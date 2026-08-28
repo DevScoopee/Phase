@@ -1,17 +1,34 @@
 import { NextRequest } from "next/server"
 import { StrKey } from "@stellar/stellar-sdk"
-import { getSignal, createReply } from "@/lib/signal-store"
+import { getSignal, createReply, AttributionInReplySchema, recordReplyAttribution, getSignalContributors, computeCreditLedger } from "@/lib/signal-store"
 import { createNotification } from "@/lib/notification-store"
 import { createApiRequestContext } from "@/lib/api-observability"
+import { isFeatureEnabled } from "@/lib/feature-flags"
+import { z } from "zod"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
+
+function isPhase116Enabled(): boolean {
+  return isFeatureEnabled("phase-116")
+}
 
 type ReplyBody = {
   body?: unknown
   wallet?: unknown
   signature?: unknown
+  attribution?: unknown
+  contributors?: unknown
 }
+
+const ContributorsArraySchema = z.array(
+  z.object({
+    wallet: z.string().trim().length(56).regex(/^G[A-Z2-7]{55}$/),
+    displayName: z.string().trim().min(1).max(48),
+    role: z.enum(["author", "co_author", "editor", "illustrator", "translator"]).default("co_author"),
+    shareBps: z.number().int().min(0).max(10_000).default(1000),
+  }),
+).max(5).optional()
 
 export async function POST(
   request: NextRequest,
@@ -51,6 +68,41 @@ export async function POST(
     )
   }
 
+  // phase-116: validate attribution if provided (optional, additive)
+  let attributionParsed: z.infer<typeof ContributorsArraySchema> | undefined
+  if (isPhase116Enabled() && (body.attribution != null || body.contributors != null)) {
+    const rawContribs = (body.attribution ?? body.contributors) as unknown
+    // allow either { contributors: [...] } or direct array
+    const arr = Array.isArray(rawContribs)
+      ? rawContribs
+      : rawContribs != null && typeof rawContribs === "object" && Array.isArray((rawContribs as { contributors?: unknown }).contributors)
+        ? (rawContribs as { contributors: unknown[] }).contributors
+        : rawContribs
+    const parsedAttrib = ContributorsArraySchema.safeParse(arr)
+    if (!parsedAttrib.success) {
+      return api.json(
+        { error: "Invalid attribution", details: parsedAttrib.error.flatten(), code: "VALIDATION_FAILED" },
+        { status: 400, event: "signals.reply.attribution_invalid" },
+      )
+    }
+    attributionParsed = parsedAttrib.data
+    // share overflow pre-check (sum <= 10000)
+    if (attributionParsed && attributionParsed.length > 0) {
+      const sum = attributionParsed.reduce((s, c) => s + (c.shareBps ?? 0), 0)
+      if (sum > 10_000) {
+        return api.json({ error: `Attribution share overflow: ${sum} > 10000 bps`, code: "SHARE_OVERFLOW" }, { status: 400, event: "signals.reply.attribution_overflow" })
+      }
+      // also validate no duplicate wallets in this request
+      const seen = new Set<string>()
+      for (const c of attributionParsed) {
+        if (seen.has(c.wallet)) {
+          return api.json({ error: `Duplicate contributor ${c.wallet.slice(0, 6)}…`, code: "DUPLICATE" }, { status: 400, event: "signals.reply.attribution_duplicate" })
+        }
+        seen.add(c.wallet)
+      }
+    }
+  }
+
   try {
     const signal = await getSignal(id)
     if (!signal) {
@@ -82,6 +134,25 @@ export async function POST(
       signature: body.signature as string,
     })
 
+    // phase-116: record contributor attribution (flag-gated, best-effort)
+    let creditLedger: Awaited<ReturnType<typeof computeCreditLedger>> | null = null
+    let contributors: Awaited<ReturnType<typeof getSignalContributors>> | null = null
+    if (isPhase116Enabled() && attributionParsed && attributionParsed.length > 0) {
+      try {
+        await recordReplyAttribution(id, walletStr, { contributors: attributionParsed })
+      } catch (e) {
+        api.log("warn", "signals.reply.attribution_failed", { error: e instanceof Error ? e.message : String(e) })
+      }
+    }
+    if (isPhase116Enabled()) {
+      try {
+        contributors = await getSignalContributors(id)
+        creditLedger = await computeCreditLedger(id)
+      } catch {
+        // non-blocking
+      }
+    }
+
     if (signal.author_wallet !== walletStr) {
       void createNotification(signal.author_wallet, "signal_reply", {
         reply_author_wallet: walletStr,
@@ -92,10 +163,42 @@ export async function POST(
     }
 
     return api.json(
-      { reply },
-      { status: 201, event: "signals.reply.created", metadata: { signal_id: id, reply_id: reply.id } },
+      {
+        reply,
+        ...(isPhase116Enabled() ? { contributors: contributors?.contributors ?? [], creditLedger: creditLedger ?? [] } : {}),
+      },
+      {
+        status: 201,
+        event: "signals.reply.created",
+        metadata: { signal_id: id, reply_id: reply.id, phase116: isPhase116Enabled(), attribCount: attributionParsed?.length ?? 0 },
+        headers: isPhase116Enabled() ? { "X-Phase116": "enabled" } : {},
+      },
     )
   } catch (error) {
     return api.errorJson(error, 500, "signals.reply.create_failed")
+  }
+}
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const api = createApiRequestContext(request, "/api/signals/[id]/replies")
+  const { id } = await params
+  if (!isPhase116Enabled()) {
+    return api.json({ error: "Contributor ledger disabled (phase-116 flag off)" }, { status: 404, event: "signals.ledger.disabled" })
+  }
+  try {
+    const { getSignal } = await import("@/lib/signal-store")
+    const signal = await getSignal(id)
+    if (!signal) return api.json({ error: "Signal not found" }, { status: 404, event: "signals.ledger.signal_missing" })
+    const contributors = await getSignalContributors(id)
+    const creditLedger = await computeCreditLedger(id)
+    return api.json(
+      { signalId: id, contributors: contributors?.contributors ?? [], totalShareBps: contributors?.totalShareBps ?? 0, creditLedger },
+      { event: "signals.ledger.loaded", metadata: { signal_id: id } },
+    )
+  } catch (error) {
+    return api.errorJson(error, 500, "signals.ledger.load_failed")
   }
 }
