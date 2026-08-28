@@ -18,6 +18,7 @@ type NotificationType =
   | "offer_accepted"
   | "offer_rejected"
   | "achievement_unlocked"
+  | "content_takedown"
 
 type Notification = {
   id: string
@@ -126,6 +127,13 @@ function notifText(n: Notification, lang: string): { text: string; url: string }
           : `Achievement unlocked: ${String(d.achievement_name ?? "")}`,
         url: `/profile`,
       }
+    case "content_takedown":
+      return {
+        text: es
+          ? `Tu señal "${String(d.signal_title ?? "")}" fue retirada: ${String(d.reason ?? "")}`
+          : `Your signal "${String(d.signal_title ?? "")}" was taken down: ${String(d.reason ?? "")}`,
+        url: `/signals`,
+      }
     default:
       return { text: es ? "Nueva actividad" : "New activity", url: "/" }
   }
@@ -143,6 +151,7 @@ const NOTIF_ICONS: Record<NotificationType, string> = {
   offer_accepted: "✓",
   offer_rejected: "✕",
   achievement_unlocked: "★",
+  content_takedown: "⚠",
 }
 
 function timeAgo(ts: number): string {
