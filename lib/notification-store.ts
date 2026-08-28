@@ -15,6 +15,7 @@ export type NotificationType =
   | "offer_accepted"
   | "offer_rejected"
   | "achievement_unlocked"
+  | "content_takedown"
 
 export type Notification = {
   id: string
