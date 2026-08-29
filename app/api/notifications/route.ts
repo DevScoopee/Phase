@@ -50,9 +50,10 @@ function parsePreferencePatch(input: unknown): Partial<Omit<NotificationPreferen
 
   if (raw.types && typeof raw.types === "object" && !Array.isArray(raw.types)) {
     const types: NotificationPreferences["types"] = {}
+    const dynamicTypes = types as Record<string, boolean>
     for (const [key, value] of Object.entries(raw.types as Record<string, unknown>)) {
       if (typeof value === "boolean") {
-        ;(types as Record<string, boolean>)[key] = value
+        dynamicTypes[key] = value
       }
     }
     patch.types = types
