@@ -15,6 +15,7 @@ export type NotificationType =
   | "offer_accepted"
   | "offer_rejected"
   | "achievement_unlocked"
+  | "content_takedown"
 
 export type Notification = {
   id: string
@@ -28,6 +29,70 @@ export type Notification = {
 type NotificationStore = Record<string, Notification[]>
 
 const MAX_PER_WALLET = 50
+// phase-98: profile-level notification preferences.
+// Rollback: unset NEXT_PUBLIC_FEATURE_PHASE_98 / FEATURE_PHASE_98; existing notifications remain readable.
+export type NotificationPreferences = {
+  enabled: boolean
+  types: Partial<Record<NotificationType, boolean>>
+  updated_at: number
+}
+
+type NotificationPreferenceStore = Record<string, NotificationPreferences>
+
+export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  enabled: true,
+  types: {},
+  updated_at: 0,
+}
+
+export function isNotificationPreferencesEnabled(): boolean {
+  const value = (process.env.NEXT_PUBLIC_FEATURE_PHASE_98 ?? process.env.FEATURE_PHASE_98 ?? "").trim().toLowerCase()
+  return value === "1" || value === "true" || value === "yes" || value === "on"
+}
+
+async function readPreferenceStore(): Promise<NotificationPreferenceStore> {
+  try {
+    const raw = await readFile(serverDataJsonPath("notificationPreferences"), "utf8")
+    const parsed = JSON.parse(raw) as NotificationPreferenceStore
+    return parsed && typeof parsed === "object" ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+async function writePreferenceStore(data: NotificationPreferenceStore): Promise<void> {
+  const filePath = serverDataJsonPath("notificationPreferences")
+  await mkdir(path.dirname(filePath), { recursive: true })
+  await writeFile(filePath, JSON.stringify(data, null, 2), "utf8")
+}
+
+export async function getNotificationPreferences(wallet: string): Promise<NotificationPreferences> {
+  const store = await readPreferenceStore()
+  return { ...DEFAULT_NOTIFICATION_PREFERENCES, ...(store[wallet] ?? {}) }
+}
+
+export async function saveNotificationPreferences(
+  wallet: string,
+  preferences: Partial<Omit<NotificationPreferences, "updated_at">>,
+): Promise<NotificationPreferences> {
+  const current = await getNotificationPreferences(wallet)
+  const next: NotificationPreferences = {
+    enabled: preferences.enabled ?? current.enabled,
+    types: { ...current.types, ...(preferences.types ?? {}) },
+    updated_at: Date.now(),
+  }
+  const store = await readPreferenceStore()
+  store[wallet] = next
+  await writePreferenceStore(store)
+  return next
+}
+
+export async function shouldStoreNotification(wallet: string, type: NotificationType): Promise<boolean> {
+  if (!isNotificationPreferencesEnabled()) return true
+  const preferences = await getNotificationPreferences(wallet)
+  if (!preferences.enabled) return false
+  return preferences.types[type] ?? true
+}
 
 async function readStore(): Promise<NotificationStore> {
   try {
@@ -48,6 +113,8 @@ export async function createNotification(
   type: NotificationType,
   data: Record<string, unknown>,
 ): Promise<void> {
+  if (!(await shouldStoreNotification(wallet, type))) return
+
   const store = await readStore()
   const list = store[wallet] ?? []
   const notif: Notification = {

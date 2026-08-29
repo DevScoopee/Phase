@@ -126,10 +126,10 @@ Owns:
 
 | Flag | Env | Purpose | Default | Rollback |
 |------|-----|---------|---------|----------|
-| `phase-104` | `NEXT_PUBLIC_FEATURE_PHASE_104` / `FEATURE_PHASE_104` | Two-factor confirmation for high-value profile changes (display name, socials) | off | Unset var, restart — profile changes apply immediately again, no confirmation required |
-| `phase-105` | `NEXT_PUBLIC_FEATURE_PHASE_105` / `FEATURE_PHASE_105` | Narrative branch divergence detection for co-authored worlds (optimistic concurrency on `version`) | off | Unset var, restart — world saves revert to unconditional overwrite; no data migration |
-| `phase-106` | `NEXT_PUBLIC_FEATURE_PHASE_106` / `FEATURE_PHASE_106` | Lore versioning with word-level diffing (spike/PoC) | off | Unset var, restart — version recording stops; existing version history remains on disk, unused |
-| `phase-110` | `NEXT_PUBLIC_FEATURE_PHASE_110` / `FEATURE_PHASE_110` | Narrative search indexed by entity (token) and location (world) | off | Unset var, restart — `GET /api/world/search` returns 404, no data migration |
+| `phase-107` | `NEXT_PUBLIC_FEATURE_PHASE_107` / `FEATURE_PHASE_107` | AI story-arc continuity check against a world's recent narratives (Gemini) | off | Unset var, restart — generation skips the check, narratives save unconditionally as before |
+| `phase-111` | `NEXT_PUBLIC_FEATURE_PHASE_111` / `FEATURE_PHASE_111` | Localized narrative caching per (tokenId, lang) with short TTL | off | Unset var, restart — reads bypass the cache and hit the JSON store directly |
+| `phase-113` | `NEXT_PUBLIC_FEATURE_PHASE_113` / `FEATURE_PHASE_113` | Narrative content moderation with takedown/restore flow for signals | off | Unset var, restart — moderate endpoint returns 404, taken-down signals remain visible (data untouched) |
+| `phase-114` | `NEXT_PUBLIC_FEATURE_PHASE_114` / `FEATURE_PHASE_114` | Achievement timeline visualization (chronological world-event view) | off | Unset var, restart — `timeline` field omitted from `/api/achievements`, badge grid unchanged |
 | `phase-116` | `NEXT_PUBLIC_FEATURE_PHASE_116` / `FEATURE_PHASE_116` | Narrative contributor attribution & credit ledger (co-author on-chain credit) | off | Unset var, restart — ledger reads return empty, writes no-op; JSON sidecar remains on disk (no ledger revert) |
 | `phase-117` | `NEXT_PUBLIC_FEATURE_PHASE_117` / `FEATURE_PHASE_117` | Multi-gateway IPFS pinning with redundancy (quorum, gateway fallback) | off | Unset var, restart — pin reverts to single Pinata gateway, avatar reads use legacy single URL |
 | `phase-119` | `NEXT_PUBLIC_FEATURE_PHASE_119` / `FEATURE_PHASE_119` | CID content-addressing cache with integrity checks (tamper-evident) | off | Unset var, restart — cache disabled, verification skipped; cached files remain inert |

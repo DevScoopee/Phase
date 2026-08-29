@@ -5,10 +5,10 @@
  * Rollback: unset the env var or set to "0"/"false" and restart. No migration to undo.
  *
  * Flags:
- * - phase-104: two-factor confirmation for high-value profile changes
- * - phase-105: narrative branch divergence conflict detection
- * - phase-106: lore versioning with word-level diffing (spike)
- * - phase-110: narrative search indexed by entity and location
+ * - phase-107: AI story-arc continuity validator across artifacts
+ * - phase-111: localized narrative caching per language pack
+ * - phase-113: narrative content moderation with takedown flow
+ * - phase-114: timeline visualization for world events (achievements)
  * - phase-121: gateway health dashboard with latency scoring
  * - phase-122: off-chain metadata delta storage
  * - phase-123: IPFS timeout fallback chain
@@ -16,10 +16,10 @@
  */
 
 export type PhaseFeatureFlag =
-  | "phase-104"
-  | "phase-105"
-  | "phase-106"
-  | "phase-110"
+  | "phase-107"
+  | "phase-111"
+  | "phase-113"
+  | "phase-114"
   | "phase-116"
   | "phase-117"
   | "phase-119"
@@ -30,10 +30,10 @@ export type PhaseFeatureFlag =
   | "phase-124"
 
 const FLAG_ENV_MAP: Record<PhaseFeatureFlag, string[]> = {
-  "phase-104": ["NEXT_PUBLIC_FEATURE_PHASE_104", "FEATURE_PHASE_104"],
-  "phase-105": ["NEXT_PUBLIC_FEATURE_PHASE_105", "FEATURE_PHASE_105"],
-  "phase-106": ["NEXT_PUBLIC_FEATURE_PHASE_106", "FEATURE_PHASE_106"],
-  "phase-110": ["NEXT_PUBLIC_FEATURE_PHASE_110", "FEATURE_PHASE_110"],
+  "phase-107": ["NEXT_PUBLIC_FEATURE_PHASE_107", "FEATURE_PHASE_107"],
+  "phase-111": ["NEXT_PUBLIC_FEATURE_PHASE_111", "FEATURE_PHASE_111"],
+  "phase-113": ["NEXT_PUBLIC_FEATURE_PHASE_113", "FEATURE_PHASE_113"],
+  "phase-114": ["NEXT_PUBLIC_FEATURE_PHASE_114", "FEATURE_PHASE_114"],
   "phase-116": ["NEXT_PUBLIC_FEATURE_PHASE_116", "FEATURE_PHASE_116"],
   "phase-117": ["NEXT_PUBLIC_FEATURE_PHASE_117", "FEATURE_PHASE_117"],
   "phase-119": ["NEXT_PUBLIC_FEATURE_PHASE_119", "FEATURE_PHASE_119"],
@@ -64,20 +64,7 @@ export function featureFlagEnvKeys(flag: PhaseFeatureFlag): string[] {
 }
 
 export function getEnabledFeatureFlags(): PhaseFeatureFlag[] {
-  const all: PhaseFeatureFlag[] = [
-    "phase-104",
-    "phase-105",
-    "phase-106",
-    "phase-110",
-    "phase-116",
-    "phase-117",
-    "phase-119",
-    "phase-120",
-    "phase-121",
-    "phase-122",
-    "phase-123",
-    "phase-124",
-  ]
+  const all: PhaseFeatureFlag[] = ["phase-107", "phase-111", "phase-113", "phase-114", "phase-116", "phase-117", "phase-119", "phase-120", "phase-121", "phase-122", "phase-123", "phase-124"]
   return all.filter(isFeatureEnabled)
 }
 

@@ -81,6 +81,7 @@ export async function saveNarrativeForToken(
   const store = await readJsonStore<WorldNarrativesStore>(filePath)
   store[String(tokenId)] = { ...data, generated_at: Date.now() }
   await writeJsonStore(filePath, store)
+  invalidateLocalizedNarrativeCache(tokenId)
 }
 
 /** Returns the total count of distinct token narratives across all world collections. */
@@ -142,8 +143,55 @@ export async function getRecentNarrativesForCollection(
     .slice(0, limit)
 }
 
-/** Returns every narrative with its token id attached (used to build search indexes, e.g. phase-110). */
-export async function getAllNarrativesWithTokenIds(): Promise<Array<WorldNarrativeData & { tokenId: number }>> {
-  const store = await readJsonStore<WorldNarrativesStore>(serverDataJsonPath("worldNarratives"))
-  return Object.entries(store).map(([tokenId, data]) => ({ tokenId: Number(tokenId), ...data }))
+// ─── phase-111: localized narrative caching per language pack ──────────────
+// Isolated, flag-gated. Every locale re-fetched the same lore from disk on
+// every request. When enabled, reads are cached per (tokenId, lang) with a
+// short TTL, avoiding redundant JSON-store reads across language packs.
+// When flag off, callers fall back to getNarrativeForToken() directly
+// (zero regression). Rollback: unset NEXT_PUBLIC_FEATURE_PHASE_111 / FEATURE_PHASE_111.
+
+export function isLocalizedCacheEnabled(): boolean {
+  const v = (process.env.NEXT_PUBLIC_FEATURE_PHASE_111 ?? process.env.FEATURE_PHASE_111 ?? "").trim().toLowerCase()
+  return v === "1" || v === "true" || v === "yes" || v === "on"
+}
+
+const LOCALIZED_CACHE_TTL_MS = 5 * 60_000
+
+type LocalizedCacheEntry = {
+  value: WorldNarrativeData | null
+  expiresAt: number
+}
+
+const localizedNarrativeCache = new Map<string, LocalizedCacheEntry>()
+
+function localizedCacheKey(tokenId: number, lang: string): string {
+  return `${tokenId}:${lang}`
+}
+
+/** Drops all cached entries for a token (called after the narrative changes). */
+export function invalidateLocalizedNarrativeCache(tokenId: number): void {
+  for (const key of localizedNarrativeCache.keys()) {
+    if (key.startsWith(`${tokenId}:`)) localizedNarrativeCache.delete(key)
+  }
+}
+
+/**
+ * Reads a token's narrative through a per-(tokenId, lang) cache with a short TTL.
+ * The underlying narrative text is not translated by this cache — it only avoids
+ * redundant store reads when the same locale re-fetches the same lore.
+ * When phase-111 is disabled, bypasses the cache entirely.
+ */
+export async function getNarrativeForTokenCached(
+  tokenId: number,
+  lang: string,
+): Promise<WorldNarrativeData | null> {
+  if (!isLocalizedCacheEnabled()) return getNarrativeForToken(tokenId)
+
+  const key = localizedCacheKey(tokenId, lang)
+  const cached = localizedNarrativeCache.get(key)
+  if (cached && cached.expiresAt > Date.now()) return cached.value
+
+  const value = await getNarrativeForToken(tokenId)
+  localizedNarrativeCache.set(key, { value, expiresAt: Date.now() + LOCALIZED_CACHE_TTL_MS })
+  return value
 }

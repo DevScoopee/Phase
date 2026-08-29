@@ -7,7 +7,7 @@ import {
   getNarrativeForToken,
 } from "@/lib/narrative-world-store"
 import { createNotification } from "@/lib/notification-store"
-import { isLoreVersioningEnabled, recordLoreVersion } from "@/lib/lore-versioning"
+import { checkNarrativeContinuity } from "@/lib/story-arc-continuity"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -125,6 +125,18 @@ export async function POST(request: NextRequest) {
     const msg = e instanceof Error ? e.message : String(e)
     console.error("[narrator] Gemini failed", { tokenId, collectionId, msg })
     return NextResponse.json({ error: `Gemini error: ${msg}` }, { status: 500 })
+  }
+
+  const continuity = await checkNarrativeContinuity(
+    world.world_name,
+    narrative,
+    recentNarratives.map((n) => n.narrative),
+  )
+  if (continuity && !continuity.consistent) {
+    return NextResponse.json(
+      { error: `Continuity check failed: ${continuity.reason}`, code: "CONTINUITY_CONTRADICTION" },
+      { status: 409 },
+    )
   }
 
   await saveNarrativeForToken(tokenId, {

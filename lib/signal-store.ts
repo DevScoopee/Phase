@@ -17,6 +17,9 @@ export type Signal = {
   upvotes: string[]
   created_at: number
   signature: string
+  taken_down?: boolean
+  takedown_reason?: string
+  taken_down_at?: number
 }
 
 export type SignalReply = {
@@ -58,6 +61,9 @@ export async function getSignals(
 ): Promise<Signal[]> {
   const store = await readJsonStore<SignalsStore>(serverDataJsonPath("signals"))
   let items = Object.values(store)
+  if (isModerationEnabled()) {
+    items = items.filter((s) => !s.taken_down)
+  }
   if (channel && channel !== "all") {
     items = items.filter((s) => s.channel === channel)
   }
@@ -139,6 +145,43 @@ export async function getSignalChannelStats(
     channels.push({ id, label, count: counts[id] ?? 0 })
   }
   return channels
+}
+
+// ─── phase-113: narrative content moderation with takedown flow ────────────
+// Isolated, flag-gated. Abusive lore/signals previously had no removal path.
+// When enabled, taken-down signals are excluded from getSignals() listings.
+// When flag off, takedown/restore are no-ops on the read path (zero regression).
+// Rollback: unset NEXT_PUBLIC_FEATURE_PHASE_113 / FEATURE_PHASE_113.
+
+export function isModerationEnabled(): boolean {
+  const v = (process.env.NEXT_PUBLIC_FEATURE_PHASE_113 ?? process.env.FEATURE_PHASE_113 ?? "").trim().toLowerCase()
+  return v === "1" || v === "true" || v === "yes" || v === "on"
+}
+
+/** Marks a signal as taken down. Hidden from getSignals() listings while phase-113 is enabled. */
+export async function takedownSignal(id: string, reason: string): Promise<Signal> {
+  const filePath = serverDataJsonPath("signals")
+  const store = await readJsonStore<SignalsStore>(filePath)
+  const signal = store[id]
+  if (!signal) throw new Error("Signal not found")
+  signal.taken_down = true
+  signal.takedown_reason = reason
+  signal.taken_down_at = Date.now()
+  await writeJsonStore(filePath, store)
+  return signal
+}
+
+/** Reinstates a previously taken-down signal (rollback path). */
+export async function restoreSignal(id: string): Promise<Signal> {
+  const filePath = serverDataJsonPath("signals")
+  const store = await readJsonStore<SignalsStore>(filePath)
+  const signal = store[id]
+  if (!signal) throw new Error("Signal not found")
+  signal.taken_down = false
+  signal.takedown_reason = undefined
+  signal.taken_down_at = undefined
+  await writeJsonStore(filePath, store)
+  return signal
 }
 
 // ─── phase-116: narrative contributor attribution & credit ledger ───────────

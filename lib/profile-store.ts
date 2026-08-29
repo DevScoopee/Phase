@@ -49,6 +49,110 @@ export async function saveProfile(
   return entry
 }
 
+
+// phase-96: human-readable profile handle resolution.
+// Rollback: unset NEXT_PUBLIC_FEATURE_PHASE_96 / FEATURE_PHASE_96 to keep handle lookup passive.
+export type ProfileHandleRecord = {
+  walletAddress: string
+  handle: string
+  updatedAt: number
+}
+
+export type ProfileHandleResolution =
+  | { ok: true; walletAddress: string; handle: string; updatedAt: number; featureEnabled: boolean }
+  | { ok: false; error: string; code: "FLAG_DISABLED" | "NOT_FOUND" | "INVALID_HANDLE" | "HANDLE_TAKEN"; featureEnabled: boolean }
+
+const PROFILE_HANDLE_MIN = 3
+const PROFILE_HANDLE_MAX = 24
+const PROFILE_HANDLE_PATTERN = /^[a-z0-9][a-z0-9._-]*[a-z0-9]$/
+
+type ArtistAliasStore = Record<string, { alias: string; updatedAt: number }>
+
+function isPhase96Enabled(): boolean {
+  const value = (process.env.NEXT_PUBLIC_FEATURE_PHASE_96 ?? process.env.FEATURE_PHASE_96 ?? "").trim().toLowerCase()
+  return value === "1" || value === "true" || value === "yes" || value === "on"
+}
+
+function normalizeProfileHandle(handle: string): string {
+  return handle.trim().replace(/^@+/, "").replace(/\s+/g, "-").toLowerCase()
+}
+
+function validateProfileHandle(handle: string): string | null {
+  if (handle.length < PROFILE_HANDLE_MIN || handle.length > PROFILE_HANDLE_MAX) {
+    return `Handle must be ${PROFILE_HANDLE_MIN}-${PROFILE_HANDLE_MAX} characters.`
+  }
+  if (!PROFILE_HANDLE_PATTERN.test(handle)) {
+    return "Handle must use lowercase letters, numbers, dot, dash, or underscore and must start/end with a letter or number."
+  }
+  return null
+}
+
+async function readArtistAliasStore(): Promise<ArtistAliasStore> {
+  try {
+    const raw = await readFile(serverDataJsonPath("artistProfiles"), "utf8")
+    const parsed = JSON.parse(raw) as ArtistAliasStore
+    return parsed && typeof parsed === "object" ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+async function writeArtistAliasStore(data: ArtistAliasStore): Promise<void> {
+  const filePath = serverDataJsonPath("artistProfiles")
+  await mkdir(path.dirname(filePath), { recursive: true })
+  await writeFile(filePath, JSON.stringify(data, null, 2), "utf8")
+}
+
+export async function resolveProfileHandle(handle: string): Promise<ProfileHandleResolution> {
+  const featureEnabled = isPhase96Enabled()
+  if (!featureEnabled) {
+    return { ok: false, error: "phase-96 flag disabled", code: "FLAG_DISABLED", featureEnabled }
+  }
+
+  const normalized = normalizeProfileHandle(handle)
+  const invalid = validateProfileHandle(normalized)
+  if (invalid) {
+    return { ok: false, error: invalid, code: "INVALID_HANDLE", featureEnabled }
+  }
+
+  const store = await readArtistAliasStore()
+  const match = Object.entries(store).find(([, profile]) => normalizeProfileHandle(profile.alias) === normalized)
+  if (!match) {
+    return { ok: false, error: "Handle not found", code: "NOT_FOUND", featureEnabled }
+  }
+
+  const [walletAddress, profile] = match
+  return { ok: true, walletAddress, handle: normalizeProfileHandle(profile.alias), updatedAt: profile.updatedAt, featureEnabled }
+}
+
+export async function getProfileHandle(walletAddress: string): Promise<ProfileHandleRecord | null> {
+  const store = await readArtistAliasStore()
+  const profile = store[walletAddress]
+  if (!profile) return null
+  return { walletAddress, handle: normalizeProfileHandle(profile.alias), updatedAt: profile.updatedAt }
+}
+
+export async function saveProfileHandle(walletAddress: string, handle: string): Promise<ProfileHandleResolution> {
+  const featureEnabled = isPhase96Enabled()
+  const normalized = normalizeProfileHandle(handle)
+  const invalid = validateProfileHandle(normalized)
+  if (invalid) {
+    return { ok: false, error: invalid, code: "INVALID_HANDLE", featureEnabled }
+  }
+
+  const store = await readArtistAliasStore()
+  const taken = Object.entries(store).find(
+    ([wallet, profile]) => wallet !== walletAddress && normalizeProfileHandle(profile.alias) === normalized,
+  )
+  if (taken) {
+    return { ok: false, error: "Handle is already linked to another wallet", code: "HANDLE_TAKEN", featureEnabled }
+  }
+
+  const updatedAt = Date.now()
+  store[walletAddress] = { alias: normalized, updatedAt }
+  await writeArtistAliasStore(store)
+  return { ok: true, walletAddress, handle: normalized, updatedAt, featureEnabled }
+}
 // ─── phase-117: multi-gateway IPFS pinning with redundancy ──────────────────
 // Isolated, flag-gated. Single gateway outage drops metadata previously.
 // When enabled, avatar pinning uses quorum across gateways and avatar reads

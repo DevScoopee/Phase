@@ -71,17 +71,16 @@ flowchart TB
 | `lib/classic-liq.ts` | Classic asset trustline utilities (`changeTrust` XDR, Horizon checks) + CID integrity helpers via `cid-cache` (phase-119) |
 | `lib/phase-copy.ts` | Centralized i18n dictionary (EN/ES) |
 | `lib/server-data-paths.ts` | Writable data location abstraction |
-| `lib/feature-flags.ts` | Flag registry (phase-104,105,106,110 + 116,117,119,120 + 121..124, env resolution, rollback notes) |
-| `lib/profile-2fa.ts` | Two-factor confirmation codes for high-value profile changes (phase-104) |
-| `lib/world-conflict.ts` | Optimistic concurrency conflict detection for co-authored worlds (phase-105) |
-| `lib/lore-versioning.ts` | Narrative version history + word-level diffing spike (phase-106) |
-| `lib/narrative-search.ts` | Narrative search indexed by entity (token) and location (world) (phase-110) |
+| `lib/feature-flags.ts` | Flag registry (phase-107,111,113,114 + 116,117,119,120 + 121..124, env resolution, rollback notes) |
+| `lib/story-arc-continuity.ts` | AI story-arc continuity check against recent world narratives (phase-107) |
+| `lib/narrative-world-store.ts` | World/narrative JSON store + localized per-(tokenId,lang) narrative cache (phase-111) |
 | `lib/ipfs-upload-retry.ts` | IPFS upload retry w/ exponential backoff + sha256 checksum (phase-120) |
 | `lib/cid-cache.ts` | CID content-addressing cache with integrity verification (phase-119) |
 | `lib/ipfs-pinning.ts` | Multi-gateway pinning with quorum + fallback fetch (phase-117) |
 | `lib/profile-store.ts` | Profile JSON store + avatar redundancy helpers (phase-117) |
 | `lib/contributor-ledger.ts` | Contributor ledger & credit distribution (phase-116) |
-| `lib/signal-store.ts` | Signals/replies + attribution ledger wiring (phase-116) |
+| `lib/signal-store.ts` | Signals/replies + attribution ledger wiring (phase-116) + moderation takedown/restore (phase-113) |
+| `lib/achievement-store.ts` | Achievement unlocks JSON store + chronological timeline (phase-114) |
 | `lib/gateway-health.ts` | Gateway latency scoring + dashboard snapshot (phase-121) |
 | `lib/offchain-delta.ts` | Off-chain delta store, hash/stub helpers (phase-122) |
 | `lib/ipfs-fallback.ts` / `lib/phase-nft-metadata-build.ts` | IPFS timeout fallback chain (phase-123) |
@@ -131,10 +130,10 @@ All handlers live in `app/api/**/route.ts`.
 
 | Flag | Route | Extension | Flag off |
 |------|-------|-----------|----------|
-| `phase-104` | `POST /api/profile/request-change` & `POST /api/profile` | Two-step confirmation: `request-change` issues a short-lived code bound to wallet + high-value fields; `POST /api/profile` requires a matching `confirmation_code` before applying those fields | `POST /api/profile/request-change` returns `404`; `/api/profile` applies changes immediately |
-| `phase-105` | `POST /api/world` | Accepts `expected_version`; returns `409` with `serverVersion`/`current` when the world diverged since the client last read it | Unconditional overwrite (`expected_version` ignored) |
-| `phase-106` | `POST /api/narrator` & `GET /api/world/narrative/[token_id]/versions` | Records an additive version-history entry per narrative generation; versions endpoint exposes history + word-level diff between two versions | Versions endpoint `404`, no history recorded |
-| `phase-110` | `GET /api/world/search` | Search narratives by `entity` (token id), `location` (world name substring), or `q` (free text) | `404` disabled |
+| `phase-107` | `POST /api/narrator` | Checks new narrative against the world's recent narratives (Gemini); `409 CONTINUITY_CONTRADICTION` on a detected contradiction | No check, generation always saves |
+| `phase-111` | `GET /api/world/narrative/[token_id]` | Reads through a per-(tokenId, `?lang=`) cache with a short TTL | Direct store read every request |
+| `phase-113` | `POST /api/signals/[id]/moderate` | Takedown/restore a signal (`x-admin-key` gated); taken-down signals excluded from `GET /api/signals` | `404` disabled, no filtering |
+| `phase-114` | `GET /api/achievements` | Adds `timeline` field: achievement unlocks ordered oldest-first with names | Field omitted |
 | `phase-116` | `POST/GET /api/signals/[id]/replies` | Narrative contributor attribution: `contributors`, `creditLedger` on reply create; `GET` ledger endpoint with shareBps/roles | `404` disabled, ledger empty |
 | `phase-117` | `GET/POST /api/profile/avatar` | Multi-gateway redundancy: `GET` rewrites avatar URL via verified gateway (headers `X-Phase117`), `POST` pins with quorum (`quorum`, `achieved`, `checksum`) | Single gateway, no quorum |
 | `phase-119` | `POST/GET /api/classic-liq/trustline` | CID cache + integrity: validates `cid`/`expectedSha256`/`cidPath`, `GET` exposes cache stats, headers `X-Phase119` | Direct submit, no verification |
@@ -201,16 +200,16 @@ Critical groups:
 - Gemini runtime (`GEMINI_API_KEY`)
 - Writable server data directory (`PHASE_SERVER_DATA_DIR`)
 
-### 9.1 Feature flags (phase-104,105,106,110 + 116..124)
+### 9.1 Feature flags (phase-107,111,113,114 + 116..124)
 
 All flags default to **off** (safe rollback). Set to `1`/`true` to enable.
 
 ```
 # Enable all twelve (example)
-NEXT_PUBLIC_FEATURE_PHASE_104=1
-NEXT_PUBLIC_FEATURE_PHASE_105=1
-NEXT_PUBLIC_FEATURE_PHASE_106=1
-NEXT_PUBLIC_FEATURE_PHASE_110=1
+NEXT_PUBLIC_FEATURE_PHASE_107=1
+NEXT_PUBLIC_FEATURE_PHASE_111=1
+NEXT_PUBLIC_FEATURE_PHASE_113=1
+NEXT_PUBLIC_FEATURE_PHASE_114=1
 NEXT_PUBLIC_FEATURE_PHASE_116=1
 NEXT_PUBLIC_FEATURE_PHASE_117=1
 NEXT_PUBLIC_FEATURE_PHASE_119=1
