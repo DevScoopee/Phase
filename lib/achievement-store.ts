@@ -179,3 +179,30 @@ export async function checkAndUnlock(
   await writeStore(store)
   return newUnlocks
 }
+
+// ─── phase-114: timeline visualization for world events ────────────────────
+// Isolated, flag-gated. Achievement unlocks are the wallet's chronology of
+// world events; previously only exposed as an unordered badge grid. When
+// enabled, exposes unlocks ordered by unlocked_at for a timeline view.
+// When flag off, callers keep using getAchievements() (zero regression).
+// Rollback: unset NEXT_PUBLIC_FEATURE_PHASE_114 / FEATURE_PHASE_114.
+
+export function isTimelineVisualizationEnabled(): boolean {
+  const v = (process.env.NEXT_PUBLIC_FEATURE_PHASE_114 ?? process.env.FEATURE_PHASE_114 ?? "").trim().toLowerCase()
+  return v === "1" || v === "true" || v === "yes" || v === "on"
+}
+
+export type TimelineEvent = {
+  id: AchievementId
+  name: string
+  unlocked_at: number
+}
+
+/** Returns the wallet's achievement unlocks ordered oldest-first, with display names attached. */
+export async function getAchievementTimeline(wallet: string): Promise<TimelineEvent[]> {
+  const achievements = await getAchievements(wallet)
+  return achievements
+    .slice()
+    .sort((a, b) => a.unlocked_at - b.unlocked_at)
+    .map((a) => ({ id: a.id, name: ACHIEVEMENT_NAMES[a.id] ?? a.id, unlocked_at: a.unlocked_at }))
+}
