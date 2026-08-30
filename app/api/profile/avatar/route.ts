@@ -1,12 +1,12 @@
 import { NextRequest } from "next/server"
-import { getProfile, isProfilePinningRedundancyEnabled, resolveAvatarWithFallback } from "@/lib/profile-store"
+import { DEFAULT_PROFILE_LOCALE, getProfile, isProfilePinningRedundancyEnabled, localizeAvatarName, normalizeProfileLocale, resolveAvatarWithFallback } from "@/lib/profile-store"
 import { StrKey } from "@stellar/stellar-sdk"
 import { createApiRequestContext } from "@/lib/api-observability"
 import { z } from "zod"
 
 export const dynamic = "force-dynamic"
 
-// ─── phase-117: multi-gateway redundancy ────────────────────────────────────
+// ??? phase-117: multi-gateway redundancy ????????????????????????????????????
 // Single gateway outage previously dropped metadata. When flag enabled, avatar
 // reads use gateway rotation + checksum verification; pins require quorum.
 
@@ -34,6 +34,8 @@ export async function GET(request: NextRequest) {
       return api.json({ avatar: null }, { event: "profile.avatar.empty", metadata: { wallet } })
     }
 
+    const preferredLocale = normalizeProfileLocale(profile.locale) ?? DEFAULT_PROFILE_LOCALE
+
     // phase-117: when enabled, rewrite image URL through verified gateway fallback
     let imageOut = profile.avatar_image_url ?? ""
     let gatewayMeta: string | null = null
@@ -54,7 +56,8 @@ export async function GET(request: NextRequest) {
         avatar: {
           tokenId: profile.avatar_token_id,
           image: imageOut,
-          name: `Phase Artifact #${profile.avatar_token_id}`,
+          name: localizeAvatarName(profile.avatar_token_id, preferredLocale),
+          locale: preferredLocale,
         },
         ...(isProfilePinningRedundancyEnabled()
           ? { redundancy: { enabled: true, gateway: gatewayMeta ?? "legacy" } }
@@ -67,9 +70,11 @@ export async function GET(request: NextRequest) {
           token_id: profile.avatar_token_id,
           ...(gatewayMeta ? { gateway: gatewayMeta } : {}),
           phase117: isProfilePinningRedundancyEnabled(),
+          locale: preferredLocale,
         },
         headers: {
           "Cache-Control": "private, max-age=30",
+          "X-Phase-Locale": preferredLocale,
           ...(isProfilePinningRedundancyEnabled() ? { "X-Phase117": "enabled", ...(gatewayMeta ? { "X-Phase-Gateway": gatewayMeta } : {}) } : {}),
         },
       },
@@ -79,7 +84,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST — pin avatar with redundancy (phase-117 gated)
+// POST ? pin avatar with redundancy (phase-117 gated)
 // Preserves existing GET; adds opt-in pin path for clients that want quorum
 export async function POST(request: NextRequest) {
   const api = createApiRequestContext(request, "/api/profile/avatar")
