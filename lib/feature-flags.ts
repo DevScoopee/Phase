@@ -5,6 +5,10 @@
  * Rollback: unset the env var or set to "0"/"false" and restart. No migration to undo.
  *
  * Flags:
+ * - phase-88: on-chain follow suggestions
+ * - phase-89: scheduled signal broadcast queues
+ * - phase-90: community polls as a signal subtype
+ * - phase-91: moderator-attributed signal audit log
  * - phase-107: AI story-arc continuity validator across artifacts
  * - phase-111: localized narrative caching per language pack
  * - phase-113: narrative content moderation with takedown flow
@@ -16,6 +20,10 @@
  */
 
 export type PhaseFeatureFlag =
+  | "phase-88"
+  | "phase-89"
+  | "phase-90"
+  | "phase-91"
   | "phase-107"
   | "phase-111"
   | "phase-113"
@@ -30,6 +38,10 @@ export type PhaseFeatureFlag =
   | "phase-124"
 
 const FLAG_ENV_MAP: Record<PhaseFeatureFlag, string[]> = {
+  "phase-88": ["NEXT_PUBLIC_FEATURE_PHASE_88", "FEATURE_PHASE_88"],
+  "phase-89": ["NEXT_PUBLIC_FEATURE_PHASE_89", "FEATURE_PHASE_89"],
+  "phase-90": ["NEXT_PUBLIC_FEATURE_PHASE_90", "FEATURE_PHASE_90"],
+  "phase-91": ["NEXT_PUBLIC_FEATURE_PHASE_91", "FEATURE_PHASE_91"],
   "phase-107": ["NEXT_PUBLIC_FEATURE_PHASE_107", "FEATURE_PHASE_107"],
   "phase-111": ["NEXT_PUBLIC_FEATURE_PHASE_111", "FEATURE_PHASE_111"],
   "phase-113": ["NEXT_PUBLIC_FEATURE_PHASE_113", "FEATURE_PHASE_113"],
@@ -64,7 +76,7 @@ export function featureFlagEnvKeys(flag: PhaseFeatureFlag): string[] {
 }
 
 export function getEnabledFeatureFlags(): PhaseFeatureFlag[] {
-  const all: PhaseFeatureFlag[] = ["phase-107", "phase-111", "phase-113", "phase-114", "phase-116", "phase-117", "phase-119", "phase-120", "phase-121", "phase-122", "phase-123", "phase-124"]
+  const all: PhaseFeatureFlag[] = ["phase-88", "phase-89", "phase-90", "phase-91", "phase-107", "phase-111", "phase-113", "phase-114", "phase-116", "phase-117", "phase-119", "phase-120", "phase-121", "phase-122", "phase-123", "phase-124"]
   return all.filter(isFeatureEnabled)
 }
 

@@ -2,6 +2,18 @@ import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { nanoid } from "nanoid"
 import { serverDataJsonPath } from "@/lib/server-data-paths"
+import { isFeatureEnabled } from "@/lib/feature-flags"
+
+export type SignalPollOption = {
+  id: string
+  text: string
+  voters: string[]
+}
+
+export type SignalPoll = {
+  options: SignalPollOption[]
+  closes_at?: number
+}
 
 export type Signal = {
   id: string
@@ -17,6 +29,10 @@ export type Signal = {
   upvotes: string[]
   created_at: number
   signature: string
+  type?: "post" | "poll"
+  poll?: SignalPoll
+  scheduled_for?: number
+  status?: "scheduled" | "published" | "cancelled"
   taken_down?: boolean
   takedown_reason?: string
   taken_down_at?: number
@@ -61,6 +77,8 @@ export async function getSignals(
 ): Promise<Signal[]> {
   const store = await readJsonStore<SignalsStore>(serverDataJsonPath("signals"))
   let items = Object.values(store)
+  const now = Date.now()
+  items = items.filter((signal) => signal.status !== "cancelled" && (!signal.scheduled_for || signal.scheduled_for <= now))
   if (isModerationEnabled()) {
     items = items.filter((s) => !s.taken_down)
   }
@@ -87,8 +105,53 @@ export async function createSignal(
 ): Promise<Signal> {
   const filePath = serverDataJsonPath("signals")
   const store = await readJsonStore<SignalsStore>(filePath)
-  const signal: Signal = { ...data, id: nanoid(10), created_at: Date.now() }
+  const now = Date.now()
+  const scheduled = isFeatureEnabled("phase-89") && data.scheduled_for != null && data.scheduled_for > now
+  const signal: Signal = {
+    ...data,
+    id: nanoid(10),
+    created_at: now,
+    ...(scheduled ? { status: "scheduled" as const } : { status: "published" as const }),
+  }
   store[signal.id] = signal
+  await writeJsonStore(filePath, store)
+  return signal
+}
+
+export async function getScheduledSignals(wallet: string): Promise<Signal[]> {
+  if (!isFeatureEnabled("phase-89")) return []
+  const store = await readJsonStore<SignalsStore>(serverDataJsonPath("signals"))
+  const now = Date.now()
+  return Object.values(store)
+    .filter((signal) => signal.author_wallet === wallet && signal.status === "scheduled" && (signal.scheduled_for ?? 0) > now)
+    .sort((a, b) => (a.scheduled_for ?? 0) - (b.scheduled_for ?? 0))
+}
+
+export async function cancelScheduledSignal(id: string, wallet: string): Promise<Signal> {
+  const filePath = serverDataJsonPath("signals")
+  const store = await readJsonStore<SignalsStore>(filePath)
+  const signal = store[id]
+  if (!signal) throw new Error("Signal not found")
+  if (signal.author_wallet !== wallet) throw new Error("Not signal owner")
+  if (signal.status !== "scheduled") throw new Error("Signal is not scheduled")
+  if ((signal.scheduled_for ?? 0) <= Date.now()) throw new Error("Signal has already published")
+  signal.status = "cancelled"
+  await writeJsonStore(filePath, store)
+  return signal
+}
+
+export async function voteOnPoll(signalId: string, optionId: string, wallet: string): Promise<Signal> {
+  const filePath = serverDataJsonPath("signals")
+  const store = await readJsonStore<SignalsStore>(filePath)
+  const signal = store[signalId]
+  if (!signal || signal.type !== "poll" || !signal.poll) throw new Error("Poll not found")
+  if (signal.poll.closes_at && signal.poll.closes_at <= Date.now()) throw new Error("Poll is closed")
+  const selected = signal.poll.options.find((option) => option.id === optionId)
+  if (!selected) throw new Error("Poll option not found")
+  for (const option of signal.poll.options) {
+    option.voters = option.voters.filter((voter) => voter !== wallet)
+  }
+  selected.voters.push(wallet)
   await writeJsonStore(filePath, store)
   return signal
 }
