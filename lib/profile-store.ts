@@ -10,6 +10,7 @@ export type ProfileData = {
   telegram?: string
   avatar_token_id?: number
   avatar_image_url?: string
+  locale?: ProfileLocale
   updated_at: number
 }
 
@@ -50,6 +51,69 @@ export async function saveProfile(
 }
 
 
+// phase-102: locale preference support for profile localization.
+// Rollback: unset NEXT_PUBLIC_FEATURE_PHASE_102 / FEATURE_PHASE_102 to keep default English presentation.
+export const SUPPORTED_PROFILE_LOCALES = ["en", "es", "fr", "pt-BR", "yo", "ig"] as const
+export type ProfileLocale = (typeof SUPPORTED_PROFILE_LOCALES)[number]
+export const DEFAULT_PROFILE_LOCALE: ProfileLocale = "en"
+
+export type ProfileLocaleResolution =
+  | { ok: true; locale: ProfileLocale; featureEnabled: boolean }
+  | { ok: false; locale: ProfileLocale; error: string; code: "FLAG_DISABLED" | "UNSUPPORTED_LOCALE"; featureEnabled: boolean }
+
+export function isPhase102Enabled(): boolean {
+  const value = (process.env.NEXT_PUBLIC_FEATURE_PHASE_102 ?? process.env.FEATURE_PHASE_102 ?? "").trim().toLowerCase()
+  return value === "1" || value === "true" || value === "yes" || value === "on"
+}
+
+export function normalizeProfileLocale(locale: string | null | undefined): ProfileLocale | null {
+  const normalized = (locale ?? "").trim()
+  const match = SUPPORTED_PROFILE_LOCALES.find((candidate) => candidate.toLowerCase() === normalized.toLowerCase())
+  return match ?? null
+}
+
+export function resolveProfileLocale(locale: string | null | undefined): ProfileLocaleResolution {
+  const featureEnabled = isPhase102Enabled()
+  if (!featureEnabled) {
+    return { ok: false, locale: DEFAULT_PROFILE_LOCALE, error: "phase-102 flag disabled", code: "FLAG_DISABLED", featureEnabled }
+  }
+
+  const normalized = normalizeProfileLocale(locale)
+  if (!normalized) {
+    return { ok: false, locale: DEFAULT_PROFILE_LOCALE, error: "Unsupported profile locale", code: "UNSUPPORTED_LOCALE", featureEnabled }
+  }
+
+  return { ok: true, locale: normalized, featureEnabled }
+}
+
+export function localizeAvatarName(tokenId: number, locale: ProfileLocale = DEFAULT_PROFILE_LOCALE): string {
+  const labels: Record<ProfileLocale, string> = {
+    en: "Phase Artifact",
+    es: "Artefacto Phase",
+    fr: "Artefact Phase",
+    "pt-BR": "Artefato Phase",
+    yo: "Ohun Iranti Phase",
+    ig: "Ihe Ncheta Phase",
+  }
+  return `${labels[locale] ?? labels.en} #${tokenId}`
+}
+
+export async function getProfileLocalePreference(wallet: string): Promise<ProfileLocale> {
+  const profile = await getProfile(wallet)
+  return normalizeProfileLocale(profile?.locale) ?? DEFAULT_PROFILE_LOCALE
+}
+
+export async function saveProfileLocalePreference(wallet: string, locale: string): Promise<ProfileLocaleResolution> {
+  const resolved = resolveProfileLocale(locale)
+  if (!resolved.ok) return resolved
+
+  const profile = await getProfile(wallet)
+  await saveProfile(wallet, {
+    ...(profile ?? {}),
+    locale: resolved.locale,
+  })
+  return resolved
+}
 // phase-96: human-readable profile handle resolution.
 // Rollback: unset NEXT_PUBLIC_FEATURE_PHASE_96 / FEATURE_PHASE_96 to keep handle lookup passive.
 export type ProfileHandleRecord = {
@@ -153,7 +217,7 @@ export async function saveProfileHandle(walletAddress: string, handle: string): 
   await writeArtistAliasStore(store)
   return { ok: true, walletAddress, handle: normalized, updatedAt, featureEnabled }
 }
-// ─── phase-117: multi-gateway IPFS pinning with redundancy ──────────────────
+// ??? phase-117: multi-gateway IPFS pinning with redundancy ??????????????????
 // Isolated, flag-gated. Single gateway outage drops metadata previously.
 // When enabled, avatar pinning uses quorum across gateways and avatar reads
 // try fallback gateways with checksum verification. When flag off, legacy
@@ -193,7 +257,7 @@ export async function pinAvatarWithRedundancy(
   opts: { quorum?: number; fileName?: string; expectedChecksum?: string | null } = {},
 ): Promise<AvatarPinResult> {
   if (!isProfilePinningRedundancyEnabled()) {
-    // legacy: single pin via /api/ipfs style — return not-enabled code
+    // legacy: single pin via /api/ipfs style ? return not-enabled code
     return { ok: false, error: "phase-117 flag disabled (set NEXT_PUBLIC_FEATURE_PHASE_117=1)", code: "FLAG_DISABLED" }
   }
   const jwt = (process.env.PINATA_JWT ?? process.env.PINATA_API_JWT ?? "").trim()
