@@ -224,6 +224,7 @@ export function NotificationsModal() {
         notifications: Notification[]
         unread_count: number
         preferences?: NotificationPreferences
+        gateway_auth_rotation_feature_enabled?: boolean
       }
       setNotifications(data.notifications)
       setUnreadCount(data.unread_count)

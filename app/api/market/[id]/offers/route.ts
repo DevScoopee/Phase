@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { StrKey } from "@stellar/stellar-sdk"
-import { getListing, getOffers, createOffer } from "@/lib/market-store"
+import { createOffer, getListing, getOffers, isPhase100Enabled, recordCreatorProfileView } from "@/lib/market-store"
 import { createNotification } from "@/lib/notification-store"
 import { createApiRequestContext } from "@/lib/api-observability"
 
@@ -15,8 +15,21 @@ export async function GET(
   const { id } = await params
 
   try {
+    const creatorWallet = request.nextUrl.searchParams.get("creator_wallet")?.trim() ?? ""
+    const viewerWallet = request.nextUrl.searchParams.get("viewer_wallet")?.trim() ?? ""
+    if (isPhase100Enabled() && creatorWallet && StrKey.isValidEd25519PublicKey(creatorWallet)) {
+      await recordCreatorProfileView({
+        creator_wallet: creatorWallet,
+        viewer_wallet: viewerWallet && StrKey.isValidEd25519PublicKey(viewerWallet) ? viewerWallet : undefined,
+        source: "market",
+      }).catch((error) => api.log("warn", "market.profile_view.record_failed", { error }))
+    }
+
     const offers = await getOffers(id)
-    return api.json({ offers }, { event: "market.offers.loaded", metadata: { listing_id: id } })
+    return api.json(
+      { offers, profile_view_analytics_enabled: isPhase100Enabled() },
+      { event: "market.offers.loaded", metadata: { listing_id: id } },
+    )
   } catch (error) {
     return api.errorJson(error, 500, "market.offers.load_failed")
   }

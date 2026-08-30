@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import { StrKey } from "@stellar/stellar-sdk"
 import {
-  FollowSuggestionQuerySchema,
   followUser,
   unfollowUser,
   getFollowCounts,
-  getFollowSuggestions,
   isFollowing,
+  isPhase118Enabled,
+  validateSep50MetadataBeforePin,
 } from "@/lib/follow-store"
-import { isFeatureEnabled } from "@/lib/feature-flags"
 import { createNotification } from "@/lib/notification-store"
 import { getProfile } from "@/lib/profile-store"
 import { checkAndUnlock } from "@/lib/achievement-store"
@@ -51,6 +50,7 @@ type FollowBody = {
   from?: unknown
   to?: unknown
   action?: unknown
+  metadata?: unknown
 }
 
 export async function POST(request: NextRequest) {
@@ -73,6 +73,15 @@ export async function POST(request: NextRequest) {
   if (body.action !== "follow" && body.action !== "unfollow") {
     return NextResponse.json({ error: "action must be follow or unfollow" }, { status: 400 })
   }
+  if (isPhase118Enabled() && body.metadata !== undefined) {
+    const validation = validateSep50MetadataBeforePin(body.metadata)
+    if (!validation.ok) {
+      return NextResponse.json(
+        { error: validation.error.message, code: validation.error.code, details: validation.error.details },
+        { status: 400 },
+      )
+    }
+  }
 
   if (body.action === "follow") {
     await followUser(body.from, body.to)
@@ -93,5 +102,5 @@ export async function POST(request: NextRequest) {
   }
 
   const counts = await getFollowCounts(body.to)
-  return NextResponse.json({ ok: true, ...counts })
+  return NextResponse.json({ ok: true, ...counts, metadata_validation_enabled: isPhase118Enabled() })
 }

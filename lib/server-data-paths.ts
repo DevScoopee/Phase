@@ -15,14 +15,16 @@ const FILES = {
   signalModerationAudit: "signal-moderation-audit.json",
   profileFollows: "profile-follows.json",
   notifications: "notifications.json",
+  notificationPreferences: "notification-preferences.json",
   marketListings: "market-listings.json",
   marketOffers: "market-offers.json",
+  marketProfileViews: "market-profile-views.json",
   achievements: "achievements.json",
+  loreVersions: "lore-versions.json",
   worldLoreLinks: "world-lore-links.json",
   worldRoles: "world-roles.json",
   worldReaderProgress: "world-reader-progress.json",
-  artistAttestations: "artist-attestations.json",
-  pushSubscriptions: "push-subscriptions.json",
+  ipfsGatewayAuthRotations: "ipfs-gateway-auth-rotations.json",
 } as const
 
 export type ServerDataFile = keyof typeof FILES

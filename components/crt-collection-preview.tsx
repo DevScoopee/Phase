@@ -16,6 +16,8 @@ type Props = {
   attributes: Attribute[]
   collectionId: number | null
   owner: string | null
+  contentHash?: string
+  duplicateOfTokenId?: number
 }
 
 const SCANLINES = {
@@ -56,6 +58,8 @@ export function CrtCollectionPreview({
   attributes,
   collectionId,
   owner,
+  contentHash,
+  duplicateOfTokenId,
 }: Props) {
   const collectionName = parseCollectionName(name)
   const creatorDisplay = owner ? truncateAddress(owner) : "UNKNOWN"
@@ -145,6 +149,12 @@ export function CrtCollectionPreview({
           <MetaRow label="CREATOR" value={creatorDisplay} />
           {collectionId != null && (
             <MetaRow label="COLLECTION_ID" value={String(collectionId)} />
+          )}
+          {contentHash && (
+            <MetaRow label="CONTENT_HASH" value={contentHash.slice(0, 16)} />
+          )}
+          {duplicateOfTokenId && (
+            <MetaRow label="DUPLICATE_OF" value={`#${duplicateOfTokenId}`} />
           )}
           {displayAttrs.map((attr) => (
             <MetaRow
