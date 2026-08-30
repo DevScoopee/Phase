@@ -22,6 +22,10 @@
  * - phase-118: SEP-50 metadata validation before pin
  * - phase-127: content-hash deduplication for repeated assets
  * - phase-128: IPFS gateway auth rotation for private pinning tiers
+ * - phase-130: quest progress snapshotting to survive serverless cold starts
+ * - phase-131: quest streak daily-claim multiplier with decay rules
+ * - phase-132: referral-quest attribution with anti-gaming caps
+ * - phase-133: faucet distributor balance auto-top-up via Mercury
  */
 
 export type PhaseFeatureFlag =
@@ -64,7 +68,12 @@ export type PhaseFeatureFlag =
   | "phase-123"
   | "phase-124"
   | "phase-127"
-  | "phase-128";
+  | "phase-128"
+  | "phase-128"
+  | "phase-130"
+  | "phase-131"
+  | "phase-132"
+  | "phase-133";
 
 const FLAG_ENV_MAP: Record<PhaseFeatureFlag, string[]> = {
   "phase-66": ["NEXT_PUBLIC_FEATURE_PHASE_66", "FEATURE_PHASE_66"],
@@ -107,6 +116,10 @@ const FLAG_ENV_MAP: Record<PhaseFeatureFlag, string[]> = {
   "phase-124": ["NEXT_PUBLIC_FEATURE_PHASE_124", "FEATURE_PHASE_124"],
   "phase-127": ["NEXT_PUBLIC_FEATURE_PHASE_127", "FEATURE_PHASE_127"],
   "phase-128": ["NEXT_PUBLIC_FEATURE_PHASE_128", "FEATURE_PHASE_128"],
+  "phase-130": ["NEXT_PUBLIC_FEATURE_PHASE_130", "FEATURE_PHASE_130"],
+  "phase-131": ["NEXT_PUBLIC_FEATURE_PHASE_131", "FEATURE_PHASE_131"],
+  "phase-132": ["NEXT_PUBLIC_FEATURE_PHASE_132", "FEATURE_PHASE_132"],
+  "phase-133": ["NEXT_PUBLIC_FEATURE_PHASE_133", "FEATURE_PHASE_133"],
 };
 
 function isTruthy(v: string | undefined): boolean {
@@ -177,8 +190,12 @@ export function getEnabledFeatureFlags(): PhaseFeatureFlag[] {
     "phase-124",
     "phase-127",
     "phase-128",
+    "phase-130",
+    "phase-131",
+    "phase-132",
+    "phase-133",
   ];
-  return all.filter(isFeatureEnabled);
+  return all.filter(isFeatureEnabled)
 }
 
 export function flagRollbackNote(flag: PhaseFeatureFlag): string {

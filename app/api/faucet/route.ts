@@ -33,7 +33,10 @@ import {
   userOwnsAnyPhaseToken,
 } from "@/lib/phase-protocol"
 import { getAllWorldCollections } from "@/lib/narrative-world-store"
-import { checkAndUnlock } from "@/lib/achievement-store"
+import { isQuestSnapshotEnabled, loadQuestSnapshot, saveQuestSnapshot, pruneStaleSnapshots } from "@/lib/quest-snapshot"
+import { isStreakMultiplierEnabled, getStreakInfo, applyStreakMultiplier, recordDailyClaim, type StreakInfo } from "@/lib/quest-streak"
+import { isReferralQuestEnabled, validateReferralCode, recordReferral, getReferralStats } from "@/lib/referral-quest"
+import { isDistributorTopupEnabled, prepareTopup } from "@/lib/distributor-topup"
 
 /** Vercel: Hobby ~10s; Pro/Enterprise permite más — subir si el faucet sigue en 504. */
 export const maxDuration = 60
@@ -90,8 +93,18 @@ async function readQuestProgressCached(wallet: string | null): Promise<Record<Qu
   const now = Date.now()
   const hit = questProgressCache.get(wallet)
   if (hit && now - hit.at < QUEST_PROGRESS_CACHE_TTL_MS) return hit.data
+  // phase-130: try loading from disk snapshot before scanning on-chain
+  if (isQuestSnapshotEnabled()) {
+    const snapshot = await loadQuestSnapshot(wallet)
+    if (snapshot) {
+      questProgressCache.set(wallet, { at: now, data: snapshot })
+      return snapshot
+    }
+  }
   const data = await readQuestProgress(wallet)
   questProgressCache.set(wallet, { at: now, data })
+  // phase-130: persist snapshot for cold-start recovery
+  void saveQuestSnapshot(wallet, data).catch(() => {})
   return data
 }
 
@@ -381,6 +394,22 @@ async function buildWalletStatus(wallet: string | null, claims: FaucetClaims) {
   const questsDone = allQuests.filter((r) => r.claimedAt || r.requirementMet).length
   const totalQuests = allQuests.length
 
+  // phase-131: include streak multiplier info for daily reward display
+  let streakInfo: StreakInfo | undefined
+  if (isStreakMultiplierEnabled() && wallet) {
+    try {
+      streakInfo = await getStreakInfo(wallet)
+    } catch { /* non-critical */ }
+  }
+
+  // phase-132: include referral stats for the wallet
+  let referralStats: { code: string | null; totalReferred: number; remainingSlots: number } | undefined
+  if (isReferralQuestEnabled() && wallet) {
+    try {
+      referralStats = await getReferralStats(wallet)
+    } catch { /* non-critical */ }
+  }
+
   return {
     enabled: faucetConfigured(),
     payoutMode: faucetConfigured() ? (faucetUsesDistributorTransfer() ? "transfer" : "mint") : null,
@@ -400,6 +429,8 @@ async function buildWalletStatus(wallet: string | null, claims: FaucetClaims) {
       quest_first_world: questFirstWorld,
       quest_three_collections: questThreeCols,
     },
+    ...(streakInfo ? { streak: streakInfo } : {}),
+    ...(referralStats ? { referral: referralStats } : {}),
   }
 }
 
@@ -427,6 +458,10 @@ async function markClaim(wallet: string, reward: RewardType) {
   }
   claims[wallet] = walletClaim
   await writeClaims(claims)
+  // phase-130: prune stale snapshots periodically (fire-and-forget)
+  if (isQuestSnapshotEnabled()) {
+    void pruneStaleSnapshots().catch(() => {})
+  }
 }
 
 async function clearFaucetPendingOnly(wallet: string) {
@@ -567,9 +602,9 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  let body: { walletAddress?: string; userAddress?: string; reward?: string }
+  let body: { walletAddress?: string; userAddress?: string; reward?: string; referralCode?: string }
   try {
-    body = (await req.json()) as { walletAddress?: string; userAddress?: string; reward?: string }
+    body = (await req.json()) as { walletAddress?: string; userAddress?: string; reward?: string; referralCode?: string }
   } catch {
     return NextResponse.json({ error: "JSON inválido." }, { status: 400 })
   }
@@ -601,6 +636,17 @@ export async function POST(req: NextRequest) {
           progressPct: quest.progressPct,
         },
         { status: 412 },
+      )
+    }
+  }
+
+  // phase-132: validate referral code early (before mint) to fail fast
+  if (reward === "genesis" && body.referralCode && isReferralQuestEnabled()) {
+    const refValidation = await validateReferralCode(body.referralCode, userAddress)
+    if (!refValidation.valid) {
+      return NextResponse.json(
+        { error: refValidation.error ?? "Invalid referral code.", code: "REFERRAL_INVALID" },
+        { status: 400 },
       )
     }
   }
@@ -726,6 +772,15 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // phase-133: auto-top-up distributor if balance is low (fire-and-forget, non-blocking)
+    if (isDistributorTopupEnabled() && useTransfer) {
+      void prepareTopup(source).then((topup) => {
+        if (topup.shouldTopup) {
+          console.log(`[faucet] phase-133 distributor auto-top-up: ${topup.reason}`)
+        }
+      }).catch(() => {})
+    }
+
     const now = Date.now()
     let liveClaims = await readClaims()
     let row: WalletClaims = { ...(liveClaims[userAddress] ?? {}) }
@@ -741,14 +796,24 @@ export async function POST(req: NextRequest) {
       const out = await pollSubmittedMint(server, pendingHash)
       if (out.outcome === "SUCCESS") {
         await markClaim(userAddress, reward)
+        let streakInfo: StreakInfo | undefined
         if (reward === "daily") {
-          void checkAndUnlock(userAddress, { daily_claim: true }).catch(() => { /* silent */ })
+          const recorded = await recordDailyClaim(userAddress)
+          streakInfo = recorded
+        }
+        // phase-132: record referral bonus on genesis claim
+        let referralBonus: string | null = null
+        if (reward === "genesis" && body.referralCode && isReferralQuestEnabled()) {
+          const refResult = await recordReferral(body.referralCode, userAddress)
+          referralBonus = refResult.bonus
         }
         return NextResponse.json({
           ok: true,
           hash: pendingHash,
           reward,
           amountStroops: rewardAmountStroops(reward),
+          ...(streakInfo ? { streak: streakInfo } : {}),
+          ...(referralBonus ? { referralBonus } : {}),
         })
       }
       if (out.outcome === "FAILED") {
@@ -803,7 +868,15 @@ export async function POST(req: NextRequest) {
       throw e
     }
     const c = new Contract(tokenId)
-    const amountSc = nativeToScVal(BigInt(rewardAmountStroops(reward)), { type: "i128" })
+    // phase-131: apply streak multiplier to daily reward amount
+    let effectiveAmountStroops = rewardAmountStroops(reward)
+    if (reward === "daily" && isStreakMultiplierEnabled()) {
+      const streak = await getStreakInfo(userAddress)
+      if (streak.multiplier > 1) {
+        effectiveAmountStroops = applyStreakMultiplier(effectiveAmountStroops, streak.multiplier)
+      }
+    }
+    const amountSc = nativeToScVal(BigInt(effectiveAmountStroops), { type: "i128" })
     const tx = new TransactionBuilder(account, {
       fee: BASE_FEE,
       networkPassphrase: NETWORK_PASSPHRASE,
@@ -843,10 +916,25 @@ export async function POST(req: NextRequest) {
     const out = await pollSubmittedMint(server, hash)
     if (out.outcome === "SUCCESS") {
       await markClaim(userAddress, reward)
+      let streakInfo: StreakInfo | undefined
       if (reward === "daily") {
-        void checkAndUnlock(userAddress, { daily_claim: true }).catch(() => { /* silent */ })
+        const recorded = await recordDailyClaim(userAddress)
+        streakInfo = recorded
       }
-      return NextResponse.json({ ok: true, hash, reward, amountStroops: rewardAmountStroops(reward) })
+      // phase-132: record referral bonus on genesis claim
+      let referralBonus: string | null = null
+      if (reward === "genesis" && body.referralCode && isReferralQuestEnabled()) {
+        const refResult = await recordReferral(body.referralCode, userAddress)
+        referralBonus = refResult.bonus
+      }
+      return NextResponse.json({
+        ok: true,
+        hash,
+        reward,
+        amountStroops: effectiveAmountStroops,
+        ...(streakInfo ? { streak: streakInfo } : {}),
+        ...(referralBonus ? { referralBonus } : {}),
+      })
     }
     if (out.outcome === "FAILED") {
       await clearFaucetPendingOnly(userAddress)
