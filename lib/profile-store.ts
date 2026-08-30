@@ -1,92 +1,131 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises"
-import path from "node:path"
-import { z } from "zod"
-import { serverDataJsonPath } from "@/lib/server-data-paths"
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { z } from "zod";
+import { serverDataJsonPath } from "@/lib/server-data-paths";
 
 export type ProfileData = {
-  display_name?: string
-  twitter?: string
-  discord?: string
-  telegram?: string
-  avatar_token_id?: number
-  avatar_image_url?: string
-  locale?: ProfileLocale
-  updated_at: number
-}
+  display_name?: string;
+  twitter?: string;
+  discord?: string;
+  telegram?: string;
+  avatar_token_id?: number;
+  avatar_image_url?: string;
+  locale?: ProfileLocale;
+  updated_at: number;
+};
 
-type ProfileStore = Record<string, ProfileData>
+type ProfileStore = Record<string, ProfileData>;
 
 async function readStore(): Promise<ProfileStore> {
   try {
-    const raw = await readFile(serverDataJsonPath("profileSocials"), "utf8")
-    return JSON.parse(raw) as ProfileStore
+    const raw = await readFile(serverDataJsonPath("profileSocials"), "utf8");
+    return JSON.parse(raw) as ProfileStore;
   } catch {
-    return {}
+    return {};
   }
 }
 
 async function writeStore(data: ProfileStore): Promise<void> {
-  const filePath = serverDataJsonPath("profileSocials")
-  await mkdir(path.dirname(filePath), { recursive: true })
-  await writeFile(filePath, JSON.stringify(data, null, 2), "utf8")
+  const filePath = serverDataJsonPath("profileSocials");
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, JSON.stringify(data, null, 2), "utf8");
 }
 
 export async function getProfile(wallet: string): Promise<ProfileData | null> {
-  const store = await readStore()
-  return store[wallet] ?? null
+  const store = await readStore();
+  return store[wallet] ?? null;
 }
 
 export async function saveProfile(
   wallet: string,
   data: Omit<ProfileData, "updated_at">,
 ): Promise<ProfileData> {
-  const store = await readStore()
+  const store = await readStore();
   const entry: ProfileData = {
     ...data,
     updated_at: Date.now(),
-  }
-  store[wallet] = entry
-  await writeStore(store)
-  return entry
+  };
+  store[wallet] = entry;
+  await writeStore(store);
+  return entry;
 }
-
 
 // phase-102: locale preference support for profile localization.
 // Rollback: unset NEXT_PUBLIC_FEATURE_PHASE_102 / FEATURE_PHASE_102 to keep default English presentation.
-export const SUPPORTED_PROFILE_LOCALES = ["en", "es", "fr", "pt-BR", "yo", "ig"] as const
-export type ProfileLocale = (typeof SUPPORTED_PROFILE_LOCALES)[number]
-export const DEFAULT_PROFILE_LOCALE: ProfileLocale = "en"
+export const SUPPORTED_PROFILE_LOCALES = [
+  "en",
+  "es",
+  "fr",
+  "pt-BR",
+  "yo",
+  "ig",
+] as const;
+export type ProfileLocale = (typeof SUPPORTED_PROFILE_LOCALES)[number];
+export const DEFAULT_PROFILE_LOCALE: ProfileLocale = "en";
 
 export type ProfileLocaleResolution =
   | { ok: true; locale: ProfileLocale; featureEnabled: boolean }
-  | { ok: false; locale: ProfileLocale; error: string; code: "FLAG_DISABLED" | "UNSUPPORTED_LOCALE"; featureEnabled: boolean }
+  | {
+      ok: false;
+      locale: ProfileLocale;
+      error: string;
+      code: "FLAG_DISABLED" | "UNSUPPORTED_LOCALE";
+      featureEnabled: boolean;
+    };
 
 export function isPhase102Enabled(): boolean {
-  const value = (process.env.NEXT_PUBLIC_FEATURE_PHASE_102 ?? process.env.FEATURE_PHASE_102 ?? "").trim().toLowerCase()
-  return value === "1" || value === "true" || value === "yes" || value === "on"
+  const value = (
+    process.env.NEXT_PUBLIC_FEATURE_PHASE_102 ??
+    process.env.FEATURE_PHASE_102 ??
+    ""
+  )
+    .trim()
+    .toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
 }
 
-export function normalizeProfileLocale(locale: string | null | undefined): ProfileLocale | null {
-  const normalized = (locale ?? "").trim()
-  const match = SUPPORTED_PROFILE_LOCALES.find((candidate) => candidate.toLowerCase() === normalized.toLowerCase())
-  return match ?? null
+export function normalizeProfileLocale(
+  locale: string | null | undefined,
+): ProfileLocale | null {
+  const normalized = (locale ?? "").trim();
+  const match = SUPPORTED_PROFILE_LOCALES.find(
+    (candidate) => candidate.toLowerCase() === normalized.toLowerCase(),
+  );
+  return match ?? null;
 }
 
-export function resolveProfileLocale(locale: string | null | undefined): ProfileLocaleResolution {
-  const featureEnabled = isPhase102Enabled()
+export function resolveProfileLocale(
+  locale: string | null | undefined,
+): ProfileLocaleResolution {
+  const featureEnabled = isPhase102Enabled();
   if (!featureEnabled) {
-    return { ok: false, locale: DEFAULT_PROFILE_LOCALE, error: "phase-102 flag disabled", code: "FLAG_DISABLED", featureEnabled }
+    return {
+      ok: false,
+      locale: DEFAULT_PROFILE_LOCALE,
+      error: "phase-102 flag disabled",
+      code: "FLAG_DISABLED",
+      featureEnabled,
+    };
   }
 
-  const normalized = normalizeProfileLocale(locale)
+  const normalized = normalizeProfileLocale(locale);
   if (!normalized) {
-    return { ok: false, locale: DEFAULT_PROFILE_LOCALE, error: "Unsupported profile locale", code: "UNSUPPORTED_LOCALE", featureEnabled }
+    return {
+      ok: false,
+      locale: DEFAULT_PROFILE_LOCALE,
+      error: "Unsupported profile locale",
+      code: "UNSUPPORTED_LOCALE",
+      featureEnabled,
+    };
   }
 
-  return { ok: true, locale: normalized, featureEnabled }
+  return { ok: true, locale: normalized, featureEnabled };
 }
 
-export function localizeAvatarName(tokenId: number, locale: ProfileLocale = DEFAULT_PROFILE_LOCALE): string {
+export function localizeAvatarName(
+  tokenId: number,
+  locale: ProfileLocale = DEFAULT_PROFILE_LOCALE,
+): string {
   const labels: Record<ProfileLocale, string> = {
     en: "Phase Artifact",
     es: "Artefacto Phase",
@@ -94,128 +133,205 @@ export function localizeAvatarName(tokenId: number, locale: ProfileLocale = DEFA
     "pt-BR": "Artefato Phase",
     yo: "Ohun Iranti Phase",
     ig: "Ihe Ncheta Phase",
-  }
-  return `${labels[locale] ?? labels.en} #${tokenId}`
+  };
+  return `${labels[locale] ?? labels.en} #${tokenId}`;
 }
 
-export async function getProfileLocalePreference(wallet: string): Promise<ProfileLocale> {
-  const profile = await getProfile(wallet)
-  return normalizeProfileLocale(profile?.locale) ?? DEFAULT_PROFILE_LOCALE
+export async function getProfileLocalePreference(
+  wallet: string,
+): Promise<ProfileLocale> {
+  const profile = await getProfile(wallet);
+  return normalizeProfileLocale(profile?.locale) ?? DEFAULT_PROFILE_LOCALE;
 }
 
-export async function saveProfileLocalePreference(wallet: string, locale: string): Promise<ProfileLocaleResolution> {
-  const resolved = resolveProfileLocale(locale)
-  if (!resolved.ok) return resolved
+export async function saveProfileLocalePreference(
+  wallet: string,
+  locale: string,
+): Promise<ProfileLocaleResolution> {
+  const resolved = resolveProfileLocale(locale);
+  if (!resolved.ok) return resolved;
 
-  const profile = await getProfile(wallet)
+  const profile = await getProfile(wallet);
   await saveProfile(wallet, {
     ...(profile ?? {}),
     locale: resolved.locale,
-  })
-  return resolved
+  });
+  return resolved;
 }
 // phase-96: human-readable profile handle resolution.
 // Rollback: unset NEXT_PUBLIC_FEATURE_PHASE_96 / FEATURE_PHASE_96 to keep handle lookup passive.
 export type ProfileHandleRecord = {
-  walletAddress: string
-  handle: string
-  updatedAt: number
-}
+  walletAddress: string;
+  handle: string;
+  updatedAt: number;
+};
 
 export type ProfileHandleResolution =
-  | { ok: true; walletAddress: string; handle: string; updatedAt: number; featureEnabled: boolean }
-  | { ok: false; error: string; code: "FLAG_DISABLED" | "NOT_FOUND" | "INVALID_HANDLE" | "HANDLE_TAKEN"; featureEnabled: boolean }
+  | {
+      ok: true;
+      walletAddress: string;
+      handle: string;
+      updatedAt: number;
+      featureEnabled: boolean;
+    }
+  | {
+      ok: false;
+      error: string;
+      code: "FLAG_DISABLED" | "NOT_FOUND" | "INVALID_HANDLE" | "HANDLE_TAKEN";
+      featureEnabled: boolean;
+    };
 
-const PROFILE_HANDLE_MIN = 3
-const PROFILE_HANDLE_MAX = 24
-const PROFILE_HANDLE_PATTERN = /^[a-z0-9][a-z0-9._-]*[a-z0-9]$/
+const PROFILE_HANDLE_MIN = 3;
+const PROFILE_HANDLE_MAX = 24;
+const PROFILE_HANDLE_PATTERN = /^[a-z0-9][a-z0-9._-]*[a-z0-9]$/;
 
-type ArtistAliasStore = Record<string, { alias: string; updatedAt: number }>
+type ArtistAliasStore = Record<string, { alias: string; updatedAt: number }>;
 
 function isPhase96Enabled(): boolean {
-  const value = (process.env.NEXT_PUBLIC_FEATURE_PHASE_96 ?? process.env.FEATURE_PHASE_96 ?? "").trim().toLowerCase()
-  return value === "1" || value === "true" || value === "yes" || value === "on"
+  const value = (
+    process.env.NEXT_PUBLIC_FEATURE_PHASE_96 ??
+    process.env.FEATURE_PHASE_96 ??
+    ""
+  )
+    .trim()
+    .toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
 }
 
 function normalizeProfileHandle(handle: string): string {
-  return handle.trim().replace(/^@+/, "").replace(/\s+/g, "-").toLowerCase()
+  return handle.trim().replace(/^@+/, "").replace(/\s+/g, "-").toLowerCase();
 }
 
 function validateProfileHandle(handle: string): string | null {
-  if (handle.length < PROFILE_HANDLE_MIN || handle.length > PROFILE_HANDLE_MAX) {
-    return `Handle must be ${PROFILE_HANDLE_MIN}-${PROFILE_HANDLE_MAX} characters.`
+  if (
+    handle.length < PROFILE_HANDLE_MIN ||
+    handle.length > PROFILE_HANDLE_MAX
+  ) {
+    return `Handle must be ${PROFILE_HANDLE_MIN}-${PROFILE_HANDLE_MAX} characters.`;
   }
   if (!PROFILE_HANDLE_PATTERN.test(handle)) {
-    return "Handle must use lowercase letters, numbers, dot, dash, or underscore and must start/end with a letter or number."
+    return "Handle must use lowercase letters, numbers, dot, dash, or underscore and must start/end with a letter or number.";
   }
-  return null
+  return null;
 }
 
 async function readArtistAliasStore(): Promise<ArtistAliasStore> {
   try {
-    const raw = await readFile(serverDataJsonPath("artistProfiles"), "utf8")
-    const parsed = JSON.parse(raw) as ArtistAliasStore
-    return parsed && typeof parsed === "object" ? parsed : {}
+    const raw = await readFile(serverDataJsonPath("artistProfiles"), "utf8");
+    const parsed = JSON.parse(raw) as ArtistAliasStore;
+    return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
-    return {}
+    return {};
   }
 }
 
 async function writeArtistAliasStore(data: ArtistAliasStore): Promise<void> {
-  const filePath = serverDataJsonPath("artistProfiles")
-  await mkdir(path.dirname(filePath), { recursive: true })
-  await writeFile(filePath, JSON.stringify(data, null, 2), "utf8")
+  const filePath = serverDataJsonPath("artistProfiles");
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, JSON.stringify(data, null, 2), "utf8");
 }
 
-export async function resolveProfileHandle(handle: string): Promise<ProfileHandleResolution> {
-  const featureEnabled = isPhase96Enabled()
+export async function resolveProfileHandle(
+  handle: string,
+): Promise<ProfileHandleResolution> {
+  const featureEnabled = isPhase96Enabled();
   if (!featureEnabled) {
-    return { ok: false, error: "phase-96 flag disabled", code: "FLAG_DISABLED", featureEnabled }
+    return {
+      ok: false,
+      error: "phase-96 flag disabled",
+      code: "FLAG_DISABLED",
+      featureEnabled,
+    };
   }
 
-  const normalized = normalizeProfileHandle(handle)
-  const invalid = validateProfileHandle(normalized)
+  const normalized = normalizeProfileHandle(handle);
+  const invalid = validateProfileHandle(normalized);
   if (invalid) {
-    return { ok: false, error: invalid, code: "INVALID_HANDLE", featureEnabled }
+    return {
+      ok: false,
+      error: invalid,
+      code: "INVALID_HANDLE",
+      featureEnabled,
+    };
   }
 
-  const store = await readArtistAliasStore()
-  const match = Object.entries(store).find(([, profile]) => normalizeProfileHandle(profile.alias) === normalized)
+  const store = await readArtistAliasStore();
+  const match = Object.entries(store).find(
+    ([, profile]) => normalizeProfileHandle(profile.alias) === normalized,
+  );
   if (!match) {
-    return { ok: false, error: "Handle not found", code: "NOT_FOUND", featureEnabled }
+    return {
+      ok: false,
+      error: "Handle not found",
+      code: "NOT_FOUND",
+      featureEnabled,
+    };
   }
 
-  const [walletAddress, profile] = match
-  return { ok: true, walletAddress, handle: normalizeProfileHandle(profile.alias), updatedAt: profile.updatedAt, featureEnabled }
+  const [walletAddress, profile] = match;
+  return {
+    ok: true,
+    walletAddress,
+    handle: normalizeProfileHandle(profile.alias),
+    updatedAt: profile.updatedAt,
+    featureEnabled,
+  };
 }
 
-export async function getProfileHandle(walletAddress: string): Promise<ProfileHandleRecord | null> {
-  const store = await readArtistAliasStore()
-  const profile = store[walletAddress]
-  if (!profile) return null
-  return { walletAddress, handle: normalizeProfileHandle(profile.alias), updatedAt: profile.updatedAt }
+export async function getProfileHandle(
+  walletAddress: string,
+): Promise<ProfileHandleRecord | null> {
+  const store = await readArtistAliasStore();
+  const profile = store[walletAddress];
+  if (!profile) return null;
+  return {
+    walletAddress,
+    handle: normalizeProfileHandle(profile.alias),
+    updatedAt: profile.updatedAt,
+  };
 }
 
-export async function saveProfileHandle(walletAddress: string, handle: string): Promise<ProfileHandleResolution> {
-  const featureEnabled = isPhase96Enabled()
-  const normalized = normalizeProfileHandle(handle)
-  const invalid = validateProfileHandle(normalized)
+export async function saveProfileHandle(
+  walletAddress: string,
+  handle: string,
+): Promise<ProfileHandleResolution> {
+  const featureEnabled = isPhase96Enabled();
+  const normalized = normalizeProfileHandle(handle);
+  const invalid = validateProfileHandle(normalized);
   if (invalid) {
-    return { ok: false, error: invalid, code: "INVALID_HANDLE", featureEnabled }
+    return {
+      ok: false,
+      error: invalid,
+      code: "INVALID_HANDLE",
+      featureEnabled,
+    };
   }
 
-  const store = await readArtistAliasStore()
+  const store = await readArtistAliasStore();
   const taken = Object.entries(store).find(
-    ([wallet, profile]) => wallet !== walletAddress && normalizeProfileHandle(profile.alias) === normalized,
-  )
+    ([wallet, profile]) =>
+      wallet !== walletAddress &&
+      normalizeProfileHandle(profile.alias) === normalized,
+  );
   if (taken) {
-    return { ok: false, error: "Handle is already linked to another wallet", code: "HANDLE_TAKEN", featureEnabled }
+    return {
+      ok: false,
+      error: "Handle is already linked to another wallet",
+      code: "HANDLE_TAKEN",
+      featureEnabled,
+    };
   }
 
-  const updatedAt = Date.now()
-  store[walletAddress] = { alias: normalized, updatedAt }
-  await writeArtistAliasStore(store)
-  return { ok: true, walletAddress, handle: normalized, updatedAt, featureEnabled }
+  const updatedAt = Date.now();
+  store[walletAddress] = { alias: normalized, updatedAt };
+  await writeArtistAliasStore(store);
+  return {
+    ok: true,
+    walletAddress,
+    handle: normalized,
+    updatedAt,
+    featureEnabled,
+  };
 }
 // ??? phase-117: multi-gateway IPFS pinning with redundancy ??????????????????
 // Isolated, flag-gated. Single gateway outage drops metadata previously.
@@ -226,26 +342,57 @@ export async function saveProfileHandle(walletAddress: string, handle: string): 
 // Rollback: unset NEXT_PUBLIC_FEATURE_PHASE_117 / FEATURE_PHASE_117.
 
 export function isProfilePinningRedundancyEnabled(): boolean {
-  const v = (process.env.NEXT_PUBLIC_FEATURE_PHASE_117 ?? process.env.FEATURE_PHASE_117 ?? "").trim().toLowerCase()
-  return v === "1" || v === "true" || v === "yes" || v === "on"
+  const v = (
+    process.env.NEXT_PUBLIC_FEATURE_PHASE_117 ??
+    process.env.FEATURE_PHASE_117 ??
+    ""
+  )
+    .trim()
+    .toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
 }
 
 export const AvatarPinRequestSchema = z.object({
   tokenId: z.number().int().min(1).max(1_000_000),
-  imageUrl: z.string().trim().min(1).max(1024).url().or(z.string().trim().regex(/^ipfs:\/\//)),
+  imageUrl: z
+    .string()
+    .trim()
+    .min(1)
+    .max(1024)
+    .url()
+    .or(
+      z
+        .string()
+        .trim()
+        .regex(/^ipfs:\/\//),
+    ),
   wallet: z.string().trim().min(10).max(56),
   quorum: z.number().int().min(1).max(3).optional(),
-})
+});
 
-export type AvatarPinRequest = z.infer<typeof AvatarPinRequestSchema>
+export type AvatarPinRequest = z.infer<typeof AvatarPinRequestSchema>;
 
 export type AvatarPinResult =
-  | { ok: true; cid: string; uri: string; checksum: string; quorum: number; achieved: number; verified: boolean }
-  | { ok: false; error: string; code: string; achieved?: number; quorum?: number }
+  | {
+      ok: true;
+      cid: string;
+      uri: string;
+      checksum: string;
+      quorum: number;
+      achieved: number;
+      verified: boolean;
+    }
+  | {
+      ok: false;
+      error: string;
+      code: string;
+      achieved?: number;
+      quorum?: number;
+    };
 
 export const ProfileAvatarFetchSchema = z.object({
   wallet: z.string().trim().min(10).max(56),
-})
+});
 
 /**
  * Pins an avatar image with redundancy across gateways.
@@ -254,27 +401,62 @@ export const ProfileAvatarFetchSchema = z.object({
  */
 export async function pinAvatarWithRedundancy(
   imageBlob: Blob,
-  opts: { quorum?: number; fileName?: string; expectedChecksum?: string | null } = {},
+  opts: {
+    quorum?: number;
+    fileName?: string;
+    expectedChecksum?: string | null;
+  } = {},
 ): Promise<AvatarPinResult> {
   if (!isProfilePinningRedundancyEnabled()) {
     // legacy: single pin via /api/ipfs style ? return not-enabled code
-    return { ok: false, error: "phase-117 flag disabled (set NEXT_PUBLIC_FEATURE_PHASE_117=1)", code: "FLAG_DISABLED" }
+    return {
+      ok: false,
+      error: "phase-117 flag disabled (set NEXT_PUBLIC_FEATURE_PHASE_117=1)",
+      code: "FLAG_DISABLED",
+    };
   }
-  const jwt = (process.env.PINATA_JWT ?? process.env.PINATA_API_JWT ?? "").trim()
-  if (!jwt) return { ok: false, error: "PINATA_JWT not configured", code: "NOT_CONFIGURED" }
+  const jwt = (
+    process.env.PINATA_JWT ??
+    process.env.PINATA_API_JWT ??
+    ""
+  ).trim();
+  if (!jwt)
+    return {
+      ok: false,
+      error: "PINATA_JWT not configured",
+      code: "NOT_CONFIGURED",
+    };
   try {
-    const { pinWithRedundancy } = await import("@/lib/ipfs-pinning")
+    const { pinWithRedundancy } = await import("@/lib/ipfs-pinning");
     const res = await pinWithRedundancy(imageBlob, jwt, {
       config: opts.quorum != null ? { quorum: opts.quorum } : undefined,
       fileName: opts.fileName ?? "avatar.png",
       expectedChecksum: opts.expectedChecksum ?? null,
-    })
+    });
     if (!res.ok || !res.cid || !res.uri) {
-      return { ok: false, error: res.results.find((r) => r.error)?.error ?? "All gateways failed", code: "PIN_FAILED", achieved: res.achieved, quorum: res.quorum }
+      return {
+        ok: false,
+        error: res.results.find((r) => r.error)?.error ?? "All gateways failed",
+        code: "PIN_FAILED",
+        achieved: res.achieved,
+        quorum: res.quorum,
+      };
     }
-    return { ok: true, cid: res.cid, uri: res.uri, checksum: res.checksum ?? "", quorum: res.quorum, achieved: res.achieved, verified: res.verified }
+    return {
+      ok: true,
+      cid: res.cid,
+      uri: res.uri,
+      checksum: res.checksum ?? "",
+      quorum: res.quorum,
+      achieved: res.achieved,
+      verified: res.verified,
+    };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e), code: "PIN_ERROR" }
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : String(e),
+      code: "PIN_ERROR",
+    };
   }
 }
 
@@ -285,33 +467,47 @@ export async function pinAvatarWithRedundancy(
 export async function resolveAvatarWithFallback(
   imageUrl: string,
   opts: { expectedChecksum?: string | null; signal?: AbortSignal } = {},
-): Promise<{ ok: true; url: string; gateway: string; checksum: string } | { ok: false; error: string }> {
-  if (!imageUrl) return { ok: false, error: "Empty imageUrl" }
+): Promise<
+  | { ok: true; url: string; gateway: string; checksum: string }
+  | { ok: false; error: string }
+> {
+  if (!imageUrl) return { ok: false, error: "Empty imageUrl" };
   // non-ipfs URLs pass through
   if (/^https?:\/\//i.test(imageUrl) && !imageUrl.includes("/ipfs/")) {
-    return { ok: true, url: imageUrl, gateway: "direct", checksum: "" }
+    return { ok: true, url: imageUrl, gateway: "direct", checksum: "" };
   }
   const ipfsPath = (() => {
-    const m = imageUrl.match(/ipfs:\/\/([A-Za-z0-9._\/-]+)/)
-    if (m) return m[1]!
-    const g = imageUrl.match(/\/ipfs\/([A-Za-z0-9._\/-]+)/)
-    if (g) return g[1]!
-    if (/^[A-Za-z0-9._\/-]+$/.test(imageUrl.trim())) return imageUrl.trim().replace(/^\/+/, "")
-    return null
-  })()
-  if (!ipfsPath) return { ok: true, url: imageUrl, gateway: "direct", checksum: "" }
+    const m = imageUrl.match(/ipfs:\/\/([A-Za-z0-9._\/-]+)/);
+    if (m) return m[1]!;
+    const g = imageUrl.match(/\/ipfs\/([A-Za-z0-9._\/-]+)/);
+    if (g) return g[1]!;
+    if (/^[A-Za-z0-9._\/-]+$/.test(imageUrl.trim()))
+      return imageUrl.trim().replace(/^\/+/, "");
+    return null;
+  })();
+  if (!ipfsPath)
+    return { ok: true, url: imageUrl, gateway: "direct", checksum: "" };
 
   if (!isProfilePinningRedundancyEnabled()) {
-    return { ok: true, url: imageUrl, gateway: "legacy", checksum: "" }
+    return { ok: true, url: imageUrl, gateway: "legacy", checksum: "" };
   }
   try {
-    const { fetchWithMultiGatewayFallback } = await import("@/lib/ipfs-pinning")
-    const res = await fetchWithMultiGatewayFallback(ipfsPath, { expectedChecksum: opts.expectedChecksum ?? null, signal: opts.signal })
-    if (!res.ok) return { ok: false, error: res.error }
+    const { fetchWithMultiGatewayFallback } =
+      await import("@/lib/ipfs-pinning");
+    const res = await fetchWithMultiGatewayFallback(ipfsPath, {
+      expectedChecksum: opts.expectedChecksum ?? null,
+      signal: opts.signal,
+    });
+    if (!res.ok) return { ok: false, error: res.error };
     // return gateway-routed URL (verified)
-    return { ok: true, url: `${res.gateway.replace(/\/+$/, "")}/${ipfsPath}`, gateway: res.gateway, checksum: res.checksum }
+    return {
+      ok: true,
+      url: `${res.gateway.replace(/\/+$/, "")}/${ipfsPath}`,
+      gateway: res.gateway,
+      checksum: res.checksum,
+    };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
 
@@ -322,12 +518,20 @@ export async function resolveAvatarWithFallback(
 // Flag: NEXT_PUBLIC_FEATURE_PHASE_66 / FEATURE_PHASE_66 — Rollback: unset flag.
 
 export function isPhase66Enabled(): boolean {
-  const v = (typeof process !== "undefined" ? (process.env.NEXT_PUBLIC_FEATURE_PHASE_66 ?? process.env.FEATURE_PHASE_66 ?? "") : "")?.trim().toLowerCase()
-  return v === "1" || v === "true" || v === "yes" || v === "on"
+  const v = (
+    typeof process !== "undefined"
+      ? (process.env.NEXT_PUBLIC_FEATURE_PHASE_66 ??
+        process.env.FEATURE_PHASE_66 ??
+        "")
+      : ""
+  )
+    ?.trim()
+    .toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
 }
 
 export function flag66RollbackNote(): string {
-  return "Rollback phase-66: unset NEXT_PUBLIC_FEATURE_PHASE_66 / FEATURE_PHASE_66 or set to 0/false and restart. Bundles fall back to standard monolithic loader."
+  return "Rollback phase-66: unset NEXT_PUBLIC_FEATURE_PHASE_66 / FEATURE_PHASE_66 or set to 0/false and restart. Bundles fall back to standard monolithic loader.";
 }
 
 export const CRT_WIDGET_TYPES = [
@@ -337,9 +541,9 @@ export const CRT_WIDGET_TYPES = [
   "terminal-cursor",
   "vignette-matrix",
   "glitch-distortion",
-] as const
+] as const;
 
-export type CrtWidgetType = (typeof CRT_WIDGET_TYPES)[number]
+export type CrtWidgetType = (typeof CRT_WIDGET_TYPES)[number];
 
 export const CrtWidgetConfigSchema = z.object({
   widgetType: z.enum(CRT_WIDGET_TYPES),
@@ -347,60 +551,117 @@ export const CrtWidgetConfigSchema = z.object({
   intensity: z.number().min(0).max(1).default(0.5),
   lazyLoad: z.boolean().default(true),
   priority: z.enum(["low", "medium", "high"]).default("medium"),
-})
+});
 
-export type CrtWidgetConfig = z.infer<typeof CrtWidgetConfigSchema>
+export type CrtWidgetConfig = z.infer<typeof CrtWidgetConfigSchema>;
 
-export const CRT_CHUNK_REGISTRY: Record<CrtWidgetType, { chunkId: string; estimatedBytes: number; modulePath: string; defaultDeferred: boolean }> = {
-  "scanline-overlay": { chunkId: "chunk-crt-scanline", estimatedBytes: 42800, modulePath: "@/components/crt/scanline", defaultDeferred: true },
-  "phosphor-glow": { chunkId: "chunk-crt-phosphor", estimatedBytes: 68400, modulePath: "@/components/crt/phosphor", defaultDeferred: true },
-  "flicker-anim": { chunkId: "chunk-crt-flicker", estimatedBytes: 31200, modulePath: "@/components/crt/flicker", defaultDeferred: true },
-  "terminal-cursor": { chunkId: "chunk-crt-cursor", estimatedBytes: 12400, modulePath: "@/components/crt/cursor", defaultDeferred: false },
-  "vignette-matrix": { chunkId: "chunk-crt-vignette", estimatedBytes: 54100, modulePath: "@/components/crt/vignette", defaultDeferred: true },
-  "glitch-distortion": { chunkId: "chunk-crt-glitch", estimatedBytes: 98600, modulePath: "@/components/crt/glitch", defaultDeferred: true },
-}
+export const CRT_CHUNK_REGISTRY: Record<
+  CrtWidgetType,
+  {
+    chunkId: string;
+    estimatedBytes: number;
+    modulePath: string;
+    defaultDeferred: boolean;
+  }
+> = {
+  "scanline-overlay": {
+    chunkId: "chunk-crt-scanline",
+    estimatedBytes: 42800,
+    modulePath: "@/components/crt/scanline",
+    defaultDeferred: true,
+  },
+  "phosphor-glow": {
+    chunkId: "chunk-crt-phosphor",
+    estimatedBytes: 68400,
+    modulePath: "@/components/crt/phosphor",
+    defaultDeferred: true,
+  },
+  "flicker-anim": {
+    chunkId: "chunk-crt-flicker",
+    estimatedBytes: 31200,
+    modulePath: "@/components/crt/flicker",
+    defaultDeferred: true,
+  },
+  "terminal-cursor": {
+    chunkId: "chunk-crt-cursor",
+    estimatedBytes: 12400,
+    modulePath: "@/components/crt/cursor",
+    defaultDeferred: false,
+  },
+  "vignette-matrix": {
+    chunkId: "chunk-crt-vignette",
+    estimatedBytes: 54100,
+    modulePath: "@/components/crt/vignette",
+    defaultDeferred: true,
+  },
+  "glitch-distortion": {
+    chunkId: "chunk-crt-glitch",
+    estimatedBytes: 98600,
+    modulePath: "@/components/crt/glitch",
+    defaultDeferred: true,
+  },
+};
 
 export class CrtWidgetCodeSplitError extends Error {
-  code: "FLAG_DISABLED" | "VALIDATION_FAILED" | "WIDGET_NOT_FOUND" | "CHUNK_LOAD_FAILED"
-  details?: unknown
-  constructor(code: CrtWidgetCodeSplitError["code"], message: string, details?: unknown) {
-    super(message)
-    this.name = "CrtWidgetCodeSplitError"
-    this.code = code
-    this.details = details
+  code:
+    | "FLAG_DISABLED"
+    | "VALIDATION_FAILED"
+    | "WIDGET_NOT_FOUND"
+    | "CHUNK_LOAD_FAILED";
+  details?: unknown;
+  constructor(
+    code: CrtWidgetCodeSplitError["code"],
+    message: string,
+    details?: unknown,
+  ) {
+    super(message);
+    this.name = "CrtWidgetCodeSplitError";
+    this.code = code;
+    this.details = details;
   }
 }
 
 export type CrtChunkResolution = {
-  widgetType: CrtWidgetType
-  chunkId: string
-  estimatedBytesSaved: number
-  shouldDefer: boolean
-  lazy: boolean
-  modulePath: string
-}
+  widgetType: CrtWidgetType;
+  chunkId: string;
+  estimatedBytesSaved: number;
+  shouldDefer: boolean;
+  lazy: boolean;
+  modulePath: string;
+};
 
 export function resolveCrtWidgetChunk(
   widgetType: unknown,
-  opts: { isMobile?: boolean; priority?: "low" | "medium" | "high"; force?: boolean } = {},
+  opts: {
+    isMobile?: boolean;
+    priority?: "low" | "medium" | "high";
+    force?: boolean;
+  } = {},
 ): CrtChunkResolution {
-  const enabled = opts.force || isPhase66Enabled()
+  const enabled = opts.force || isPhase66Enabled();
   if (!enabled) {
-    throw new CrtWidgetCodeSplitError("FLAG_DISABLED", "CRT widget code-splitting disabled (phase-66 flag off)")
+    throw new CrtWidgetCodeSplitError(
+      "FLAG_DISABLED",
+      "CRT widget code-splitting disabled (phase-66 flag off)",
+    );
   }
 
-  const parsedType = z.enum(CRT_WIDGET_TYPES).safeParse(widgetType)
+  const parsedType = z.enum(CRT_WIDGET_TYPES).safeParse(widgetType);
   if (!parsedType.success) {
-    throw new CrtWidgetCodeSplitError("WIDGET_NOT_FOUND", `Unknown CRT widget type: "${String(widgetType)}"`, parsedType.error.flatten())
+    throw new CrtWidgetCodeSplitError(
+      "WIDGET_NOT_FOUND",
+      `Unknown CRT widget type: "${String(widgetType)}"`,
+      parsedType.error.flatten(),
+    );
   }
 
-  const type = parsedType.data
-  const meta = CRT_CHUNK_REGISTRY[type]
-  const isMobile = opts.isMobile ?? false
-  const priority = opts.priority ?? "medium"
+  const type = parsedType.data;
+  const meta = CRT_CHUNK_REGISTRY[type];
+  const isMobile = opts.isMobile ?? false;
+  const priority = opts.priority ?? "medium";
 
   // Mobile or low-priority widgets are always deferred to optimize initial bundle
-  const shouldDefer = isMobile || priority === "low" || meta.defaultDeferred
+  const shouldDefer = isMobile || priority === "low" || meta.defaultDeferred;
 
   return {
     widgetType: type,
@@ -409,38 +670,150 @@ export function resolveCrtWidgetChunk(
     shouldDefer,
     lazy: true,
     modulePath: meta.modulePath,
-  }
+  };
 }
 
-export function getCrtBundleSavingsSummary(): { totalWidgetTypes: number; totalEstimatedBytes: number; chunks: Record<string, number> } {
-  const chunks: Record<string, number> = {}
-  let total = 0
+export function getCrtBundleSavingsSummary(): {
+  totalWidgetTypes: number;
+  totalEstimatedBytes: number;
+  chunks: Record<string, number>;
+} {
+  const chunks: Record<string, number> = {};
+  let total = 0;
   for (const [key, val] of Object.entries(CRT_CHUNK_REGISTRY)) {
-    chunks[key] = val.estimatedBytes
-    total += val.estimatedBytes
+    chunks[key] = val.estimatedBytes;
+    total += val.estimatedBytes;
   }
   return {
     totalWidgetTypes: CRT_WIDGET_TYPES.length,
     totalEstimatedBytes: total,
     chunks,
-  }
+  };
 }
 
 export function auditCrtWidgetWiring(): { ok: boolean; note: string } {
   if (!isPhase66Enabled()) {
-    return { ok: true, note: "[phase-66] CRT widget code-splitting disabled; nothing to audit." }
+    return {
+      ok: true,
+      note: "[phase-66] CRT widget code-splitting disabled; nothing to audit.",
+    };
   }
   try {
-    const probe = resolveCrtWidgetChunk("scanline-overlay", { force: true })
+    const probe = resolveCrtWidgetChunk("scanline-overlay", { force: true });
     if (probe.chunkId && probe.estimatedBytesSaved > 0) {
-      return { ok: true, note: `[phase-66] CRT widget code-splitting OK (${probe.chunkId} registered). ${flag66RollbackNote()}` }
+      return {
+        ok: true,
+        note: `[phase-66] CRT widget code-splitting OK (${probe.chunkId} registered). ${flag66RollbackNote()}`,
+      };
     }
-    return { ok: false, note: "[phase-66] CRT widget code-splitting probe failed." }
+    return {
+      ok: false,
+      note: "[phase-66] CRT widget code-splitting probe failed.",
+    };
   } catch (e) {
-    return { ok: false, note: `[phase-66] CRT audit error: ${e instanceof Error ? e.message : String(e)}` }
+    return {
+      ok: false,
+      note: `[phase-66] CRT audit error: ${e instanceof Error ? e.message : String(e)}`,
+    };
   }
 }
 
 // Re-export for isolated testing / API routes
-export { isPhase117Enabled, flag117RollbackNote } from "@/lib/ipfs-pinning"
-export type { MultiPinResult, PinResult } from "@/lib/ipfs-pinning"
+export { isPhase117Enabled, flag117RollbackNote } from "@/lib/ipfs-pinning";
+export type { MultiPinResult, PinResult } from "@/lib/ipfs-pinning";
+
+// ── Issue #105: Trending Signals Aggregator (phase-87) ───────────────────────
+
+export function isPhase87Enabled(): boolean {
+  const v = (
+    process.env.NEXT_PUBLIC_FEATURE_PHASE_87 ??
+    process.env.FEATURE_PHASE_87 ??
+    ""
+  )
+    .trim()
+    .toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
+type TrendingBucket = {
+  start: number;
+  end: number;
+  views: number;
+  engagement: number;
+};
+type TrendingSignal = {
+  wallet: string;
+  score: number;
+  buckets: TrendingBucket[];
+};
+type TrendingStore = Record<string, TrendingSignal>;
+
+export async function recordTrendingSignal(
+  wallet: string,
+  bucketSizeMs: number = 3600000,
+): Promise<void> {
+  if (!isPhase87Enabled()) return;
+  const store = await readJson<TrendingStore>(
+    serverDataJsonPath("trendingSignals"),
+  );
+  const now = Date.now();
+  const bucketStart = Math.floor(now / bucketSizeMs) * bucketSizeMs;
+  const bucketEnd = bucketStart + bucketSizeMs;
+
+  const signal = store[wallet] ?? { wallet, score: 0, buckets: [] };
+  let bucket = signal.buckets.find((b) => b.start === bucketStart);
+
+  if (!bucket) {
+    bucket = { start: bucketStart, end: bucketEnd, views: 0, engagement: 0 };
+    signal.buckets.push(bucket);
+  }
+
+  bucket.views++;
+  signal.score = signal.buckets.reduce(
+    (sum, b) => sum + b.views + b.engagement,
+    0,
+  );
+  store[wallet] = signal;
+
+  await writeJson(serverDataJsonPath("trendingSignals"), store);
+}
+
+export async function getTrendingSignals(
+  windowMs: number = 86400000,
+  limit: number = 10,
+): Promise<TrendingSignal[]> {
+  if (!isPhase87Enabled()) return [];
+  const store = await readJson<TrendingStore>(
+    serverDataJsonPath("trendingSignals"),
+  );
+  const now = Date.now();
+  const cutoff = now - windowMs;
+
+  return Object.values(store)
+    .map((signal) => ({
+      ...signal,
+      buckets: signal.buckets.filter((b) => b.start >= cutoff),
+      score: signal.buckets
+        .filter((b) => b.start >= cutoff)
+        .reduce((sum, b) => sum + b.views + b.engagement, 0),
+    }))
+    .filter((s) => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+}
+
+async function readJson<T extends object>(filePath: string): Promise<T> {
+  try {
+    return JSON.parse(await readFile(filePath, "utf8")) as T;
+  } catch {
+    return {} as T;
+  }
+}
+
+async function writeJson<T extends object>(
+  filePath: string,
+  data: T,
+): Promise<void> {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, JSON.stringify(data, null, 2), "utf8");
+}
