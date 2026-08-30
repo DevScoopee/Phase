@@ -1,9 +1,22 @@
 import { type NextRequest, NextResponse } from "next/server"
 import path from "node:path"
-import { existsSync } from "node:fs"
 import sharp from "sharp"
 import { z } from "zod"
 import { getProfile } from "@/lib/profile-store"
+import {
+  getOgTheme,
+  resolvePinIntent,
+  truncate,
+  sanitizeAscii,
+  type OgTheme,
+} from "@/lib/og-design-tokens"
+import {
+  textLayer,
+  solidPng,
+  resolveOgTemplatePath,
+  templateName,
+  withOgErrorBoundary,
+} from "@/lib/og-render-utils"
 
 export const runtime = "nodejs"
 
@@ -26,14 +39,6 @@ export type OgProfilePinResult =
 function isPhase120Enabled(): boolean {
   const v = (process.env.NEXT_PUBLIC_FEATURE_PHASE_120 ?? process.env.FEATURE_PHASE_120 ?? "").trim().toLowerCase()
   return v === "1" || v === "true" || v === "yes" || v === "on"
-}
-
-function resolveOgTemplatePath(): string {
-  // Spec requires preserving public/og-template.png wiring
-  const template = path.join(process.cwd(), "public", "og-template.png")
-  if (existsSync(template)) return template
-  // legacy fallback (zero regression when template missing)
-  return path.join(process.cwd(), "public", "og-monitor.png")
 }
 
 /**
@@ -64,59 +69,15 @@ export async function pinOgProfilePngWithRetry(
   }
 }
 
-const OG_W = 1200
-const OG_H = 630
+// ─── Design tokens ──────────────────────────────────────────────────────────
+// All colors flow through the theme registry (lib/og-design-tokens). The
+// canvas background and accent strip come from semantic tokens; no literal
+// hex/color values remain in the route body.
+
+const OG_THEME = getOgTheme("monitor")
+const OG_W = OG_THEME.dimensions.canvas.width
+const OG_H = OG_THEME.dimensions.canvas.height
 const NOTO_SANS_TTF = path.join(process.cwd(), "public", "fonts", "NotoSans-Regular.ttf")
-
-function truncate(addr: string) {
-  if (!addr || addr.length < 14) return addr
-  return `${addr.slice(0, 6)}...${addr.slice(-4)}`
-}
-
-function escapeMarkup(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
-}
-
-function sanitizeAscii(s: string, fallback: string): string {
-  const clean = s.replace(/[^\x20-\x7E]/g, "").trim()
-  return clean.length > 1 ? clean : fallback
-}
-
-async function textLayer(
-  text: string,
-  opts: {
-    left: number
-    top: number
-    width: number
-    fontSize: number
-    color: string
-    align?: "left" | "center"
-  },
-): Promise<sharp.OverlayOptions | null> {
-  try {
-    const pango = `<span foreground="${opts.color}">${escapeMarkup(text)}</span>`
-    const buf = await sharp({
-      text: {
-        text: pango,
-        fontfile: NOTO_SANS_TTF,
-        font: `Noto Sans ${opts.fontSize}`,
-        rgba: true,
-        dpi: 72,
-      },
-    })
-      .png()
-      .toBuffer()
-
-    let left = opts.left
-    if (opts.align === "center") {
-      const { width: w = 0 } = await sharp(buf).metadata()
-      left = Math.max(0, Math.round((opts.width - w) / 2))
-    }
-    return { input: buf, left, top: opts.top }
-  } catch {
-    return null
-  }
-}
 
 export async function GET(request: NextRequest) {
   const parsedQ = OgProfileQuerySchema.safeParse({
@@ -125,92 +86,86 @@ export async function GET(request: NextRequest) {
     retries: request.nextUrl.searchParams.get("retries") ?? undefined,
   })
   const wallet = (parsedQ.success ? parsedQ.data.wallet : request.nextUrl.searchParams.get("wallet"))?.trim() ?? ""
-  const shouldPin = parsedQ.success && (parsedQ.data.pin === "1" || parsedQ.data.pin === "true")
-  const pinRetries = parsedQ.success ? parsedQ.data.retries : undefined
+  const pinIntent = resolvePinIntent(request.nextUrl.searchParams.get("pin"), request.nextUrl.searchParams.get("retries"))
+  const shouldPin = pinIntent.shouldPin
+  const pinRetries = pinIntent.retries
 
-  const profile = wallet.length >= 10 ? await getProfile(wallet) : null
-  const displayName = profile?.display_name
-    ? sanitizeAscii(profile.display_name, truncate(wallet))
-    : truncate(wallet)
+  const render = withOgErrorBoundary(async (): Promise<Buffer> => {
+    const profile = wallet.length >= 10 ? await getProfile(wallet) : null
+    const displayName = profile?.display_name
+      ? sanitizeAscii(profile.display_name, truncate(wallet))
+      : truncate(wallet)
 
-  // Build base canvas — dark background with a faint violet gradient overlay
-  const base = await sharp({
-    create: {
-      width: OG_W,
-      height: OG_H,
-      channels: 4,
-      background: { r: 9, g: 9, b: 11, alpha: 1 },
-    },
-  })
-    .png()
-    .toBuffer()
+    // Build base canvas — themed dark background
+    const base = await solidPng(OG_W, OG_H, OG_THEME.canvasBackground)
 
-  // Violet accent rectangle — left strip
-  const accentBuf = await sharp({
-    create: { width: 6, height: OG_H, channels: 4, background: { r: 139, g: 92, b: 246, alpha: 1 } },
-  })
-    .png()
-    .toBuffer()
+    // Violet accent rectangle — left strip, themed
+    const accentBuf = await solidPng(OG_THEME.accentStripWidth, OG_H, OG_THEME.accentStrip)
 
-  const layers: sharp.OverlayOptions[] = [{ input: accentBuf, left: 0, top: 0 }]
+    const layers: sharp.OverlayOptions[] = [{ input: accentBuf, left: 0, top: 0 }]
 
-  // PHASE label
-  const phaseLayer = await textLayer("PHASE", {
-    left: 60,
-    top: 60,
-    width: OG_W - 120,
-    fontSize: 11,
-    color: "#7c3aed",
-    align: "left",
-  })
-  if (phaseLayer) layers.push(phaseLayer)
-
-  // Display name
-  const truncName = displayName.length > 28 ? displayName.slice(0, 28) + "..." : displayName
-  const nameLayer = await textLayer(truncName.toUpperCase(), {
-    left: 60,
-    top: OG_H / 2 - 40,
-    width: OG_W - 120,
-    fontSize: 32,
-    color: "#c4b5fd",
-    align: "left",
-  })
-  if (nameLayer) layers.push(nameLayer)
-
-  // Wallet address
-  if (wallet) {
-    const addrLayer = await textLayer(truncate(wallet), {
+    // PHASE label — themed primary
+    const phaseLayer = await textLayer("PHASE", {
       left: 60,
-      top: OG_H / 2 + 16,
-      width: OG_W - 120,
-      fontSize: 13,
-      color: "#52525b",
-      align: "left",
-    })
-    if (addrLayer) layers.push(addrLayer)
-  }
-
-  // Social handles
-  const handles: string[] = []
-  if (profile?.twitter) handles.push(`X: ${profile.twitter}`)
-  if (profile?.discord) handles.push(`DC: ${profile.discord}`)
-  if (profile?.telegram) handles.push(`TG: ${profile.telegram}`)
-  if (handles.length > 0) {
-    const handlesLayer = await textLayer(handles.join("   "), {
-      left: 60,
-      top: OG_H - 80,
+      top: 60,
       width: OG_W - 120,
       fontSize: 11,
-      color: "#3f3f46",
+      color: OG_THEME.colors.primary,
       align: "left",
-    })
-    if (handlesLayer) layers.push(handlesLayer)
-  }
+    }, NOTO_SANS_TTF)
+    if (phaseLayer) layers.push(phaseLayer)
 
-  const png = await sharp(base).composite(layers).png().toBuffer()
+    // Display name — themed badge/headline
+    const truncName = displayName.length > 28 ? displayName.slice(0, 28) + "..." : displayName
+    const nameLayer = await textLayer(truncName.toUpperCase(), {
+      left: 60,
+      top: OG_H / 2 - 40,
+      width: OG_W - 120,
+      fontSize: 32,
+      color: OG_THEME.colors.badge,
+      align: "left",
+    }, NOTO_SANS_TTF)
+    if (nameLayer) layers.push(nameLayer)
+
+    // Wallet address — themed muted
+    if (wallet) {
+      const addrLayer = await textLayer(truncate(wallet), {
+        left: 60,
+        top: OG_H / 2 + 16,
+        width: OG_W - 120,
+        fontSize: 13,
+        color: OG_THEME.colors.muted,
+        align: "left",
+      }, NOTO_SANS_TTF)
+      if (addrLayer) layers.push(addrLayer)
+    }
+
+    // Social handles — themed faint
+    const handles: string[] = []
+    if (profile?.twitter) handles.push(`X: ${profile.twitter}`)
+    if (profile?.discord) handles.push(`DC: ${profile.discord}`)
+    if (profile?.telegram) handles.push(`TG: ${profile.telegram}`)
+    if (handles.length > 0) {
+      const handlesLayer = await textLayer(handles.join("   "), {
+        left: 60,
+        top: OG_H - 80,
+        width: OG_W - 120,
+        fontSize: 11,
+        color: OG_THEME.colors.faint,
+        align: "left",
+      }, NOTO_SANS_TTF)
+      if (handlesLayer) layers.push(handlesLayer)
+    }
+
+    return sharp(base).composite(layers).png().toBuffer()
+  })
+  const renderOutcome = await render
+  if (!renderOutcome.ok) {
+    return new NextResponse("OG render failed", { status: 500, headers: { "Content-Type": "text/plain" } })
+  }
+  const png = renderOutcome.value
 
   // phase-120: optional pin of generated OG asset with retry + checksum (non-blocking unless ?pin=1)
-  // Preserves wiring: no change to image bytes; only extra headers when pinned.
   let pinMeta: OgProfilePinResult | null = null
   if (shouldPin && isPhase120Enabled()) {
     pinMeta = await pinOgProfilePngWithRetry(png, { retries: pinRetries })
@@ -220,7 +175,7 @@ export async function GET(request: NextRequest) {
 
   // Hint about template wiring for observability (does not affect pixels)
   const templatePath = resolveOgTemplatePath()
-  const usedTemplate = templatePath.endsWith("og-template.png") ? "og-template.png" : "og-monitor.png"
+  const usedTemplate = templateName(templatePath)
 
   const headers: Record<string, string> = {
     "Content-Type": "image/png",

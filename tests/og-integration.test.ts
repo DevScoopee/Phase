@@ -6,6 +6,10 @@ import assert from "node:assert/strict"
 import fs from "node:fs"
 import path from "node:path"
 
+// phase-60: no hardcoded color literals should remain in the OG routes; all
+// colors flow through the design-token registry.
+const HARDCODED_COLOR = /#[0-9a-fA-F]{3,6}\b/
+
 process.env.NEXT_PUBLIC_FEATURE_PHASE_120 = "1"
 process.env.NEXT_PUBLIC_FEATURE_PHASE_119 = "1"
 process.env.NEXT_PUBLIC_FEATURE_PHASE_117 = "1"
@@ -65,6 +69,25 @@ async function testRouteImportsDoNotThrow() {
   console.log("✓ all modified routes contain expected exports & flags")
 }
 
+async function testDesignTokenWiring() {
+  // 1. both routes must source colors from the token registry (no hardcoded hex)
+  for (const route of ["app/api/og/chamber/route.tsx", "app/api/og/profile/route.tsx"]) {
+    const content = fs.readFileSync(path.join(process.cwd(), route), "utf8")
+    assert.equal(HARDCODED_COLOR.test(content), false, `${route} must not contain hardcoded hex colors (phase-60)`)
+    assert.ok(content.includes("@/lib/og-design-tokens"), `${route} should import the design-token registry`)
+    assert.ok(content.includes("withOgErrorBoundary"), `${route} should use the error boundary`)
+  }
+  console.log("✓ OG routes source colors from design tokens + use error boundary")
+}
+
+async function testDesignTokenModule() {
+  const { getOgTheme, monitorTheme, OG_CANVAS_WIDTH, OG_CANVAS_HEIGHT } = await import("@/lib/og-design-tokens")
+  assert.equal(getOgTheme("monitor").id, "monitor")
+  assert.equal(monitorTheme.dimensions.canvas.width, OG_CANVAS_WIDTH)
+  assert.equal(monitorTheme.dimensions.canvas.height, OG_CANVAS_HEIGHT)
+  console.log("✓ design-token registry loads & resolves monitor theme")
+}
+
 async function main() {
   console.log("=== integration tests ===")
   await testOgTemplateExists()
@@ -72,6 +95,8 @@ async function main() {
   await testOgProfilePinHelper()
   await testOgChamberHelper()
   await testRouteImportsDoNotThrow()
+  await testDesignTokenWiring()
+  await testDesignTokenModule()
   console.log("=== integration all passed ===")
 }
 
