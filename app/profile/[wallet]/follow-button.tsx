@@ -1,10 +1,62 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Link from "next/link"
 import { useWallet } from "@/components/wallet-provider"
+import type { FollowSuggestion } from "@/lib/follow-store"
 
 type Props = {
   targetWallet: string
+}
+
+export function FollowSuggestions({ profileWallet }: { profileWallet: string }) {
+  const { address } = useWallet()
+  const [suggestions, setSuggestions] = useState<FollowSuggestion[]>([])
+
+  useEffect(() => {
+    if (!address || address !== profileWallet) return
+    const controller = new AbortController()
+    fetch(`/api/profile/follow?mode=suggestions&wallet=${encodeURIComponent(address)}&limit=6`, {
+      signal: controller.signal,
+    })
+      .then(async (response) => response.ok
+        ? response.json() as Promise<{ suggestions?: FollowSuggestion[] }>
+        : { suggestions: [] })
+      .then((data) => setSuggestions(data.suggestions ?? []))
+      .catch(() => {})
+    return () => controller.abort()
+  }, [address, profileWallet])
+
+  if (!address || address !== profileWallet || suggestions.length === 0) return null
+
+  return (
+    <section aria-labelledby="follow-suggestions-title" className="space-y-3">
+      <div className="flex items-baseline justify-between border-b border-violet-800/20 pb-1">
+        <h2 id="follow-suggestions-title" className="text-[9px] uppercase tracking-widest text-zinc-500">
+          PEOPLE_TO_FOLLOW
+        </h2>
+        <span className="text-[8px] text-zinc-600">STELLAR GRAPH</span>
+      </div>
+      <div className="divide-y divide-violet-800/20 border-y border-violet-800/20">
+        {suggestions.map((suggestion) => (
+          <Link
+            key={suggestion.wallet}
+            href={`/profile/${suggestion.wallet}`}
+            className="flex items-center gap-3 py-2.5 text-[10px] transition-colors hover:text-violet-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-violet-400"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-zinc-300">{suggestion.displayName ?? `${suggestion.wallet.slice(0, 6)}…${suggestion.wallet.slice(-4)}`}</span>
+              {suggestion.displayName && <span className="block truncate text-[8px] text-zinc-600">{suggestion.wallet}</span>}
+            </span>
+            <span className="shrink-0 text-[8px] text-zinc-500">
+              {suggestion.mutualFollows > 0 ? `${suggestion.mutualFollows} mutual` : `${suggestion.sharedAssets} shared assets`}
+            </span>
+            <span aria-hidden="true" className="text-violet-500">→</span>
+          </Link>
+        ))}
+      </div>
+    </section>
+  )
 }
 
 export function FollowButton({ targetWallet }: Props) {

@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSignal, takedownSignal, restoreSignal, isModerationEnabled } from "@/lib/signal-store"
 import { createNotification } from "@/lib/notification-store"
+import { isFeatureEnabled } from "@/lib/feature-flags"
+import {
+  ModeratorIdentitySchema,
+  appendModerationAuditEvent,
+  getModerationAuditEvents,
+} from "@/lib/moderation-audit"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -8,6 +14,23 @@ export const dynamic = "force-dynamic"
 type ModerateBody = {
   action?: unknown
   reason?: unknown
+  moderator_wallet?: unknown
+  moderator_signature?: unknown
+}
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  if (!isFeatureEnabled("phase-91")) {
+    return NextResponse.json({ error: "Moderation audit is disabled" }, { status: 404 })
+  }
+  const adminKey = process.env.PHASE_ADMIN_KEY?.trim()
+  if (adminKey && request.headers.get("x-admin-key")?.trim() !== adminKey) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
+  }
+  const { id } = await params
+  return NextResponse.json({ events: await getModerationAuditEvents(id) })
 }
 
 /**
@@ -46,6 +69,12 @@ export async function POST(
     return NextResponse.json({ error: "action must be 'takedown' or 'restore'" }, { status: 400 })
   }
 
+  const auditEnabled = isFeatureEnabled("phase-91")
+  const identity = ModeratorIdentitySchema.safeParse(body)
+  if (auditEnabled && !identity.success) {
+    return NextResponse.json({ error: identity.error.issues[0]?.message ?? "Moderator identity required" }, { status: 400 })
+  }
+
   const existing = await getSignal(id)
   if (!existing) {
     return NextResponse.json({ error: "Signal not found" }, { status: 404 })
@@ -55,17 +84,40 @@ export async function POST(
     if (action === "takedown") {
       const reason = typeof body.reason === "string" && body.reason.trim() ? body.reason.trim() : "Violates community guidelines"
       const signal = await takedownSignal(id, reason)
+      let audit = null
+      if (auditEnabled && identity.success) {
+        audit = await appendModerationAuditEvent({
+          signal_id: id,
+          action,
+          moderator_wallet: identity.data.moderator_wallet,
+          moderator_signature: identity.data.moderator_signature,
+          reason,
+        })
+      }
       void createNotification(signal.author_wallet, "content_takedown", {
         signal_id: id,
         signal_title: signal.title,
         reason,
       }).catch(() => { /* silent */ })
-      return NextResponse.json({ signal })
+      return NextResponse.json({ signal, audit })
     }
 
     const signal = await restoreSignal(id)
-    return NextResponse.json({ signal })
-  } catch {
-    return NextResponse.json({ error: "Signal not found" }, { status: 404 })
+    let audit = null
+    if (auditEnabled && identity.success) {
+      audit = await appendModerationAuditEvent({
+        signal_id: id,
+        action,
+        moderator_wallet: identity.data.moderator_wallet,
+        moderator_signature: identity.data.moderator_signature,
+        reason: null,
+      })
+    }
+    return NextResponse.json({ signal, audit })
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Moderation update failed" },
+      { status: 500 },
+    )
   }
 }
