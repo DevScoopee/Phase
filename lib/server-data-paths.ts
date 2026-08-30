@@ -20,6 +20,8 @@ const FILES = {
   worldLoreLinks: "world-lore-links.json",
   worldRoles: "world-roles.json",
   worldReaderProgress: "world-reader-progress.json",
+  artistAttestations: "artist-attestations.json",
+  pushSubscriptions: "push-subscriptions.json",
 } as const
 
 export type ServerDataFile = keyof typeof FILES

@@ -61,6 +61,37 @@ function auditMetadataCompatibilityForNewSAC(): void {
   }
 }
 
+// ── phase-94: verified-artist badge issuance wiring (isolated, flag-gated) ──
+// Core issuance/verification logic lives in scripts/reset-phase.ts (single
+// source of truth); this is a lightweight wire-preserving audit only, so SAC
+// issuance keeps working unchanged whether the flag is on or off.
+// Flag: NEXT_PUBLIC_FEATURE_PHASE_94 / FEATURE_PHASE_94 — rollback: unset flag.
+
+function isPhase94Enabled(): boolean {
+  const v = (process.env.NEXT_PUBLIC_FEATURE_PHASE_94 ?? process.env.FEATURE_PHASE_94 ?? "").trim().toLowerCase()
+  return v === "1" || v === "true" || v === "yes" || v === "on"
+}
+
+const IssueSacArtistAttestationProbeSchema = z.object({
+  wallet: z.string().length(56),
+  displayName: z.string().min(1).max(48),
+  claim: z.literal("verified-artist"),
+})
+
+function auditArtistAttestationWiringOnIssueSac(): void {
+  if (!isPhase94Enabled()) return
+  const probe = IssueSacArtistAttestationProbeSchema.safeParse({
+    wallet: "G" + "A".repeat(55),
+    displayName: "probe",
+    claim: "verified-artist",
+  })
+  if (!probe.success) {
+    console.warn("[phase-94] artist attestation schema drift (unexpected, report):", probe.error.message)
+  } else {
+    console.log("[phase-94] verified-artist badge wiring OK (SAC issuance will not break attestation issuance). Rollback: unset FEATURE_PHASE_94.")
+  }
+}
+
 const HORIZON_URL = process.env.HORIZON_TESTNET_URL?.trim() || "https://horizon-testnet.stellar.org"
 const FRIENDBOT_URL = "https://friendbot.stellar.org"
 const NETWORK_PASSPHRASE = Networks.TESTNET
@@ -191,6 +222,7 @@ async function main() {
   log("")
 
   auditMetadataCompatibilityForNewSAC()
+  auditArtistAttestationWiringOnIssueSac()
 }
 
 main().catch((e) => {

@@ -30,6 +30,23 @@ export {
 } from "@/lib/offchain-delta"
 export type { OffchainDeltaManifest, DeltaStoreResult, DeltaFetchResult } from "@/lib/offchain-delta"
 
+// ── phase-92: push notifications for replies and mentions (isolated, flag-gated) ──
+// Users missed engagement without active polling. Thin re-export keeps stellar.ts
+// as single import for verification-adjacent routes; core logic lives in
+// lib/push-notifications.ts (single source of truth).
+export {
+  subscribeToPush,
+  unsubscribeFromPush,
+  getPushSubscriptions,
+  dispatchPushNotification,
+  extractMentionedWallets,
+  isPhase92Enabled,
+  auditPushNotificationWiring,
+  PushNotificationError,
+  PushSubscriptionSchema,
+} from "@/lib/push-notifications"
+export type { PushSubscription, PushNotificationEvent, PushDeliveryResult } from "@/lib/push-notifications"
+
 function isPhase122Enabled(): boolean {
   const v = (typeof process !== "undefined" ? (process.env.NEXT_PUBLIC_FEATURE_PHASE_122 ?? process.env.FEATURE_PHASE_122 ?? "") : "")?.trim().toLowerCase()
   return v === "1" || v === "true" || v === "yes" || v === "on"

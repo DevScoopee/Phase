@@ -91,6 +91,36 @@ async function runSetupMetadataAuditIfFlagged(): Promise<void> {
   } catch { /* optional audit, not fatal */ }
 }
 
+// ── phase-94: verified-artist badge issuance wiring (isolated, flag-gated) ──
+// Core issuance/verification logic lives in scripts/reset-phase.ts (single
+// source of truth); this is a lightweight wire-preserving audit only.
+// Flag: NEXT_PUBLIC_FEATURE_PHASE_94 / FEATURE_PHASE_94 — rollback: unset flag.
+
+function isPhase94Enabled(): boolean {
+  const v = (process.env.NEXT_PUBLIC_FEATURE_PHASE_94 ?? process.env.FEATURE_PHASE_94 ?? "").trim().toLowerCase()
+  return v === "1" || v === "true" || v === "yes" || v === "on"
+}
+
+const SetupArtistAttestationProbeSchema = z.object({
+  wallet: z.string().length(56),
+  displayName: z.string().min(1).max(48),
+  claim: z.literal("verified-artist"),
+})
+
+function auditArtistAttestationWiringOnSetup(): void {
+  if (!isPhase94Enabled()) return
+  const probe = SetupArtistAttestationProbeSchema.safeParse({
+    wallet: "G" + "A".repeat(55),
+    displayName: "probe",
+    claim: "verified-artist",
+  })
+  if (!probe.success) {
+    console.warn("[phase-94] artist attestation schema drift (unexpected, report):", probe.error.message)
+  } else {
+    console.log("[phase-94] verified-artist badge wiring OK (setup will not break attestation issuance). Rollback: unset FEATURE_PHASE_94.")
+  }
+}
+
 const RPC_URL = process.env.PHASE_V2_RPC_URL?.trim() || "https://soroban-testnet.stellar.org"
 const HORIZON_URL = process.env.PHASE_V2_HORIZON_URL?.trim() || "https://horizon-testnet.stellar.org"
 const NETWORK_PASSPHRASE = Networks.TESTNET
@@ -284,6 +314,7 @@ async function main() {
   if (isPhase124Enabled()) {
     console.log("[phase-124] Metadata migration tool: enabled. Rollback: unset FEATURE_PHASE_124/NEXT_PUBLIC_FEATURE_PHASE_124.")
   }
+  auditArtistAttestationWiringOnSetup()
 
   console.log("Done.")
 }

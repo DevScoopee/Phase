@@ -212,6 +212,161 @@ async function waitForAccount(publicKey: string, label: string): Promise<void> {
   }
 }
 
+// ── phase-94: verified-artist badge issuance via signed attestation (isolated) ──
+// Fake artist impersonation was previously unchecked in setup/reset/SAC scripts:
+// any wallet could self-label as "artist" in profile metadata. This module issues
+// a badge only after the claimed wallet signs a canonical attestation payload with
+// its own Stellar keypair; the signature is verified before the badge is persisted.
+// Feature flag: phase-94 — NEXT_PUBLIC_FEATURE_PHASE_94 / FEATURE_PHASE_94
+// Rollback: unset flag or set to 0/false and restart; issued badges on disk are
+// left untouched (read-only regression), no data migration to revert.
+// scripts/issue-sac-token.ts wiring is preserved untouched (audit-only hook there).
+
+function isPhase94Enabled(): boolean {
+  const v = (process.env.NEXT_PUBLIC_FEATURE_PHASE_94 ?? process.env.FEATURE_PHASE_94 ?? "").trim().toLowerCase()
+  return v === "1" || v === "true" || v === "yes" || v === "on"
+}
+
+const STELLAR_G_REGEX = /^G[A-Z2-7]{55}$/
+
+export const ArtistAttestationPayloadSchema = z.object({
+  wallet: z.string().trim().length(56).regex(STELLAR_G_REGEX, "Invalid Stellar G address"),
+  displayName: z.string().trim().min(1).max(48),
+  claim: z.literal("verified-artist"),
+  issuedAt: z.number().int().min(0),
+  nonce: z.string().trim().min(8).max(64),
+})
+export type ArtistAttestationPayload = z.infer<typeof ArtistAttestationPayloadSchema>
+
+export const ArtistBadgeSchema = z.object({
+  wallet: z.string().trim().length(56).regex(STELLAR_G_REGEX),
+  displayName: z.string().trim().min(1).max(48),
+  claim: z.literal("verified-artist"),
+  issuedAt: z.number().int().min(0),
+  nonce: z.string().trim().min(8).max(64),
+  signature: z.string().trim().min(1).max(512),
+  verifiedAt: z.number().int().min(0),
+})
+export type ArtistBadge = z.infer<typeof ArtistBadgeSchema>
+
+export class ArtistAttestationError extends Error {
+  code: "FLAG_DISABLED" | "VALIDATION_FAILED" | "SIGNATURE_INVALID" | "ALREADY_ISSUED"
+  constructor(code: ArtistAttestationError["code"], message: string) {
+    super(message)
+    this.name = "ArtistAttestationError"
+    this.code = code
+  }
+}
+
+/** Deterministic byte layout so wallet-signed bytes match server-side verification exactly. */
+export function canonicalAttestationMessage(payload: Omit<ArtistAttestationPayload, "claim">): string {
+  return `PHASE_VERIFIED_ARTIST_ATTESTATION_V1|${payload.wallet}|${payload.displayName}|${payload.issuedAt}|${payload.nonce}`
+}
+
+export function verifyAttestationSignature(wallet: string, message: string, signatureBase64: string): boolean {
+  try {
+    const kp = Keypair.fromPublicKey(wallet)
+    const sig = Buffer.from(signatureBase64, "base64")
+    return kp.verify(Buffer.from(message, "utf8"), sig)
+  } catch {
+    return false
+  }
+}
+
+async function artistBadgesFilePath(): Promise<string> {
+  const dataDir = path.join(repoRoot, ".data")
+  await fs.mkdir(dataDir, { recursive: true })
+  return path.join(dataDir, "artist-attestations.json")
+}
+
+async function readArtistBadgeStore(): Promise<Record<string, ArtistBadge>> {
+  try {
+    const raw = await fs.readFile(await artistBadgesFilePath(), "utf8")
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    const out: Record<string, ArtistBadge> = {}
+    for (const [k, v] of Object.entries(parsed)) {
+      const res = ArtistBadgeSchema.safeParse(v)
+      if (res.success) out[k] = res.data
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
+async function writeArtistBadgeStore(data: Record<string, ArtistBadge>): Promise<void> {
+  await fs.writeFile(await artistBadgesFilePath(), JSON.stringify(data, null, 2), "utf8")
+}
+
+/**
+ * Issues a verified-artist badge for `wallet`, keyed by that wallet's own signature
+ * over the canonical attestation payload. Rejects mismatched/forged signatures —
+ * the fake-impersonation gap this module closes.
+ */
+export async function issueVerifiedArtistBadgeCli(input: {
+  wallet: string
+  displayName: string
+  issuedAt: number
+  nonce: string
+  signature: string
+}): Promise<ArtistBadge> {
+  if (!isPhase94Enabled()) {
+    throw new ArtistAttestationError("FLAG_DISABLED", "Verified-artist badge issuance disabled (phase-94 flag off)")
+  }
+  const parsed = ArtistAttestationPayloadSchema.safeParse({ ...input, claim: "verified-artist" })
+  if (!parsed.success) {
+    throw new ArtistAttestationError("VALIDATION_FAILED", parsed.error.message)
+  }
+  const { wallet, displayName, issuedAt, nonce } = parsed.data
+  const message = canonicalAttestationMessage({ wallet, displayName, issuedAt, nonce })
+  if (!verifyAttestationSignature(wallet, message, input.signature)) {
+    throw new ArtistAttestationError("SIGNATURE_INVALID", `Attestation signature does not match wallet ${wallet.slice(0, 6)}…; badge not issued.`)
+  }
+  const store = await readArtistBadgeStore()
+  if (store[wallet]?.nonce === nonce) {
+    throw new ArtistAttestationError("ALREADY_ISSUED", `Badge already issued for wallet ${wallet.slice(0, 6)}… with this nonce.`)
+  }
+  const badge: ArtistBadge = ArtistBadgeSchema.parse({
+    wallet,
+    displayName,
+    claim: "verified-artist",
+    issuedAt,
+    nonce,
+    signature: input.signature,
+    verifiedAt: Date.now(),
+  })
+  store[wallet] = badge
+  await writeArtistBadgeStore(store)
+  return badge
+}
+
+async function runIssueArtistBadgeCliIfRequested(): Promise<void> {
+  if (!process.argv.includes("--issue-artist-badge")) {
+    if (isPhase94Enabled()) {
+      console.log("\n[phase-94] Verified-artist badge issuance ready (flag enabled). Pass --issue-artist-badge --wallet=G... --name=... --nonce=... --signature=... to issue. Rollback: unset FEATURE_PHASE_94.")
+    }
+    return
+  }
+  if (!isPhase94Enabled()) {
+    console.log("\n[phase-94] --issue-artist-badge requested but flag disabled (FEATURE_PHASE_94=1 required). Skipping.")
+    return
+  }
+  const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split("=").slice(1).join("=") ?? ""
+  try {
+    const badge = await issueVerifiedArtistBadgeCli({
+      wallet: arg("wallet"),
+      displayName: arg("name"),
+      issuedAt: Number(arg("issuedAt")) || Date.now(),
+      nonce: arg("nonce"),
+      signature: arg("signature"),
+    })
+    console.log(`\n[phase-94] Verified-artist badge issued for ${badge.wallet.slice(0, 8)}… (${badge.displayName}).`)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    console.warn(`[phase-94] badge issuance failed: ${msg}`)
+  }
+}
+
 async function main() {
   console.log("INICIANDO RESET DE PROTOCOLO PHASE (testnet clásico + distribuidor)\n")
 
@@ -326,6 +481,8 @@ async function main() {
   } else if (isPhase124Enabled()) {
     console.log("\n[phase-124] Metadata migration tool ready (flag enabled). Pass --migrate-metadata to run; --dry-run to preview. Rollback: unset FEATURE_PHASE_124.")
   }
+
+  await runIssueArtistBadgeCliIfRequested()
 }
 
 main().catch((e) => {

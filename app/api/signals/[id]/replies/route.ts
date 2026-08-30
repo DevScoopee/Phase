@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { StrKey } from "@stellar/stellar-sdk"
 import { getSignal, createReply, AttributionInReplySchema, recordReplyAttribution, getSignalContributors, computeCreditLedger } from "@/lib/signal-store"
 import { createNotification } from "@/lib/notification-store"
+import { dispatchPushNotification, extractMentionedWallets, isPhase92Enabled } from "@/lib/push-notifications"
 import { createApiRequestContext } from "@/lib/api-observability"
 import { isFeatureEnabled } from "@/lib/feature-flags"
 import { z } from "zod"
@@ -159,7 +160,39 @@ export async function POST(
         reply_author_name: author_display,
         signal_id: id,
         signal_title: signal.title,
-      }).catch((error) => api.log("warn", "signals.reply.notification_failed", { error }))
+      })
+        .then(() => {
+          if (isPhase92Enabled()) {
+            void dispatchPushNotification(signal.author_wallet, "signal_reply", {
+              reply_author_name: author_display,
+              signal_id: id,
+              signal_title: signal.title,
+            }).catch((error) => api.log("warn", "signals.reply.push_dispatch_failed", { error }))
+          }
+        })
+        .catch((error) => api.log("warn", "signals.reply.notification_failed", { error }))
+    }
+
+    // phase-92: push notifications for @-mentions in the reply body (flag-gated, best-effort)
+    if (isPhase92Enabled()) {
+      const mentioned = extractMentionedWallets(body.body as string).filter((w) => w !== walletStr)
+      for (const mentionedWallet of mentioned) {
+        void createNotification(mentionedWallet, "mention", {
+          reply_author_wallet: walletStr,
+          reply_author_name: author_display,
+          signal_id: id,
+          signal_title: signal.title,
+          mention: true,
+        })
+          .then(() =>
+            dispatchPushNotification(mentionedWallet, "mention", {
+              reply_author_name: author_display,
+              signal_id: id,
+              signal_title: signal.title,
+            }),
+          )
+          .catch((error) => api.log("warn", "signals.reply.mention_notification_failed", { error }))
+      }
     }
 
     return api.json(

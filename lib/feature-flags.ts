@@ -13,9 +13,17 @@
  * - phase-122: off-chain metadata delta storage
  * - phase-123: IPFS timeout fallback chain
  * - phase-124: metadata version migration tool
+ * - phase-92: push notifications for replies and mentions
+ * - phase-93: profile completeness scoring with on-chain signals
+ * - phase-94: verified-artist badge issuance via signed attestation
+ * - phase-95: follow-graph export and import portability
  */
 
 export type PhaseFeatureFlag =
+  | "phase-92"
+  | "phase-93"
+  | "phase-94"
+  | "phase-95"
   | "phase-107"
   | "phase-111"
   | "phase-113"
@@ -30,6 +38,10 @@ export type PhaseFeatureFlag =
   | "phase-124"
 
 const FLAG_ENV_MAP: Record<PhaseFeatureFlag, string[]> = {
+  "phase-92": ["NEXT_PUBLIC_FEATURE_PHASE_92", "FEATURE_PHASE_92"],
+  "phase-93": ["NEXT_PUBLIC_FEATURE_PHASE_93", "FEATURE_PHASE_93"],
+  "phase-94": ["NEXT_PUBLIC_FEATURE_PHASE_94", "FEATURE_PHASE_94"],
+  "phase-95": ["NEXT_PUBLIC_FEATURE_PHASE_95", "FEATURE_PHASE_95"],
   "phase-107": ["NEXT_PUBLIC_FEATURE_PHASE_107", "FEATURE_PHASE_107"],
   "phase-111": ["NEXT_PUBLIC_FEATURE_PHASE_111", "FEATURE_PHASE_111"],
   "phase-113": ["NEXT_PUBLIC_FEATURE_PHASE_113", "FEATURE_PHASE_113"],
@@ -64,7 +76,7 @@ export function featureFlagEnvKeys(flag: PhaseFeatureFlag): string[] {
 }
 
 export function getEnabledFeatureFlags(): PhaseFeatureFlag[] {
-  const all: PhaseFeatureFlag[] = ["phase-107", "phase-111", "phase-113", "phase-114", "phase-116", "phase-117", "phase-119", "phase-120", "phase-121", "phase-122", "phase-123", "phase-124"]
+  const all: PhaseFeatureFlag[] = ["phase-92", "phase-93", "phase-94", "phase-95", "phase-107", "phase-111", "phase-113", "phase-114", "phase-116", "phase-117", "phase-119", "phase-120", "phase-121", "phase-122", "phase-123", "phase-124"]
   return all.filter(isFeatureEnabled)
 }
 
