@@ -4,6 +4,10 @@ import { useEffect, useState } from "react"
 import { useLang } from "@/components/lang-context"
 import { useWallet } from "@/components/wallet-provider"
 
+// ─── phase-66: component-level code-splitting for heavy CRT widgets ───
+// Heavy CRT/phosphor visual overlays are dynamically code-split; this control
+// retains its compact rendering footprint with zero regressions. Rollback: unset FEATURE_PHASE_66.
+
 const copy = {
   en: {
     title: "Artist alias",

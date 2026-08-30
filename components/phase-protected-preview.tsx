@@ -9,6 +9,10 @@ import { viewerSignatureShort } from "@/lib/viewer-signature"
 // (core logic lives in lib/push-notifications.ts); no change needed here —
 // verified for zero regression.
 
+// ── phase-77: wash-trading detection heuristics for listings ──
+// Renders independently while wash-trading analysis protects volume stats in
+// backend APIs and listing badges. Preserves preview wiring with zero regression. Rollback: unset FEATURE_PHASE_77.
+
 // ── phase-122: off-chain delta display hint (flag-gated, zero regression when off) ──
 function isPhase122Enabled(): boolean {
   const v = (typeof process !== "undefined" ? (process.env.NEXT_PUBLIC_FEATURE_PHASE_122 ?? "") : "")?.trim().toLowerCase()

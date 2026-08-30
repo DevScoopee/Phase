@@ -4,6 +4,8 @@ import {
   getProfileHandle,
   resolveProfileHandle,
   saveProfileHandle,
+  isPhase66Enabled,
+  getCrtBundleSavingsSummary,
 } from "@/lib/profile-store"
 
 export const runtime = "nodejs"
@@ -53,6 +55,7 @@ export async function GET(req: NextRequest) {
     alias: profile?.handle ?? null,
     handle: profile?.handle ?? null,
     updatedAt: profile?.updatedAt ?? null,
+    ...(isPhase66Enabled() ? { crt_code_split: getCrtBundleSavingsSummary() } : {}),
   })
 }
 

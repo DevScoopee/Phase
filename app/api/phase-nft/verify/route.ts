@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { fetchTokenOwnerAddress, phaseProtocolContractIdForServer } from "@/lib/phase-protocol"
-import { auditPushNotificationWiring, isPhase92Enabled } from "@/lib/stellar"
+import { auditPushNotificationWiring, isPhase92Enabled, auditWashTradingWiring, isPhase77Enabled } from "@/lib/stellar"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -105,5 +105,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // phase-92: audit-only wiring hook — verifies push subscription/dispatch pipeline
     // is loadable without altering NFT ownership verification above.
     ...(isPhase92Enabled() ? { pushNotifications: auditPushNotificationWiring() } : {}),
+    // phase-77: audit-only wiring hook — verifies wash trading heuristic pipeline is loadable
+    ...(isPhase77Enabled() ? { washTrading: auditWashTradingWiring() } : {}),
   })
 }

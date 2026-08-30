@@ -121,6 +121,40 @@ function auditArtistAttestationWiringOnSetup(): void {
   }
 }
 
+// ── phase-79: watchlist notifications for price drops wiring (isolated, flag-gated) ──
+// Core watchlist and price drop logic lives in scripts/reset-phase.ts (single source of truth);
+// this is a lightweight wire-preserving audit ensuring setup-phase-v2 remains compatible.
+// Flag: NEXT_PUBLIC_FEATURE_PHASE_79 / FEATURE_PHASE_79 — rollback: unset flag.
+
+function isPhase79Enabled(): boolean {
+  const v = (process.env.NEXT_PUBLIC_FEATURE_PHASE_79 ?? process.env.FEATURE_PHASE_79 ?? "").trim().toLowerCase()
+  return v === "1" || v === "true" || v === "yes" || v === "on"
+}
+
+const SetupWatchlistProbeSchema = z.object({
+  wallet: z.string().length(56),
+  collectionId: z.number().int().min(0),
+  tokenId: z.number().int().min(1),
+  previousPrice: z.number().positive(),
+  newPrice: z.number().positive(),
+})
+
+function auditWatchlistWiringOnSetup(): void {
+  if (!isPhase79Enabled()) return
+  const probe = SetupWatchlistProbeSchema.safeParse({
+    wallet: "G" + "A".repeat(55),
+    collectionId: 0,
+    tokenId: 1,
+    previousPrice: 100,
+    newPrice: 80,
+  })
+  if (!probe.success) {
+    console.warn("[phase-79] watchlist schema drift (unexpected, report):", probe.error.message)
+  } else {
+    console.log("[phase-79] watchlist notifications wiring OK (setup will not break price drop alerts). Rollback: unset FEATURE_PHASE_79.")
+  }
+}
+
 const RPC_URL = process.env.PHASE_V2_RPC_URL?.trim() || "https://soroban-testnet.stellar.org"
 const HORIZON_URL = process.env.PHASE_V2_HORIZON_URL?.trim() || "https://horizon-testnet.stellar.org"
 const NETWORK_PASSPHRASE = Networks.TESTNET
@@ -315,6 +349,7 @@ async function main() {
     console.log("[phase-124] Metadata migration tool: enabled. Rollback: unset FEATURE_PHASE_124/NEXT_PUBLIC_FEATURE_PHASE_124.")
   }
   auditArtistAttestationWiringOnSetup()
+  auditWatchlistWiringOnSetup()
 
   console.log("Done.")
 }

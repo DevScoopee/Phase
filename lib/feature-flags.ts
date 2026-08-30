@@ -5,6 +5,7 @@
  * Rollback: unset the env var or set to "0"/"false" and restart. No migration to undo.
  *
  * Flags:
+ * - phase-79: watchlist notifications for price drops
  * - phase-88: on-chain follow suggestions
  * - phase-89: scheduled signal broadcast queues
  * - phase-90: community polls as a signal subtype
@@ -24,6 +25,18 @@
  */
 
 export type PhaseFeatureFlag =
+  | "phase-66"
+  | "phase-77"
+  | "phase-78"
+  | "phase-79"
+  | "phase-88"
+  | "phase-89"
+  | "phase-90"
+  | "phase-91"
+  | "phase-92"
+  | "phase-93"
+  | "phase-94"
+  | "phase-98"
   | "phase-100"
   | "phase-104"
   | "phase-105"
@@ -50,6 +63,18 @@ export type PhaseFeatureFlag =
   | "phase-128"
 
 const FLAG_ENV_MAP: Record<PhaseFeatureFlag, string[]> = {
+  "phase-66": ["NEXT_PUBLIC_FEATURE_PHASE_66", "FEATURE_PHASE_66"],
+  "phase-77": ["NEXT_PUBLIC_FEATURE_PHASE_77", "FEATURE_PHASE_77"],
+  "phase-78": ["NEXT_PUBLIC_FEATURE_PHASE_78", "FEATURE_PHASE_78"],
+  "phase-79": ["NEXT_PUBLIC_FEATURE_PHASE_79", "FEATURE_PHASE_79"],
+  "phase-88": ["NEXT_PUBLIC_FEATURE_PHASE_88", "FEATURE_PHASE_88"],
+  "phase-89": ["NEXT_PUBLIC_FEATURE_PHASE_89", "FEATURE_PHASE_89"],
+  "phase-90": ["NEXT_PUBLIC_FEATURE_PHASE_90", "FEATURE_PHASE_90"],
+  "phase-91": ["NEXT_PUBLIC_FEATURE_PHASE_91", "FEATURE_PHASE_91"],
+  "phase-92": ["NEXT_PUBLIC_FEATURE_PHASE_92", "FEATURE_PHASE_92"],
+  "phase-93": ["NEXT_PUBLIC_FEATURE_PHASE_93", "FEATURE_PHASE_93"],
+  "phase-94": ["NEXT_PUBLIC_FEATURE_PHASE_94", "FEATURE_PHASE_94"],
+  "phase-98": ["NEXT_PUBLIC_FEATURE_PHASE_98", "FEATURE_PHASE_98"],
   "phase-100": ["NEXT_PUBLIC_FEATURE_PHASE_100", "FEATURE_PHASE_100"],
   "phase-104": ["NEXT_PUBLIC_FEATURE_PHASE_104", "FEATURE_PHASE_104"],
   "phase-105": ["NEXT_PUBLIC_FEATURE_PHASE_105", "FEATURE_PHASE_105"],
@@ -83,7 +108,10 @@ function isTruthy(v: string | undefined): boolean {
 }
 
 export function isFeatureEnabled(flag: PhaseFeatureFlag): boolean {
-  const keys = FLAG_ENV_MAP[flag]
+  const keys = FLAG_ENV_MAP[flag] ?? [
+    `NEXT_PUBLIC_FEATURE_${flag.replace(/-/g, "_").toUpperCase()}`,
+    `FEATURE_${flag.replace(/-/g, "_").toUpperCase()}`,
+  ]
   for (const k of keys) {
     const v = (typeof process !== "undefined" ? (process.env as Record<string, string | undefined>)[k] : undefined)
     if (isTruthy(v)) return true
@@ -92,15 +120,55 @@ export function isFeatureEnabled(flag: PhaseFeatureFlag): boolean {
 }
 
 export function featureFlagEnvKeys(flag: PhaseFeatureFlag): string[] {
-  return [...FLAG_ENV_MAP[flag]]
+  return FLAG_ENV_MAP[flag] ? [...FLAG_ENV_MAP[flag]] : [
+    `NEXT_PUBLIC_FEATURE_${flag.replace(/-/g, "_").toUpperCase()}`,
+    `FEATURE_${flag.replace(/-/g, "_").toUpperCase()}`,
+  ]
 }
 
 export function getEnabledFeatureFlags(): PhaseFeatureFlag[] {
-  const all: PhaseFeatureFlag[] = ["phase-100", "phase-104", "phase-105", "phase-106", "phase-107", "phase-108", "phase-109", "phase-110", "phase-111", "phase-112", "phase-113", "phase-114", "phase-115", "phase-116", "phase-117", "phase-118", "phase-119", "phase-120", "phase-121", "phase-122", "phase-123", "phase-124", "phase-127", "phase-128"]
+  const all: PhaseFeatureFlag[] = [
+    "phase-66",
+    "phase-77",
+    "phase-78",
+    "phase-79",
+    "phase-88",
+    "phase-89",
+    "phase-90",
+    "phase-91",
+    "phase-92",
+    "phase-93",
+    "phase-94",
+    "phase-98",
+    "phase-100",
+    "phase-104",
+    "phase-105",
+    "phase-106",
+    "phase-107",
+    "phase-108",
+    "phase-109",
+    "phase-110",
+    "phase-111",
+    "phase-112",
+    "phase-113",
+    "phase-114",
+    "phase-115",
+    "phase-116",
+    "phase-117",
+    "phase-118",
+    "phase-119",
+    "phase-120",
+    "phase-121",
+    "phase-122",
+    "phase-123",
+    "phase-124",
+    "phase-127",
+    "phase-128",
+  ]
   return all.filter(isFeatureEnabled)
 }
 
 export function flagRollbackNote(flag: PhaseFeatureFlag): string {
-  const keys = FLAG_ENV_MAP[flag].join(" / ")
+  const keys = featureFlagEnvKeys(flag).join(" / ")
   return `Rollback ${flag}: unset ${keys} or set to 0/false and restart. No data migration to revert.`
 }
