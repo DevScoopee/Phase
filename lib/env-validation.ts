@@ -357,3 +357,64 @@ export function formatEnvValidationErrors(result: EnvValidationResult): string {
   }
   return lines.join("\n")
 }
+
+// ── phase-80, phase-81, bulk-listing, escrow wiring diagnostics ────────────
+
+/**
+ * Audit all Phase feature flags and module wiring for diagnostics
+ */
+export async function auditPhaseFeatureWiring(): Promise<{ ok: boolean; notes: string[] }> {
+  const notes: string[] = []
+  let allOk = true
+
+  // Audit phase-95 (follow-graph portability)
+  const phase95 = auditFollowGraphPortabilityWiring()
+  notes.push(phase95.note)
+  if (!phase95.ok) allOk = false
+
+  // Audit phase-80 (fractional ownership)
+  try {
+    const { auditFractionalOwnershipWiring } = await import("@/lib/fractional-ownership")
+    const phase80 = auditFractionalOwnershipWiring()
+    notes.push(phase80.note)
+    if (!phase80.ok) allOk = false
+  } catch (e) {
+    notes.push(`[phase-80] Module load error: ${e instanceof Error ? e.message : String(e)}`)
+    allOk = false
+  }
+
+  // Audit phase-81 (signal threads)
+  try {
+    const { auditSignalThreadWiring } = await import("@/lib/signal-threads")
+    const phase81 = auditSignalThreadWiring()
+    notes.push(phase81.note)
+    if (!phase81.ok) allOk = false
+  } catch (e) {
+    notes.push(`[phase-81] Module load error: ${e instanceof Error ? e.message : String(e)}`)
+    allOk = false
+  }
+
+  // Audit bulk-listing wizard
+  try {
+    const { auditBulkListingWiring } = await import("@/lib/bulk-listing")
+    const bulkListing = auditBulkListingWiring()
+    notes.push(bulkListing.note)
+    if (!bulkListing.ok) allOk = false
+  } catch (e) {
+    notes.push(`[bulk-listing] Module load error: ${e instanceof Error ? e.message : String(e)}`)
+    allOk = false
+  }
+
+  // Audit escrow settlement
+  try {
+    const { auditEscrowSettlementWiring } = await import("@/lib/escrow-settlement")
+    const escrow = auditEscrowSettlementWiring()
+    notes.push(escrow.note)
+    if (!escrow.ok) allOk = false
+  } catch (e) {
+    notes.push(`[escrow] Module load error: ${e instanceof Error ? e.message : String(e)}`)
+    allOk = false
+  }
+
+  return { ok: allOk, notes }
+}

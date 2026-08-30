@@ -277,6 +277,15 @@ export async function buildPhaseTokenMetadataJson(
 
   const ownerCompleteness = await resolveOwnerProfileCompleteness(owner)
 
+  // phase-132: referral attribution for referred tokens
+  let referralAttribution: { referrer: string; referralCode: string } | null = null
+  try {
+    const { isReferralQuestEnabled, getReferralAttribution } = await import("@/lib/referral-quest")
+    if (isReferralQuestEnabled()) {
+      referralAttribution = await getReferralAttribution(owner)
+    }
+  } catch { /* non-critical */ }
+
   return {
     name,
     description,
@@ -292,6 +301,12 @@ export async function buildPhaseTokenMetadataJson(
       { trait_type: "standard", value: "SEP-50-draft" },
       ...(ownerCompleteness
         ? [{ trait_type: "creator_profile_completeness", value: ownerCompleteness.score, display_type: "number" as const }]
+        : []),
+      ...(referralAttribution
+        ? [
+            { trait_type: "referred_by", value: referralAttribution.referrer },
+            { trait_type: "referral_code", value: referralAttribution.referralCode },
+          ]
         : []),
     ],
     collectionId: colId != null && Number.isFinite(colId) ? colId : null,
