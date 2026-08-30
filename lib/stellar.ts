@@ -30,6 +30,25 @@ export {
 } from "@/lib/offchain-delta"
 export type { OffchainDeltaManifest, DeltaStoreResult, DeltaFetchResult } from "@/lib/offchain-delta"
 
+// ── phase-77: wash-trading detection heuristics for listings (isolated, flag-gated) ──
+// Manipulated volume is indistinguishable from real without heuristics.
+// Thin re-export keeps stellar.ts as single import for market verification routes;
+// core logic lives in lib/wash-trading.ts (single source of truth).
+export {
+  analyzeWashTradingRisk,
+  detectCircularTrades,
+  detectRapidFlips,
+  detectSelfTrading,
+  isPhase77Enabled,
+  flag77RollbackNote,
+  auditWashTradingWiring,
+  WashTradingDetectionError,
+  TradeRecordSchema,
+  WashTradeAnalysisRequestSchema,
+  WashTradeRiskAssessmentSchema,
+} from "@/lib/wash-trading"
+export type { TradeRecord, WashTradeAnalysisRequest, WashTradeRiskAssessment, WashTradePattern } from "@/lib/wash-trading"
+
 // ── phase-92: push notifications for replies and mentions (isolated, flag-gated) ──
 // Users missed engagement without active polling. Thin re-export keeps stellar.ts
 // as single import for verification-adjacent routes; core logic lives in

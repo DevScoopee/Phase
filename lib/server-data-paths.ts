@@ -25,6 +25,9 @@ const FILES = {
   worldRoles: "world-roles.json",
   worldReaderProgress: "world-reader-progress.json",
   ipfsGatewayAuthRotations: "ipfs-gateway-auth-rotations.json",
+  artistAttestations: "artist-attestations.json",
+  pushSubscriptions: "push-subscriptions.json",
+  watchlists: "watchlists.json",
 } as const
 
 export type ServerDataFile = keyof typeof FILES

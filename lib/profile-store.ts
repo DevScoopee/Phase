@@ -315,6 +315,132 @@ export async function resolveAvatarWithFallback(
   }
 }
 
+// ─── phase-66: component-level code-splitting for heavy CRT widgets (isolated, flag-gated) ───
+// Initial bundle previously shipped heavy animation/CRT shaders and scanline overlays upfront,
+// bloating mobile and first-paint performance. This module provides dynamic code-splitting manifests,
+// lazy chunk resolution, and device-aware bundle deferral for CRT visual widgets.
+// Flag: NEXT_PUBLIC_FEATURE_PHASE_66 / FEATURE_PHASE_66 — Rollback: unset flag.
+
+export function isPhase66Enabled(): boolean {
+  const v = (typeof process !== "undefined" ? (process.env.NEXT_PUBLIC_FEATURE_PHASE_66 ?? process.env.FEATURE_PHASE_66 ?? "") : "")?.trim().toLowerCase()
+  return v === "1" || v === "true" || v === "yes" || v === "on"
+}
+
+export function flag66RollbackNote(): string {
+  return "Rollback phase-66: unset NEXT_PUBLIC_FEATURE_PHASE_66 / FEATURE_PHASE_66 or set to 0/false and restart. Bundles fall back to standard monolithic loader."
+}
+
+export const CRT_WIDGET_TYPES = [
+  "scanline-overlay",
+  "phosphor-glow",
+  "flicker-anim",
+  "terminal-cursor",
+  "vignette-matrix",
+  "glitch-distortion",
+] as const
+
+export type CrtWidgetType = (typeof CRT_WIDGET_TYPES)[number]
+
+export const CrtWidgetConfigSchema = z.object({
+  widgetType: z.enum(CRT_WIDGET_TYPES),
+  enabled: z.boolean().default(true),
+  intensity: z.number().min(0).max(1).default(0.5),
+  lazyLoad: z.boolean().default(true),
+  priority: z.enum(["low", "medium", "high"]).default("medium"),
+})
+
+export type CrtWidgetConfig = z.infer<typeof CrtWidgetConfigSchema>
+
+export const CRT_CHUNK_REGISTRY: Record<CrtWidgetType, { chunkId: string; estimatedBytes: number; modulePath: string; defaultDeferred: boolean }> = {
+  "scanline-overlay": { chunkId: "chunk-crt-scanline", estimatedBytes: 42800, modulePath: "@/components/crt/scanline", defaultDeferred: true },
+  "phosphor-glow": { chunkId: "chunk-crt-phosphor", estimatedBytes: 68400, modulePath: "@/components/crt/phosphor", defaultDeferred: true },
+  "flicker-anim": { chunkId: "chunk-crt-flicker", estimatedBytes: 31200, modulePath: "@/components/crt/flicker", defaultDeferred: true },
+  "terminal-cursor": { chunkId: "chunk-crt-cursor", estimatedBytes: 12400, modulePath: "@/components/crt/cursor", defaultDeferred: false },
+  "vignette-matrix": { chunkId: "chunk-crt-vignette", estimatedBytes: 54100, modulePath: "@/components/crt/vignette", defaultDeferred: true },
+  "glitch-distortion": { chunkId: "chunk-crt-glitch", estimatedBytes: 98600, modulePath: "@/components/crt/glitch", defaultDeferred: true },
+}
+
+export class CrtWidgetCodeSplitError extends Error {
+  code: "FLAG_DISABLED" | "VALIDATION_FAILED" | "WIDGET_NOT_FOUND" | "CHUNK_LOAD_FAILED"
+  details?: unknown
+  constructor(code: CrtWidgetCodeSplitError["code"], message: string, details?: unknown) {
+    super(message)
+    this.name = "CrtWidgetCodeSplitError"
+    this.code = code
+    this.details = details
+  }
+}
+
+export type CrtChunkResolution = {
+  widgetType: CrtWidgetType
+  chunkId: string
+  estimatedBytesSaved: number
+  shouldDefer: boolean
+  lazy: boolean
+  modulePath: string
+}
+
+export function resolveCrtWidgetChunk(
+  widgetType: unknown,
+  opts: { isMobile?: boolean; priority?: "low" | "medium" | "high"; force?: boolean } = {},
+): CrtChunkResolution {
+  const enabled = opts.force || isPhase66Enabled()
+  if (!enabled) {
+    throw new CrtWidgetCodeSplitError("FLAG_DISABLED", "CRT widget code-splitting disabled (phase-66 flag off)")
+  }
+
+  const parsedType = z.enum(CRT_WIDGET_TYPES).safeParse(widgetType)
+  if (!parsedType.success) {
+    throw new CrtWidgetCodeSplitError("WIDGET_NOT_FOUND", `Unknown CRT widget type: "${String(widgetType)}"`, parsedType.error.flatten())
+  }
+
+  const type = parsedType.data
+  const meta = CRT_CHUNK_REGISTRY[type]
+  const isMobile = opts.isMobile ?? false
+  const priority = opts.priority ?? "medium"
+
+  // Mobile or low-priority widgets are always deferred to optimize initial bundle
+  const shouldDefer = isMobile || priority === "low" || meta.defaultDeferred
+
+  return {
+    widgetType: type,
+    chunkId: meta.chunkId,
+    estimatedBytesSaved: meta.estimatedBytes,
+    shouldDefer,
+    lazy: true,
+    modulePath: meta.modulePath,
+  }
+}
+
+export function getCrtBundleSavingsSummary(): { totalWidgetTypes: number; totalEstimatedBytes: number; chunks: Record<string, number> } {
+  const chunks: Record<string, number> = {}
+  let total = 0
+  for (const [key, val] of Object.entries(CRT_CHUNK_REGISTRY)) {
+    chunks[key] = val.estimatedBytes
+    total += val.estimatedBytes
+  }
+  return {
+    totalWidgetTypes: CRT_WIDGET_TYPES.length,
+    totalEstimatedBytes: total,
+    chunks,
+  }
+}
+
+export function auditCrtWidgetWiring(): { ok: boolean; note: string } {
+  if (!isPhase66Enabled()) {
+    return { ok: true, note: "[phase-66] CRT widget code-splitting disabled; nothing to audit." }
+  }
+  try {
+    const probe = resolveCrtWidgetChunk("scanline-overlay", { force: true })
+    if (probe.chunkId && probe.estimatedBytesSaved > 0) {
+      return { ok: true, note: `[phase-66] CRT widget code-splitting OK (${probe.chunkId} registered). ${flag66RollbackNote()}` }
+    }
+    return { ok: false, note: "[phase-66] CRT widget code-splitting probe failed." }
+  } catch (e) {
+    return { ok: false, note: `[phase-66] CRT audit error: ${e instanceof Error ? e.message : String(e)}` }
+  }
+}
+
 // Re-export for isolated testing / API routes
 export { isPhase117Enabled, flag117RollbackNote } from "@/lib/ipfs-pinning"
 export type { MultiPinResult, PinResult } from "@/lib/ipfs-pinning"
