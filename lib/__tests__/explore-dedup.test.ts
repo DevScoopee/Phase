@@ -1,6 +1,6 @@
 import { describe, it, beforeEach } from "node:test"
 import * as assert from "node:assert/strict"
-import { assetContentHash, dedupeExploreItems, type ExploreItem } from "@/app/api/explore/route"
+import { assetContentHash, dedupeExploreItems, type ExploreItem } from "@/lib/explore-domain"
 
 const baseItem: ExploreItem = {
   tokenId: 1,

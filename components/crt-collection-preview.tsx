@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useToastQueue } from "@/hooks/use-toast-queue"
 
 type Attribute = {
   trait_type: string
@@ -63,6 +64,13 @@ export function CrtCollectionPreview({
 }: Props) {
   const collectionName = parseCollectionName(name)
   const creatorDisplay = owner ? truncateAddress(owner) : "UNKNOWN"
+  const toasts = useToastQueue()
+
+  if (duplicateOfTokenId) {
+    // Queued + deduped (priority warn) so duplicate notices never clobber
+    // concurrent preview navigation messages.
+    toasts.warn(`DUPLICATE_OF_#${duplicateOfTokenId}`, { title: `PHASE · ${collectionName}` })
+  }
 
   const displayAttrs = attributes.filter(
     (a) => !["token_id", "collection_id"].includes(a.trait_type),
