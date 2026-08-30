@@ -9,6 +9,8 @@ export type WorldCollectionData = {
   world_prompt: string
   created_at: number
   narrator_tone?: NarratorTone
+  /** Monotonically increasing revision, used for conflict detection (phase-105). */
+  version?: number
 }
 
 export type WorldNarrativeData = {
@@ -55,6 +57,7 @@ export async function saveWorldForCollection(
     world_prompt: data.world_prompt,
     ...(data.narrator_tone !== undefined ? { narrator_tone: data.narrator_tone } : {}),
     created_at: existing?.created_at ?? Date.now(),
+    version: (existing?.version ?? 0) + 1,
   }
   await writeJsonStore(filePath, store)
 }

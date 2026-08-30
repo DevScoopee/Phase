@@ -5,10 +5,12 @@ import {
   getAllNarrativesCount,
   countCollectorsInWorlds,
   getRecentNarrativesForCollection,
+  getWorldForCollection,
   saveWorldForCollection,
   type NarratorTone,
 } from "@/lib/narrative-world-store"
 import { checkAndUnlock } from "@/lib/achievement-store"
+import { checkWorldConflict } from "@/lib/world-conflict"
 
 export type WorldsListItem = {
   collectionId: number
@@ -18,6 +20,8 @@ export type WorldsListItem = {
   narrativeCount: number
   latestNarrative: string | null
   narrator_tone?: NarratorTone
+  /** Current revision — pass as `expected_version` on the next save (phase-105). */
+  version?: number
 }
 
 export type WorldsGlobalStats = {
@@ -40,6 +44,7 @@ export async function GET() {
         narrativeCount: narratives.length,
         latestNarrative: narratives[0]?.narrative ?? null,
         narrator_tone: data.narrator_tone,
+        version: data.version,
       }
     }),
   )
@@ -72,6 +77,8 @@ type WorldSaveBody = {
   world_prompt?: unknown
   narrator_tone?: unknown
   creator_wallet?: unknown
+  /** Client's last-known world version — only checked when phase-105 is enabled. */
+  expected_version?: unknown
 }
 
 function isNonEmptyString(v: unknown): v is string {
@@ -113,6 +120,26 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: `narrator_tone inválido. Valores permitidos: ${VALID_TONES.join(", ")}` },
       { status: 400 },
+    )
+  }
+
+  // phase-105: detect concurrent-edit divergence before applying the write
+  const expectedVersion =
+    typeof body.expected_version === "number" && Number.isInteger(body.expected_version)
+      ? body.expected_version
+      : undefined
+  const existingWorld = await getWorldForCollection(collectionId)
+  const conflictCheck = checkWorldConflict(existingWorld, expectedVersion)
+  if (conflictCheck.conflict) {
+    return NextResponse.json(
+      {
+        error: "world_diverged",
+        code: "WORLD_CONFLICT",
+        serverVersion: conflictCheck.serverVersion,
+        clientVersion: conflictCheck.clientVersion,
+        current: conflictCheck.current,
+      },
+      { status: 409 },
     )
   }
 
