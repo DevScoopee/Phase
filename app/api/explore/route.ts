@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { createHash } from "node:crypto"
 import {
   fetchPhaseProtocolTotalSupply,
   fetchTokenOwnerAddress,
@@ -7,6 +8,7 @@ import {
 import { buildPhaseTokenMetadataJson } from "@/lib/phase-nft-metadata-build"
 import { extractBaseAddress } from "@stellar/stellar-sdk"
 import { getAllWorldCollections } from "@/lib/narrative-world-store"
+import { isFeatureEnabled } from "@/lib/feature-flags"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -25,6 +27,8 @@ export type ExploreItem = {
   tokenId: number
   name: string
   image: string
+  contentHash?: string
+  duplicateOfTokenId?: number
   collectionId: number | null
   ownerTruncated: string
   worldName?: string
@@ -52,6 +56,27 @@ async function mapConcurrent<T, R>(
   }
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
   return out
+}
+
+export function assetContentHash(item: Pick<ExploreItem, "image">): string | null {
+  const image = item.image.trim().toLowerCase()
+  if (!image) return null
+  return createHash("sha256").update(image, "utf8").digest("hex")
+}
+
+export function dedupeExploreItems(items: ExploreItem[]): ExploreItem[] {
+  if (!isFeatureEnabled("phase-127")) return items
+  const firstByHash = new Map<string, number>()
+  return items.map((item) => {
+    const contentHash = assetContentHash(item)
+    if (!contentHash) return item
+    const firstTokenId = firstByHash.get(contentHash)
+    if (firstTokenId === undefined) {
+      firstByHash.set(contentHash, item.tokenId)
+      return { ...item, contentHash }
+    }
+    return { ...item, contentHash, duplicateOfTokenId: firstTokenId }
+  })
 }
 
 export async function GET(request: NextRequest) {
@@ -130,7 +155,7 @@ export async function GET(request: NextRequest) {
     const filtered = allWithMeta.filter((x) => (x.meta?.collectionId ?? null) === collectionIdFilter)
     totalFound = filtered.length
     const slice = filtered.slice((page - 1) * perPage, page * perPage)
-    items = slice.map(({ id, owner, meta }) => buildItem(id, owner, meta))
+    items = dedupeExploreItems(slice.map(({ id, owner, meta }) => buildItem(id, owner, meta)))
   } else {
     // Normal path: paginate first, then fetch metadata for this page only.
     totalFound = found.length
@@ -139,10 +164,11 @@ export async function GET(request: NextRequest) {
       const meta = await buildPhaseTokenMetadataJson(contractId, id)
       return buildItem(id, owner, meta)
     })
+    items = dedupeExploreItems(items)
   }
 
   return NextResponse.json(
-    { items, total: totalFound, page, perPage },
+    { items, total: totalFound, page, perPage, content_hash_dedup_enabled: isFeatureEnabled("phase-127") },
     {
       headers: {
         ...CORS,

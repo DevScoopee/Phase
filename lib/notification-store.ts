@@ -1,6 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { randomUUID } from "node:crypto"
+import { createHash } from "node:crypto"
+import { z } from "zod"
+import { isFeatureEnabled, flagRollbackNote } from "@/lib/feature-flags"
 import { serverDataJsonPath } from "@/lib/server-data-paths"
 
 export type NotificationType =
@@ -27,6 +30,7 @@ export type Notification = {
 }
 
 type NotificationStore = Record<string, Notification[]>
+type GatewayAuthRotationStore = Record<string, GatewayAuthRotation>
 
 const MAX_PER_WALLET = 50
 // phase-98: profile-level notification preferences.
@@ -48,6 +52,108 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
 export function isNotificationPreferencesEnabled(): boolean {
   const value = (process.env.NEXT_PUBLIC_FEATURE_PHASE_98 ?? process.env.FEATURE_PHASE_98 ?? "").trim().toLowerCase()
   return value === "1" || value === "true" || value === "yes" || value === "on"
+}
+
+export function isPhase128Enabled(): boolean {
+  return isFeatureEnabled("phase-128")
+}
+
+export function phase128RollbackNote(): string {
+  return flagRollbackNote("phase-128")
+}
+
+export const GatewayAuthRotationSchema = z.object({
+  gateway: z.string().trim().min(2).max(64).regex(/^[a-z0-9._-]+$/i),
+  private_tier: z.enum(["starter", "pro", "enterprise"]),
+  next_token: z.string().trim().min(16).max(4096),
+  rotated_by: z.string().trim().min(1).max(128),
+  overlap_ms: z.number().int().min(0).max(86_400_000).default(900_000),
+})
+
+export type GatewayAuthRotationInput = z.infer<typeof GatewayAuthRotationSchema>
+
+export type GatewayAuthRotation = {
+  gateway: string
+  private_tier: GatewayAuthRotationInput["private_tier"]
+  active_token_hash: string
+  previous_token_hash: string | null
+  previous_expires_at: number | null
+  rotated_by: string
+  rotated_at: number
+}
+
+export class GatewayAuthRotationError extends Error {
+  code: "FLAG_DISABLED" | "VALIDATION_FAILED"
+  details?: unknown
+
+  constructor(code: GatewayAuthRotationError["code"], message: string, details?: unknown) {
+    super(message)
+    this.name = "GatewayAuthRotationError"
+    this.code = code
+    this.details = details
+  }
+}
+
+function hashGatewayToken(token: string): string {
+  return createHash("sha256").update(token, "utf8").digest("hex")
+}
+
+function gatewayRotationKey(gateway: string, privateTier: string): string {
+  return `${gateway.toLowerCase()}:${privateTier}`
+}
+
+async function readGatewayAuthRotationStore(): Promise<GatewayAuthRotationStore> {
+  try {
+    const raw = await readFile(serverDataJsonPath("ipfsGatewayAuthRotations"), "utf8")
+    const parsed = JSON.parse(raw) as GatewayAuthRotationStore
+    return parsed && typeof parsed === "object" ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+async function writeGatewayAuthRotationStore(data: GatewayAuthRotationStore): Promise<void> {
+  const filePath = serverDataJsonPath("ipfsGatewayAuthRotations")
+  await mkdir(path.dirname(filePath), { recursive: true })
+  await writeFile(filePath, JSON.stringify(data, null, 2), "utf8")
+}
+
+export async function rotateIpfsGatewayAuth(input: unknown, opts: { force?: boolean; now?: number } = {}): Promise<GatewayAuthRotation> {
+  if (!opts.force && !isPhase128Enabled()) {
+    throw new GatewayAuthRotationError("FLAG_DISABLED", "phase-128 flag disabled", {
+      rollback: phase128RollbackNote(),
+    })
+  }
+
+  const parsed = GatewayAuthRotationSchema.safeParse(input)
+  if (!parsed.success) {
+    throw new GatewayAuthRotationError("VALIDATION_FAILED", "valid gateway rotation payload required", parsed.error.flatten())
+  }
+
+  const now = opts.now ?? Date.now()
+  const data = parsed.data
+  const store = await readGatewayAuthRotationStore()
+  const key = gatewayRotationKey(data.gateway, data.private_tier)
+  const current = store[key]
+  const activeTokenHash = hashGatewayToken(data.next_token)
+
+  const rotation: GatewayAuthRotation = {
+    gateway: data.gateway,
+    private_tier: data.private_tier,
+    active_token_hash: activeTokenHash,
+    previous_token_hash: current?.active_token_hash && current.active_token_hash !== activeTokenHash
+      ? current.active_token_hash
+      : current?.previous_token_hash ?? null,
+    previous_expires_at: current?.active_token_hash && current.active_token_hash !== activeTokenHash
+      ? now + data.overlap_ms
+      : current?.previous_expires_at ?? null,
+    rotated_by: data.rotated_by,
+    rotated_at: now,
+  }
+
+  store[key] = rotation
+  await writeGatewayAuthRotationStore(store)
+  return rotation
 }
 
 async function readPreferenceStore(): Promise<NotificationPreferenceStore> {

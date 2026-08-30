@@ -1,6 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
-import { randomUUID } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
+import { StrKey } from "@stellar/stellar-sdk"
+import { z } from "zod"
+import { isFeatureEnabled, flagRollbackNote } from "@/lib/feature-flags"
 import { serverDataJsonPath } from "@/lib/server-data-paths"
 
 export type ListingStatus = "active" | "sold" | "cancelled"
@@ -33,8 +36,46 @@ export type Offer = {
 
 type ListingsStore = Record<string, Listing>
 type OffersStore = Record<string, Offer>
+type ProfileViewAnalyticsStore = Record<string, CreatorProfileViewAnalytics>
 
 const OFFER_TTL_MS = 48 * 60 * 60 * 1000 // 48h
+
+export const ProfileViewEventSchema = z.object({
+  creator_wallet: z.string().trim().refine((value) => StrKey.isValidEd25519PublicKey(value), "valid creator wallet required"),
+  viewer_wallet: z.string().trim().refine((value) => StrKey.isValidEd25519PublicKey(value), "valid viewer wallet required").optional(),
+  source: z.enum(["profile", "market", "dashboard"]).default("profile"),
+})
+
+export type ProfileViewEvent = z.infer<typeof ProfileViewEventSchema>
+
+export type CreatorProfileViewAnalytics = {
+  creator_wallet: string
+  total_views: number
+  unique_viewers: number
+  last_viewed_at: number
+  sources: Partial<Record<ProfileViewEvent["source"], number>>
+  viewer_hashes: string[]
+}
+
+export class MarketStoreValidationError extends Error {
+  code: "FLAG_DISABLED" | "VALIDATION_FAILED"
+  details?: unknown
+
+  constructor(code: MarketStoreValidationError["code"], message: string, details?: unknown) {
+    super(message)
+    this.name = "MarketStoreValidationError"
+    this.code = code
+    this.details = details
+  }
+}
+
+export function isPhase100Enabled(): boolean {
+  return isFeatureEnabled("phase-100")
+}
+
+export function phase100RollbackNote(): string {
+  return flagRollbackNote("phase-100")
+}
 
 async function readJson<T extends object>(filePath: string): Promise<T> {
   try { return JSON.parse(await readFile(filePath, "utf8")) as T }
@@ -44,6 +85,62 @@ async function readJson<T extends object>(filePath: string): Promise<T> {
 async function writeJson<T extends object>(filePath: string, data: T): Promise<void> {
   await mkdir(path.dirname(filePath), { recursive: true })
   await writeFile(filePath, JSON.stringify(data, null, 2), "utf8")
+}
+
+function viewerAnalyticsKey(viewerWallet?: string): string | null {
+  if (!viewerWallet) return null
+  return createHash("sha256").update(viewerWallet.toUpperCase(), "utf8").digest("hex")
+}
+
+export async function recordCreatorProfileView(input: unknown, opts: { force?: boolean; now?: number } = {}): Promise<CreatorProfileViewAnalytics> {
+  if (!opts.force && !isPhase100Enabled()) {
+    throw new MarketStoreValidationError("FLAG_DISABLED", "phase-100 flag disabled", {
+      rollback: phase100RollbackNote(),
+    })
+  }
+
+  const parsed = ProfileViewEventSchema.safeParse(input)
+  if (!parsed.success) {
+    throw new MarketStoreValidationError("VALIDATION_FAILED", "valid profile view payload required", parsed.error.flatten())
+  }
+
+  const event = parsed.data
+  const now = opts.now ?? Date.now()
+  const store = await readJson<ProfileViewAnalyticsStore>(serverDataJsonPath("marketProfileViews"))
+  const current = store[event.creator_wallet] ?? {
+    creator_wallet: event.creator_wallet,
+    total_views: 0,
+    unique_viewers: 0,
+    last_viewed_at: 0,
+    sources: {},
+    viewer_hashes: [],
+  }
+
+  const viewerKey = viewerAnalyticsKey(event.viewer_wallet)
+  const viewerHashes = viewerKey && !current.viewer_hashes.includes(viewerKey)
+    ? [...current.viewer_hashes, viewerKey]
+    : current.viewer_hashes
+
+  const next: CreatorProfileViewAnalytics = {
+    ...current,
+    total_views: current.total_views + 1,
+    unique_viewers: viewerHashes.length,
+    last_viewed_at: now,
+    sources: {
+      ...current.sources,
+      [event.source]: (current.sources[event.source] ?? 0) + 1,
+    },
+    viewer_hashes: viewerHashes,
+  }
+
+  store[event.creator_wallet] = next
+  await writeJson(serverDataJsonPath("marketProfileViews"), store)
+  return next
+}
+
+export async function getCreatorProfileViewAnalytics(creatorWallet: string): Promise<CreatorProfileViewAnalytics | null> {
+  const store = await readJson<ProfileViewAnalyticsStore>(serverDataJsonPath("marketProfileViews"))
+  return store[creatorWallet] ?? null
 }
 
 // ── Listings ──────────────────────────────────────────────────────────────────

@@ -13,35 +13,63 @@
  * - phase-122: off-chain metadata delta storage
  * - phase-123: IPFS timeout fallback chain
  * - phase-124: metadata version migration tool
+ * - phase-100: creator profile view analytics
+ * - phase-118: SEP-50 metadata validation before pin
+ * - phase-127: content-hash deduplication for repeated assets
+ * - phase-128: IPFS gateway auth rotation for private pinning tiers
  */
 
 export type PhaseFeatureFlag =
+  | "phase-100"
+  | "phase-104"
+  | "phase-105"
+  | "phase-106"
   | "phase-107"
+  | "phase-108"
+  | "phase-109"
+  | "phase-110"
   | "phase-111"
+  | "phase-112"
   | "phase-113"
   | "phase-114"
+  | "phase-115"
   | "phase-116"
   | "phase-117"
+  | "phase-118"
   | "phase-119"
   | "phase-120"
   | "phase-121"
   | "phase-122"
   | "phase-123"
   | "phase-124"
+  | "phase-127"
+  | "phase-128"
 
 const FLAG_ENV_MAP: Record<PhaseFeatureFlag, string[]> = {
+  "phase-100": ["NEXT_PUBLIC_FEATURE_PHASE_100", "FEATURE_PHASE_100"],
+  "phase-104": ["NEXT_PUBLIC_FEATURE_PHASE_104", "FEATURE_PHASE_104"],
+  "phase-105": ["NEXT_PUBLIC_FEATURE_PHASE_105", "FEATURE_PHASE_105"],
+  "phase-106": ["NEXT_PUBLIC_FEATURE_PHASE_106", "FEATURE_PHASE_106"],
   "phase-107": ["NEXT_PUBLIC_FEATURE_PHASE_107", "FEATURE_PHASE_107"],
+  "phase-108": ["NEXT_PUBLIC_FEATURE_PHASE_108", "FEATURE_PHASE_108"],
+  "phase-109": ["NEXT_PUBLIC_FEATURE_PHASE_109", "FEATURE_PHASE_109"],
+  "phase-110": ["NEXT_PUBLIC_FEATURE_PHASE_110", "FEATURE_PHASE_110"],
   "phase-111": ["NEXT_PUBLIC_FEATURE_PHASE_111", "FEATURE_PHASE_111"],
+  "phase-112": ["NEXT_PUBLIC_FEATURE_PHASE_112", "FEATURE_PHASE_112"],
   "phase-113": ["NEXT_PUBLIC_FEATURE_PHASE_113", "FEATURE_PHASE_113"],
   "phase-114": ["NEXT_PUBLIC_FEATURE_PHASE_114", "FEATURE_PHASE_114"],
+  "phase-115": ["NEXT_PUBLIC_FEATURE_PHASE_115", "FEATURE_PHASE_115"],
   "phase-116": ["NEXT_PUBLIC_FEATURE_PHASE_116", "FEATURE_PHASE_116"],
   "phase-117": ["NEXT_PUBLIC_FEATURE_PHASE_117", "FEATURE_PHASE_117"],
+  "phase-118": ["NEXT_PUBLIC_FEATURE_PHASE_118", "FEATURE_PHASE_118"],
   "phase-119": ["NEXT_PUBLIC_FEATURE_PHASE_119", "FEATURE_PHASE_119"],
   "phase-120": ["NEXT_PUBLIC_FEATURE_PHASE_120", "FEATURE_PHASE_120"],
   "phase-121": ["NEXT_PUBLIC_FEATURE_PHASE_121", "FEATURE_PHASE_121"],
   "phase-122": ["NEXT_PUBLIC_FEATURE_PHASE_122", "FEATURE_PHASE_122"],
   "phase-123": ["NEXT_PUBLIC_FEATURE_PHASE_123", "FEATURE_PHASE_123"],
   "phase-124": ["NEXT_PUBLIC_FEATURE_PHASE_124", "FEATURE_PHASE_124"],
+  "phase-127": ["NEXT_PUBLIC_FEATURE_PHASE_127", "FEATURE_PHASE_127"],
+  "phase-128": ["NEXT_PUBLIC_FEATURE_PHASE_128", "FEATURE_PHASE_128"],
 }
 
 function isTruthy(v: string | undefined): boolean {
@@ -64,7 +92,7 @@ export function featureFlagEnvKeys(flag: PhaseFeatureFlag): string[] {
 }
 
 export function getEnabledFeatureFlags(): PhaseFeatureFlag[] {
-  const all: PhaseFeatureFlag[] = ["phase-107", "phase-111", "phase-113", "phase-114", "phase-116", "phase-117", "phase-119", "phase-120", "phase-121", "phase-122", "phase-123", "phase-124"]
+  const all: PhaseFeatureFlag[] = ["phase-100", "phase-104", "phase-105", "phase-106", "phase-107", "phase-108", "phase-109", "phase-110", "phase-111", "phase-112", "phase-113", "phase-114", "phase-115", "phase-116", "phase-117", "phase-118", "phase-119", "phase-120", "phase-121", "phase-122", "phase-123", "phase-124", "phase-127", "phase-128"]
   return all.filter(isFeatureEnabled)
 }
 

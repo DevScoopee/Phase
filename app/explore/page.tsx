@@ -14,6 +14,7 @@ type ExploreResponse = {
   total: number
   page: number
   perPage: number
+  content_hash_dedup_enabled?: boolean
 }
 
 const navLink =
@@ -293,6 +294,12 @@ function ArtifactCard({
         {item.worldName && (
           <span className="inline-block w-fit border border-cyan-400/40 bg-cyan-950/50 px-1.5 py-0.5 text-[8px] uppercase tracking-widest text-cyan-400">
             ◈ {item.worldName}
+          </span>
+        )}
+
+        {item.duplicateOfTokenId && (
+          <span className="inline-block w-fit border border-amber-400/40 bg-amber-950/30 px-1.5 py-0.5 text-[8px] uppercase tracking-widest text-amber-300">
+            {isEs ? `Duplicado de #${item.duplicateOfTokenId}` : `Duplicate of #${item.duplicateOfTokenId}`}
           </span>
         )}
 

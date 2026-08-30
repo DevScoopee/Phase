@@ -1,5 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
+import { z } from "zod"
+import { isFeatureEnabled, flagRollbackNote } from "@/lib/feature-flags"
 import { serverDataJsonPath } from "@/lib/server-data-paths"
 
 type FollowEntry = {
@@ -8,6 +10,81 @@ type FollowEntry = {
 }
 
 type FollowStore = Record<string, FollowEntry>
+
+const UriSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(2048)
+  .refine((value) => /^https:\/\//i.test(value) || /^ipfs:\/\/[A-Za-z0-9._/-]+$/i.test(value), {
+    message: "URI must be https:// or ipfs://",
+  })
+
+export const Sep50MetadataAttributeSchema = z.object({
+  trait_type: z.string().trim().min(1).max(64),
+  value: z.union([z.string().trim().min(1).max(256), z.number().finite()]),
+  display_type: z.enum(["number"]).optional(),
+})
+
+export const Sep50MetadataSchema = z
+  .object({
+    name: z.string().trim().min(1).max(128),
+    description: z.string().trim().min(1).max(1000),
+    image: UriSchema,
+    external_url: UriSchema.optional(),
+    attributes: z.array(Sep50MetadataAttributeSchema).max(64).default([]),
+    collectionId: z.number().int().positive().nullable().optional(),
+  })
+  .strict()
+
+export type Sep50Metadata = z.infer<typeof Sep50MetadataSchema>
+
+export class FollowStoreValidationError extends Error {
+  code: "FLAG_DISABLED" | "SEP50_METADATA_INVALID"
+  details?: unknown
+
+  constructor(code: FollowStoreValidationError["code"], message: string, details?: unknown) {
+    super(message)
+    this.name = "FollowStoreValidationError"
+    this.code = code
+    this.details = details
+  }
+}
+
+export function isPhase118Enabled(): boolean {
+  return isFeatureEnabled("phase-118")
+}
+
+export function phase118RollbackNote(): string {
+  return flagRollbackNote("phase-118")
+}
+
+export function validateSep50MetadataBeforePin(input: unknown, opts: { force?: boolean } = {}):
+  | { ok: true; metadata: Sep50Metadata }
+  | { ok: false; error: FollowStoreValidationError } {
+  if (!opts.force && !isPhase118Enabled()) {
+    return {
+      ok: false,
+      error: new FollowStoreValidationError("FLAG_DISABLED", "phase-118 flag disabled", {
+        rollback: phase118RollbackNote(),
+      }),
+    }
+  }
+
+  const parsed = Sep50MetadataSchema.safeParse(input)
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: new FollowStoreValidationError(
+        "SEP50_METADATA_INVALID",
+        "Metadata does not satisfy SEP-50-compatible JSON requirements",
+        parsed.error.flatten(),
+      ),
+    }
+  }
+
+  return { ok: true, metadata: parsed.data }
+}
 
 async function readStore(): Promise<FollowStore> {
   try {
