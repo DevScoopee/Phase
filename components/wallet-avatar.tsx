@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 
-// ─── phase-117: multi-gateway fallback client wiring ────────────────────────
+// ??? phase-117: multi-gateway fallback client wiring ????????????????????????
 // Preserves original lazy-load + initials fallback. When an image fails,
 // tries alternate gateways for the same CID (redundancy).
 
@@ -34,6 +34,7 @@ type AvatarData = {
   tokenId: number
   image?: string
   name: string
+  locale?: string
 }
 
 function getInitials(wallet: string, displayName?: string): string {
@@ -141,7 +142,7 @@ export function WalletAvatar({
         ref={ref}
         className={`shrink-0 rounded-full overflow-hidden border border-violet-700/40 ${className}`}
         style={{ width: size, height: size }}
-        title={avatar?.name}
+        title={avatar?.locale ? `${avatar.name} (${avatar.locale})` : avatar?.name}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img

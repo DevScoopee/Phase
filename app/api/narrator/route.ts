@@ -145,6 +145,11 @@ export async function POST(request: NextRequest) {
     lore_input: loreInput,
   })
 
+  // phase-106 (spike): record an additive version-history entry, fire-and-forget
+  if (isLoreVersioningEnabled()) {
+    void recordLoreVersion(tokenId, { narrative, lore_input: loreInput }).catch(() => { /* silent */ })
+  }
+
   // Notify world creator if provided (fire-and-forget)
   const creatorWallet = typeof body.creator_wallet === "string" ? body.creator_wallet.trim() : ""
   if (creatorWallet) {

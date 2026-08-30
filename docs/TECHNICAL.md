@@ -218,7 +218,7 @@ NEXT_PUBLIC_FEATURE_PHASE_121=1
 NEXT_PUBLIC_FEATURE_PHASE_122=1
 NEXT_PUBLIC_FEATURE_PHASE_123=1
 NEXT_PUBLIC_FEATURE_PHASE_124=1
-# Server-only aliases also accepted: FEATURE_PHASE_116, etc.
+# Server-only aliases also accepted: FEATURE_PHASE_104, etc.
 ```
 
 Rollback: unset the var or set `0` and restart. No ledger migration to revert; off-chain stores remain but are ignored when flag off. See `PROJECT_ARCHITECTURE.md` §10.

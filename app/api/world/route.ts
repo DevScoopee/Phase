@@ -5,11 +5,13 @@ import {
   getAllNarrativesCount,
   countCollectorsInWorlds,
   getRecentNarrativesForCollection,
+  getWorldForCollection,
   saveWorldForCollection,
   ensureWorldOwner,
   type NarratorTone,
 } from "@/lib/narrative-world-store"
 import { checkAndUnlock } from "@/lib/achievement-store"
+import { checkWorldConflict } from "@/lib/world-conflict"
 
 export type WorldsListItem = {
   collectionId: number
@@ -19,6 +21,8 @@ export type WorldsListItem = {
   narrativeCount: number
   latestNarrative: string | null
   narrator_tone?: NarratorTone
+  /** Current revision — pass as `expected_version` on the next save (phase-105). */
+  version?: number
 }
 
 export type WorldsGlobalStats = {
@@ -41,6 +45,7 @@ export async function GET() {
         narrativeCount: narratives.length,
         latestNarrative: narratives[0]?.narrative ?? null,
         narrator_tone: data.narrator_tone,
+        version: data.version,
       }
     }),
   )
@@ -73,6 +78,8 @@ type WorldSaveBody = {
   world_prompt?: unknown
   narrator_tone?: unknown
   creator_wallet?: unknown
+  /** Client's last-known world version — only checked when phase-105 is enabled. */
+  expected_version?: unknown
 }
 
 function isNonEmptyString(v: unknown): v is string {

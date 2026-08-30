@@ -59,6 +59,7 @@ export async function saveWorldForCollection(
     ...(data.narrator_tone !== undefined ? { narrator_tone: data.narrator_tone } : {}),
     ...(data.creator_wallet !== undefined ? { creator_wallet: data.creator_wallet } : {}),
     created_at: existing?.created_at ?? Date.now(),
+    version: (existing?.version ?? 0) + 1,
   }
   await writeJsonStore(filePath, store)
 }
