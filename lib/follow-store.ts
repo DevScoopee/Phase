@@ -3,13 +3,43 @@ import path from "node:path"
 import { z } from "zod"
 import { isFeatureEnabled, flagRollbackNote } from "@/lib/feature-flags"
 import { serverDataJsonPath } from "@/lib/server-data-paths"
+import { HORIZON_URL } from "@/lib/phase-protocol"
 
-type FollowEntry = {
+export type FollowEntry = {
   following: string[]   // wallets this address follows
   followers: string[]   // wallets following this address
 }
 
-type FollowStore = Record<string, FollowEntry>
+export type FollowStore = Record<string, FollowEntry>
+
+export const FollowSuggestionQuerySchema = z.object({
+  wallet: z.string().trim().regex(/^G[A-Z2-7]{55}$/, "Invalid wallet"),
+  limit: z.coerce.number().int().min(1).max(25).default(8),
+})
+
+export type OnChainNeighbor = {
+  wallet: string
+  sharedAssets: number
+}
+
+export type FollowSuggestion = {
+  wallet: string
+  displayName?: string
+  score: number
+  mutualFollows: number
+  sharedAssets: number
+  followerCount: number
+}
+
+type HorizonAssetBalance = {
+  asset_type?: string
+  asset_code?: string
+  asset_issuer?: string
+}
+
+type HorizonAccountPage = {
+  _embedded?: { records?: Array<{ account_id?: string }> }
+}
 
 const UriSchema = z
   .string()
@@ -145,4 +175,91 @@ export async function getFollowCounts(wallet: string): Promise<{ followers: numb
 export async function isFollowing(fromWallet: string, toWallet: string): Promise<boolean> {
   const store = await readStore()
   return store[fromWallet]?.following.includes(toWallet) ?? false
+}
+
+/**
+ * Deterministically ranks candidates from the social graph and Stellar
+ * trustline co-membership graph. Existing follows and the viewer are excluded.
+ */
+export function rankFollowSuggestions(
+  viewer: string,
+  store: FollowStore,
+  onChainNeighbors: OnChainNeighbor[],
+  limit = 8,
+): FollowSuggestion[] {
+  const following = new Set(store[viewer]?.following ?? [])
+  const candidates = new Map<string, { mutualFollows: number; sharedAssets: number }>()
+
+  for (const followedWallet of following) {
+    for (const candidate of store[followedWallet]?.following ?? []) {
+      if (candidate === viewer || following.has(candidate)) continue
+      const current = candidates.get(candidate) ?? { mutualFollows: 0, sharedAssets: 0 }
+      current.mutualFollows += 1
+      candidates.set(candidate, current)
+    }
+  }
+
+  for (const neighbor of onChainNeighbors) {
+    if (neighbor.wallet === viewer || following.has(neighbor.wallet)) continue
+    const current = candidates.get(neighbor.wallet) ?? { mutualFollows: 0, sharedAssets: 0 }
+    current.sharedAssets = Math.max(current.sharedAssets, neighbor.sharedAssets)
+    candidates.set(neighbor.wallet, current)
+  }
+
+  return [...candidates.entries()]
+    .map(([wallet, evidence]) => {
+      const followerCount = store[wallet]?.followers.length ?? 0
+      return {
+        wallet,
+        mutualFollows: evidence.mutualFollows,
+        sharedAssets: evidence.sharedAssets,
+        followerCount,
+        score: evidence.mutualFollows * 5 + evidence.sharedAssets * 3 + Math.min(followerCount, 10),
+      }
+    })
+    .sort((a, b) => b.score - a.score || b.mutualFollows - a.mutualFollows || a.wallet.localeCompare(b.wallet))
+    .slice(0, limit)
+}
+
+/**
+ * Reads a bounded Stellar testnet neighborhood by finding accounts that share
+ * the viewer's first few non-native trustlines. Failures degrade to the local
+ * social graph so suggestions never make profile pages unavailable.
+ */
+export async function getOnChainNeighbors(wallet: string): Promise<OnChainNeighbor[]> {
+  try {
+    const accountRes = await fetch(`${HORIZON_URL}/accounts/${encodeURIComponent(wallet)}`, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    })
+    if (!accountRes.ok) return []
+    const account = (await accountRes.json()) as { balances?: HorizonAssetBalance[] }
+    const assets = (account.balances ?? [])
+      .filter((balance) => balance.asset_type !== "native" && balance.asset_code && balance.asset_issuer)
+      .slice(0, 4)
+
+    const counts = new Map<string, number>()
+    await Promise.all(assets.map(async (asset) => {
+      const assetId = `${asset.asset_code}:${asset.asset_issuer}`
+      const res = await fetch(`${HORIZON_URL}/accounts?asset=${encodeURIComponent(assetId)}&limit=40`, {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      })
+      if (!res.ok) return
+      const page = (await res.json()) as HorizonAccountPage
+      for (const record of page._embedded?.records ?? []) {
+        const candidate = record.account_id
+        if (!candidate || candidate === wallet) continue
+        counts.set(candidate, (counts.get(candidate) ?? 0) + 1)
+      }
+    }))
+    return [...counts].map(([candidate, sharedAssets]) => ({ wallet: candidate, sharedAssets }))
+  } catch {
+    return []
+  }
+}
+
+export async function getFollowSuggestions(wallet: string, limit = 8): Promise<FollowSuggestion[]> {
+  const [store, onChainNeighbors] = await Promise.all([readStore(), getOnChainNeighbors(wallet)])
+  return rankFollowSuggestions(wallet, store, onChainNeighbors, limit)
 }

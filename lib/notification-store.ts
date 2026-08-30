@@ -11,6 +11,7 @@ export type NotificationType =
   | "narrator_generated"
   | "new_follower"
   | "signal_reply"
+  | "mention"
   | "signal_upvote"
   | "quest_completed"
   | "world_mint"

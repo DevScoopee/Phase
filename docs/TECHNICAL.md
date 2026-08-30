@@ -200,12 +200,16 @@ Critical groups:
 - Gemini runtime (`GEMINI_API_KEY`)
 - Writable server data directory (`PHASE_SERVER_DATA_DIR`)
 
-### 9.1 Feature flags (phase-107,111,113,114 + 116..124)
+### 9.1 Feature flags (phase-88..91, 107,111,113,114 + 116..124)
 
 All flags default to **off** (safe rollback). Set to `1`/`true` to enable.
 
 ```
-# Enable all twelve (example)
+# Enable all supported flags (example)
+NEXT_PUBLIC_FEATURE_PHASE_88=1
+NEXT_PUBLIC_FEATURE_PHASE_89=1
+NEXT_PUBLIC_FEATURE_PHASE_90=1
+NEXT_PUBLIC_FEATURE_PHASE_91=1
 NEXT_PUBLIC_FEATURE_PHASE_107=1
 NEXT_PUBLIC_FEATURE_PHASE_111=1
 NEXT_PUBLIC_FEATURE_PHASE_113=1

@@ -12,6 +12,7 @@ const FILES = {
   profileSocials: "profile-socials.json",
   signals: "signals.json",
   signalReplies: "signal-replies.json",
+  signalModerationAudit: "signal-moderation-audit.json",
   profileFollows: "profile-follows.json",
   notifications: "notifications.json",
   notificationPreferences: "notification-preferences.json",

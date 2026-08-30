@@ -1,10 +1,13 @@
 import {
   fetchCollectionInfo,
+  fetchCreatorCollectionIds,
   fetchPhaseLevelForToken,
   fetchTokenCollectionIdForToken,
   fetchTokenOwnerAddress,
   extractIpfsGatewaySubpath,
 } from "@/lib/phase-protocol"
+import { getProfile, type ProfileData } from "@/lib/profile-store"
+import { isVerifiedArtist } from "@/lib/artist-attestation"
 import { z } from "zod"
 
 // ── phase-123: IPFS timeout fallback chain (isolated, flag-gated) ──
@@ -133,6 +136,93 @@ function resolvePublicImageUri(raw: string, base: string): string {
   return t
 }
 
+// ── phase-93: profile completeness scoring with on-chain signals (isolated) ──
+// No incentive previously existed to enrich creator profiles. This module
+// scores a wallet's profile (off-chain fields) plus on-chain signals (minted
+// collections, verified-artist badge) into a 0-100 completeness score, surfaced
+// as a token metadata attribute. Preserves public/phaser-liq.metadata.json
+// wiring: that file is a fixed asset manifest and is never mutated here.
+// Flag: NEXT_PUBLIC_FEATURE_PHASE_93 / FEATURE_PHASE_93 — rollback: unset flag
+// (metadata build falls back to its pre-existing attribute set, unchanged).
+
+export function isPhase93Enabled(): boolean {
+  const v = (process.env.NEXT_PUBLIC_FEATURE_PHASE_93 ?? process.env.FEATURE_PHASE_93 ?? "").trim().toLowerCase()
+  return v === "1" || v === "true" || v === "yes" || v === "on"
+}
+
+export const ProfileCompletenessInputSchema = z.object({
+  hasDisplayName: z.boolean(),
+  hasAvatar: z.boolean(),
+  socialLinksCount: z.number().int().min(0).max(3),
+  collectionsCreated: z.number().int().min(0),
+  isVerifiedArtist: z.boolean(),
+})
+
+export type ProfileCompletenessInput = z.infer<typeof ProfileCompletenessInputSchema>
+
+export type ProfileCompletenessBreakdown = {
+  displayName: number
+  avatar: number
+  socialLinks: number
+  onChainCollections: number
+  verifiedArtist: number
+}
+
+export type ProfileCompletenessScore = {
+  score: number
+  breakdown: ProfileCompletenessBreakdown
+}
+
+/** Weighted, deterministic, pure scoring function — easy to unit test in isolation. */
+export function computeProfileCompletenessScore(input: ProfileCompletenessInput): ProfileCompletenessScore {
+  const parsed = ProfileCompletenessInputSchema.parse(input)
+  const breakdown: ProfileCompletenessBreakdown = {
+    displayName: parsed.hasDisplayName ? 20 : 0,
+    avatar: parsed.hasAvatar ? 20 : 0,
+    socialLinks: Math.min(parsed.socialLinksCount, 3) * 10, // up to 30
+    onChainCollections: Math.min(parsed.collectionsCreated, 3) * 5, // up to 15
+    verifiedArtist: parsed.isVerifiedArtist ? 15 : 0,
+  }
+  const score = Object.values(breakdown).reduce((a, b) => a + b, 0)
+  return { score: Math.min(100, score), breakdown }
+}
+
+function profileCompletenessInputFromProfile(
+  profile: ProfileData | null,
+  collectionsCreated: number,
+  verifiedArtist: boolean,
+): ProfileCompletenessInput {
+  const socialLinksCount = [profile?.twitter, profile?.discord, profile?.telegram].filter((v) => !!v?.trim()).length
+  return {
+    hasDisplayName: !!profile?.display_name?.trim(),
+    hasAvatar: !!profile?.avatar_image_url?.trim() || !!profile?.avatar_token_id,
+    socialLinksCount: Math.min(socialLinksCount, 3),
+    collectionsCreated,
+    isVerifiedArtist: verifiedArtist,
+  }
+}
+
+/**
+ * Resolves the owner's profile completeness score using their off-chain
+ * profile plus on-chain signals (minted collections, verified-artist badge).
+ * Best-effort: any lookup failure degrades to a null score, never throws.
+ */
+export async function resolveOwnerProfileCompleteness(owner: string): Promise<ProfileCompletenessScore | null> {
+  if (!isPhase93Enabled()) return null
+  try {
+    const [profile, collectionIds, verified] = await Promise.all([
+      getProfile(owner),
+      fetchCreatorCollectionIds(owner).catch(() => [] as number[]),
+      isVerifiedArtist(owner).catch(() => false),
+    ])
+    return computeProfileCompletenessScore(
+      profileCompletenessInputFromProfile(profile, collectionIds.length, verified),
+    )
+  } catch {
+    return null
+  }
+}
+
 export type PhaseTokenMetadataJson = {
   name: string
   description: string
@@ -179,6 +269,8 @@ export async function buildPhaseTokenMetadataJson(
       ? `Forged on Soroban via x402 AI Protocol · PHASE level ${phaseLevel}`
       : "Forged on Soroban via x402 AI Protocol"
 
+  const ownerCompleteness = await resolveOwnerProfileCompleteness(owner)
+
   return {
     name,
     description,
@@ -192,6 +284,9 @@ export async function buildPhaseTokenMetadataJson(
       ...(phaseLevel && phaseLevel.length > 0 ? [{ trait_type: "phase_level", value: phaseLevel }] : []),
       { trait_type: "network", value: "stellar-testnet" },
       { trait_type: "standard", value: "SEP-50-draft" },
+      ...(ownerCompleteness
+        ? [{ trait_type: "creator_profile_completeness", value: ownerCompleteness.score, display_type: "number" as const }]
+        : []),
     ],
     collectionId: colId != null && Number.isFinite(colId) ? colId : null,
   }

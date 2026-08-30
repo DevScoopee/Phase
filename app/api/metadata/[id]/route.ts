@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { StrKey } from "@stellar/stellar-sdk"
 import { z } from "zod"
-import { buildPhaseTokenMetadataJson, PhaseMetadataRequestSchema } from "@/lib/phase-nft-metadata-build"
+import { buildPhaseTokenMetadataJson, isPhase93Enabled, PhaseMetadataRequestSchema } from "@/lib/phase-nft-metadata-build"
 import { phaseProtocolContractIdForServer } from "@/lib/phase-protocol"
 
 export const dynamic = "force-dynamic"
@@ -84,6 +84,7 @@ export async function GET(
         ...corsJson,
         "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
         ...(isPhase123Enabled() ? { "X-Phase-IPFS-Fallback": "enabled" } : {}),
+        ...(isPhase93Enabled() ? { "X-Phase-Profile-Completeness": "enabled" } : {}),
       },
     },
   )

@@ -4,6 +4,11 @@ import { IpfsDisplayImg } from "@/components/ipfs-display-img"
 import { cn } from "@/lib/utils"
 import { viewerSignatureShort } from "@/lib/viewer-signature"
 
+// ── phase-92: push notifications for replies and mentions ──
+// This preview component renders independently of push-subscription state
+// (core logic lives in lib/push-notifications.ts); no change needed here —
+// verified for zero regression.
+
 // ── phase-122: off-chain delta display hint (flag-gated, zero regression when off) ──
 function isPhase122Enabled(): boolean {
   const v = (typeof process !== "undefined" ? (process.env.NEXT_PUBLIC_FEATURE_PHASE_122 ?? "") : "")?.trim().toLowerCase()
