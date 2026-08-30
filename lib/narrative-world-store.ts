@@ -9,8 +9,7 @@ export type WorldCollectionData = {
   world_prompt: string
   created_at: number
   narrator_tone?: NarratorTone
-  /** Monotonically increasing revision, used for conflict detection (phase-105). */
-  version?: number
+  creator_wallet?: string
 }
 
 export type WorldNarrativeData = {
@@ -46,7 +45,9 @@ export async function getWorldForCollection(collectionId: number): Promise<World
 
 export async function saveWorldForCollection(
   collectionId: number,
-  data: Pick<WorldCollectionData, "world_name" | "world_prompt" | "narrator_tone">,
+  data: Pick<WorldCollectionData, "world_name" | "world_prompt" | "narrator_tone"> & {
+    creator_wallet?: string
+  },
 ): Promise<void> {
   const filePath = serverDataJsonPath("worldCollections")
   const store = await readJsonStore<WorldCollectionsStore>(filePath)
@@ -56,6 +57,7 @@ export async function saveWorldForCollection(
     world_name: data.world_name,
     world_prompt: data.world_prompt,
     ...(data.narrator_tone !== undefined ? { narrator_tone: data.narrator_tone } : {}),
+    ...(data.creator_wallet !== undefined ? { creator_wallet: data.creator_wallet } : {}),
     created_at: existing?.created_at ?? Date.now(),
     version: (existing?.version ?? 0) + 1,
   }

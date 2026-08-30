@@ -17,7 +17,9 @@ const FILES = {
   marketListings: "market-listings.json",
   marketOffers: "market-offers.json",
   achievements: "achievements.json",
-  loreVersions: "lore-versions.json",
+  worldLoreLinks: "world-lore-links.json",
+  worldRoles: "world-roles.json",
+  worldReaderProgress: "world-reader-progress.json",
 } as const
 
 export type ServerDataFile = keyof typeof FILES
