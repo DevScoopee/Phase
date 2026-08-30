@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { StrKey } from "@stellar/stellar-sdk"
-import { followUser, unfollowUser, getFollowCounts, isFollowing } from "@/lib/follow-store"
+import {
+  FollowSuggestionQuerySchema,
+  followUser,
+  unfollowUser,
+  getFollowCounts,
+  getFollowSuggestions,
+  isFollowing,
+} from "@/lib/follow-store"
+import { isFeatureEnabled } from "@/lib/feature-flags"
 import { createNotification } from "@/lib/notification-store"
 import { getProfile } from "@/lib/profile-store"
 import { checkAndUnlock } from "@/lib/achievement-store"
@@ -12,6 +20,24 @@ export async function GET(request: NextRequest) {
   const wallet = request.nextUrl.searchParams.get("wallet")?.trim() ?? ""
   if (!wallet || !StrKey.isValidEd25519PublicKey(wallet)) {
     return NextResponse.json({ error: "Invalid wallet" }, { status: 400 })
+  }
+  if (request.nextUrl.searchParams.get("mode") === "suggestions") {
+    if (!isFeatureEnabled("phase-88")) {
+      return NextResponse.json({ error: "Follow suggestions are disabled" }, { status: 404 })
+    }
+    const parsed = FollowSuggestionQuerySchema.safeParse({
+      wallet,
+      limit: request.nextUrl.searchParams.get("limit") ?? undefined,
+    })
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid query" }, { status: 400 })
+    }
+    const suggestions = await getFollowSuggestions(parsed.data.wallet, parsed.data.limit)
+    const enriched = await Promise.all(suggestions.map(async (suggestion) => {
+      const profile = await getProfile(suggestion.wallet)
+      return { ...suggestion, displayName: profile?.display_name }
+    }))
+    return NextResponse.json({ suggestions: enriched })
   }
   const viewer = request.nextUrl.searchParams.get("viewer")?.trim() ?? ""
   const counts = await getFollowCounts(wallet)

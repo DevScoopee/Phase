@@ -5,6 +5,10 @@
  * Rollback: unset the env var or set to "0"/"false" and restart. No migration to undo.
  *
  * Flags:
+ * - phase-88: on-chain follow suggestions
+ * - phase-89: scheduled signal broadcast queues
+ * - phase-90: community polls as a signal subtype
+ * - phase-91: moderator-attributed signal audit log
  * - phase-107: AI story-arc continuity validator across artifacts
  * - phase-111: localized narrative caching per language pack
  * - phase-113: narrative content moderation with takedown flow
