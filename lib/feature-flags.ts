@@ -33,6 +33,10 @@ export type PhaseFeatureFlag =
   | "phase-77"
   | "phase-78"
   | "phase-79"
+  | "phase-84"
+  | "phase-85"
+  | "phase-86"
+  | "phase-87"
   | "phase-88"
   | "phase-89"
   | "phase-90"
@@ -65,16 +69,21 @@ export type PhaseFeatureFlag =
   | "phase-124"
   | "phase-127"
   | "phase-128"
+  | "phase-128"
   | "phase-130"
   | "phase-131"
   | "phase-132"
-  | "phase-133"
+  | "phase-133";
 
 const FLAG_ENV_MAP: Record<PhaseFeatureFlag, string[]> = {
   "phase-66": ["NEXT_PUBLIC_FEATURE_PHASE_66", "FEATURE_PHASE_66"],
   "phase-77": ["NEXT_PUBLIC_FEATURE_PHASE_77", "FEATURE_PHASE_77"],
   "phase-78": ["NEXT_PUBLIC_FEATURE_PHASE_78", "FEATURE_PHASE_78"],
   "phase-79": ["NEXT_PUBLIC_FEATURE_PHASE_79", "FEATURE_PHASE_79"],
+  "phase-84": ["NEXT_PUBLIC_FEATURE_PHASE_84", "FEATURE_PHASE_84"],
+  "phase-85": ["NEXT_PUBLIC_FEATURE_PHASE_85", "FEATURE_PHASE_85"],
+  "phase-86": ["NEXT_PUBLIC_FEATURE_PHASE_86", "FEATURE_PHASE_86"],
+  "phase-87": ["NEXT_PUBLIC_FEATURE_PHASE_87", "FEATURE_PHASE_87"],
   "phase-88": ["NEXT_PUBLIC_FEATURE_PHASE_88", "FEATURE_PHASE_88"],
   "phase-89": ["NEXT_PUBLIC_FEATURE_PHASE_89", "FEATURE_PHASE_89"],
   "phase-90": ["NEXT_PUBLIC_FEATURE_PHASE_90", "FEATURE_PHASE_90"],
@@ -111,31 +120,36 @@ const FLAG_ENV_MAP: Record<PhaseFeatureFlag, string[]> = {
   "phase-131": ["NEXT_PUBLIC_FEATURE_PHASE_131", "FEATURE_PHASE_131"],
   "phase-132": ["NEXT_PUBLIC_FEATURE_PHASE_132", "FEATURE_PHASE_132"],
   "phase-133": ["NEXT_PUBLIC_FEATURE_PHASE_133", "FEATURE_PHASE_133"],
-}
+};
 
 function isTruthy(v: string | undefined): boolean {
-  if (!v) return false
-  const s = v.trim().toLowerCase()
-  return s === "1" || s === "true" || s === "yes" || s === "on"
+  if (!v) return false;
+  const s = v.trim().toLowerCase();
+  return s === "1" || s === "true" || s === "yes" || s === "on";
 }
 
 export function isFeatureEnabled(flag: PhaseFeatureFlag): boolean {
   const keys = FLAG_ENV_MAP[flag] ?? [
     `NEXT_PUBLIC_FEATURE_${flag.replace(/-/g, "_").toUpperCase()}`,
     `FEATURE_${flag.replace(/-/g, "_").toUpperCase()}`,
-  ]
+  ];
   for (const k of keys) {
-    const v = (typeof process !== "undefined" ? (process.env as Record<string, string | undefined>)[k] : undefined)
-    if (isTruthy(v)) return true
+    const v =
+      typeof process !== "undefined"
+        ? (process.env as Record<string, string | undefined>)[k]
+        : undefined;
+    if (isTruthy(v)) return true;
   }
-  return false
+  return false;
 }
 
 export function featureFlagEnvKeys(flag: PhaseFeatureFlag): string[] {
-  return FLAG_ENV_MAP[flag] ? [...FLAG_ENV_MAP[flag]] : [
-    `NEXT_PUBLIC_FEATURE_${flag.replace(/-/g, "_").toUpperCase()}`,
-    `FEATURE_${flag.replace(/-/g, "_").toUpperCase()}`,
-  ]
+  return FLAG_ENV_MAP[flag]
+    ? [...FLAG_ENV_MAP[flag]]
+    : [
+        `NEXT_PUBLIC_FEATURE_${flag.replace(/-/g, "_").toUpperCase()}`,
+        `FEATURE_${flag.replace(/-/g, "_").toUpperCase()}`,
+      ];
 }
 
 export function getEnabledFeatureFlags(): PhaseFeatureFlag[] {
@@ -180,11 +194,11 @@ export function getEnabledFeatureFlags(): PhaseFeatureFlag[] {
     "phase-131",
     "phase-132",
     "phase-133",
-  ]
+  ];
   return all.filter(isFeatureEnabled)
 }
 
 export function flagRollbackNote(flag: PhaseFeatureFlag): string {
-  const keys = featureFlagEnvKeys(flag).join(" / ")
-  return `Rollback ${flag}: unset ${keys} or set to 0/false and restart. No data migration to revert.`
+  const keys = featureFlagEnvKeys(flag).join(" / ");
+  return `Rollback ${flag}: unset ${keys} or set to 0/false and restart. No data migration to revert.`;
 }
