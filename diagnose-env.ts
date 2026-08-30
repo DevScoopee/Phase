@@ -7,6 +7,8 @@ import {
   validatePhaseEnv,
   formatEnvValidationErrors,
   validateFaucetIssuerConfig,
+  auditFollowGraphPortabilityWiring,
+  isPhase95Enabled,
 } from "@/lib/env-validation"
 import {
   classicLiqIssuerForStellarToml,
@@ -118,6 +120,13 @@ console.log(`   Esperado:    ${classicIssuer}`)
 if (!classicIssuerEnv) {
   console.warn("   ⚠️  NEXT_PUBLIC_CLASSIC_LIQ_ISSUER no configurado")
   console.warn("      Se usará el issuer por defecto. Para producción, configura esta variable.")
+}
+
+// 5b. Follow-graph export/import portability (phase-95)
+if (isPhase95Enabled()) {
+  console.log("\n🔀 Follow-graph export/import portability (phase-95):")
+  const portabilityAudit = auditFollowGraphPortabilityWiring()
+  console.log(`   ${portabilityAudit.ok ? "✅" : "❌"} ${portabilityAudit.note}`)
 }
 
 // 6. Resumen

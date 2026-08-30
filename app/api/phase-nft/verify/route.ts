@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { fetchTokenOwnerAddress, phaseProtocolContractIdForServer } from "@/lib/phase-protocol"
+import { auditPushNotificationWiring, isPhase92Enabled } from "@/lib/stellar"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -101,5 +102,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     tokenId: tid,
     ...(delta ? { delta } : {}),
     ...(isPhase122Enabled() ? { storage: { onChainStub: `delta:${tid}:<hash8>`, note: "Full metadata off-chain (phase-122); on-chain holds stub only. Rollback: unset FEATURE_PHASE_122." } } : {}),
+    // phase-92: audit-only wiring hook — verifies push subscription/dispatch pipeline
+    // is loadable without altering NFT ownership verification above.
+    ...(isPhase92Enabled() ? { pushNotifications: auditPushNotificationWiring() } : {}),
   })
 }
