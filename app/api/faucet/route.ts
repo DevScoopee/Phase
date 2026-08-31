@@ -644,11 +644,26 @@ export async function POST(req: NextRequest) {
   }
 
   if (nativeXlm < MIN_SIGNER_NATIVE_XLM) {
+    // Check if we have health status information to provide better context
+    let healthContext = ""
+    if (useTransfer) {
+      try {
+        const { getDistributorHealthStatus } = await import("@/lib/distributor-health-store")
+        const healthStatus = await getDistributorHealthStatus()
+        if (healthStatus) {
+          healthContext = ` Sistema de auto-refill está ${healthStatus.status === "healthy" ? "activo" : "en alerta"}. ` +
+                         `Última verificación: ${new Date(healthStatus.checkedAt).toLocaleString()}.`
+        }
+      } catch {
+        // Health status is optional enhancement
+      }
+    }
+
     return NextResponse.json(
       {
         error: `La cuenta firmante tiene solo ${nativeXlm.toFixed(2)} XLM, pero se requieren al menos ${MIN_SIGNER_NATIVE_XLM} XLM ` +
                `para pagar fees de Soroban y renta de almacenamiento. Sin suficiente XLM, las transacciones fallan con ` +
-               `"trap" o "ihf_trapped" (insufficient balance para fees).`,
+               `"trap" o "ihf_trapped" (insufficient balance para fees).${healthContext}`,
         code: "FAUCET_SIGNER_LOW_XLM",
         signer: source,
         nativeXlmApprox: nativeXlm,

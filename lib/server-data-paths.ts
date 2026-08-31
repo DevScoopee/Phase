@@ -29,6 +29,7 @@ const FILES = {
   pushSubscriptions: "push-subscriptions.json",
   watchlists: "watchlists.json",
   questRegistry: "quest-registry.json",
+  distributorHealth: "distributor-health.json",
 } as const
 
 export type ServerDataFile = keyof typeof FILES
