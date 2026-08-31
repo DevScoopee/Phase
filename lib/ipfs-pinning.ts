@@ -275,7 +275,6 @@ export async function pinWithRedundancy(
   if (!isPhase117Enabled()) {
     const primary = config.gateways.find((g) => g.name === "pinata") ?? config.gateways[0]!
     const singleFile = new Blob([ab], { type: file.type || "application/octet-stream" }) as File & { name?: string }
-    // @ts-expect-error — File name assign
     if (!(singleFile as File).name) Object.defineProperty(singleFile, "name", { value: fileName })
     const single = await pinToGateway(primary, singleFile as unknown as Blob, jwt, checksum, { signal: opts.signal, fetchImpl: opts.fetchImpl })
     const ok = single.ok
@@ -297,7 +296,6 @@ export async function pinWithRedundancy(
   const pinBlob = new Blob([ab], { type: file.type || "application/octet-stream" })
   // attach name for FormData
   const namedBlob = pinBlob as Blob & { name?: string }
-  // @ts-expect-error
   if (!namedBlob.name) Object.defineProperty(namedBlob, "name", { value: fileName })
 
   const pinResults: PinResult[] = []
