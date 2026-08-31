@@ -30,6 +30,7 @@ const FILES = {
   watchlists: "watchlists.json",
   questRegistry: "quest-registry.json",
   distributorHealth: "distributor-health.json",
+  sqliteDb: "phase.sqlite3",
 } as const
 
 export type ServerDataFile = keyof typeof FILES
