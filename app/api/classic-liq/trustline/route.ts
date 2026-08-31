@@ -37,6 +37,31 @@ export async function POST(req: NextRequest) {
 
   const parsed = TrustlinePostSchema.safeParse(rawBody)
   if (!parsed.success) {
+    // phase-144 (Module #44): quarantine the malformed payload for operator
+    // review instead of dropping it silently. No-op when the flag is off.
+    const quarantined = await import("@/lib/x402-dead-letter")
+      .then((m) =>
+        m.quarantineInvoice({
+          source: "classic-liq/trustline:POST",
+          raw: rawBody,
+          reasons: parsed.error.issues,
+        }),
+      )
+      .catch((e) => {
+        logHorizonSubmitError("classic-liq/trustline dead-letter write", e)
+        return null
+      })
+    if (quarantined?.quarantined) {
+      return NextResponse.json(
+        {
+          error: "Malformed request quarantined for review.",
+          code: "QUARANTINED",
+          deadLetterId: quarantined.id,
+          details: parsed.error.flatten(),
+        },
+        { status: 422 },
+      )
+    }
     return NextResponse.json({ error: "signedXdr es requerido.", details: parsed.error.flatten() }, { status: 400 })
   }
 
@@ -48,36 +73,47 @@ export async function POST(req: NextRequest) {
   if (!isBatch && isPhase119Enabled() && parsed.data.cid) {
     const cidStr = parsed.data.cid.trim()
     const expected = parsed.data.expectedSha256 ?? null
-    // Validate CID format strictly
-    const { CidSchema, verifyBytesIntegrity, sha256Hex, getCachedCid } = await import("@/lib/cid-cache")
-    const cidCheck = CidSchema.safeParse(cidStr)
-    if (!cidCheck.success) {
-      return NextResponse.json({ error: `Invalid CID: ${cidStr.slice(0, 12)}…`, code: "CID_INVALID" }, { status: 400 })
-    }
-    // If cidPath provided, fetch and verify tampering
-    if (parsed.data.cidPath) {
-      try {
-        const { fetchWithCidCache } = await import("@/lib/cid-cache")
-        const fetched = await fetchWithCidCache(parsed.data.cidPath, { expectedSha256: expected })
-        if (!fetched.ok) {
-          return NextResponse.json({ error: fetched.error, code: fetched.code, cid: cidStr }, { status: 409 })
-        }
-        // verified — continue to trustline submission
-      } catch (e) {
-        return NextResponse.json({ error: e instanceof Error ? e.message : String(e), code: "CID_VERIFY_FAILED" }, { status: 409 })
+    try {
+      // Validate CID format strictly
+      const { CidSchema, verifyBytesIntegrity, sha256Hex, getCachedCid } = await import("@/lib/cid-cache")
+      const cidCheck = CidSchema.safeParse(cidStr)
+      if (!cidCheck.success) {
+        return NextResponse.json({ error: `Invalid CID: ${cidStr.slice(0, 12)}…`, code: "CID_INVALID" }, { status: 400 })
       }
-    } else if (expected) {
-      // CID + expected hash supplied without bytes: check cache integrity
-      try {
-        const cached = await getCachedCid(cidStr, { expectedSha256: expected })
-        if (cached && !verifyBytesIntegrity(cached.bytes, expected)) {
-          return NextResponse.json({ error: `Cached CID ${cidStr.slice(0, 8)}… fails integrity check`, code: "HASH_MISMATCH" }, { status: 409 })
+      // If cidPath provided, fetch and verify tampering
+      if (parsed.data.cidPath) {
+        try {
+          const { fetchWithCidCache } = await import("@/lib/cid-cache")
+          const fetched = await fetchWithCidCache(parsed.data.cidPath, { expectedSha256: expected })
+          if (!fetched.ok) {
+            return NextResponse.json({ error: fetched.error, code: fetched.code, cid: cidStr }, { status: 409 })
+          }
+          // verified — continue to trustline submission
+        } catch (e) {
+          return NextResponse.json({ error: e instanceof Error ? e.message : String(e), code: "CID_VERIFY_FAILED" }, { status: 409 })
         }
-        // if not cached, we allow submission but warn via header later
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e)
-        return NextResponse.json({ error: msg, code: "CID_TAMPERED" }, { status: 409 })
+      } else if (expected) {
+        // CID + expected hash supplied without bytes: check cache integrity
+        try {
+          const cached = await getCachedCid(cidStr, { expectedSha256: expected })
+          if (cached && !verifyBytesIntegrity(cached.bytes, expected)) {
+            return NextResponse.json({ error: `Cached CID ${cidStr.slice(0, 8)}… fails integrity check`, code: "HASH_MISMATCH" }, { status: 409 })
+          }
+          // if not cached, we allow submission but warn via header later
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e)
+          return NextResponse.json({ error: msg, code: "CID_TAMPERED" }, { status: 409 })
+        }
       }
+    } catch (e) {
+      logHorizonSubmitError("classic-liq/trustline CID boundary", e)
+      await import("@/lib/x402-dead-letter")
+        .then((m) => m.quarantineInvoice({ source: "classic-liq/trustline:cid", raw: rawBody }))
+        .catch(() => {})
+      return NextResponse.json(
+        { error: "CID verification failed unexpectedly.", code: "CID_BOUNDARY_ERROR" },
+        { status: 409 },
+      )
     }
   }
 
@@ -111,7 +147,27 @@ export async function POST(req: NextRequest) {
 }
 
 // GET exposes cache stats when flag enabled (observability, zero regression when off)
-export async function GET() {
+export async function GET(req: NextRequest) {
+  // phase-144 (Module #44): dead-letter review queue for operators.
+  if (new URL(req.url).searchParams.get("view") === "dead-letter") {
+    const { isX402DeadLetterEnabled, listDeadLetterQueue, getDeadLetterStats } = await import(
+      "@/lib/x402-dead-letter"
+    )
+    if (!isX402DeadLetterEnabled()) {
+      return NextResponse.json({ enabled: false, error: "phase-144 flag disabled" }, { status: 404 })
+    }
+    const statusParam = new URL(req.url).searchParams.get("status")
+    const status =
+      statusParam === "open" || statusParam === "resolved" || statusParam === "discarded"
+        ? statusParam
+        : undefined
+    const [queue, stats] = await Promise.all([
+      listDeadLetterQueue({ status, limit: 100 }),
+      getDeadLetterStats(),
+    ])
+    return NextResponse.json({ enabled: true, stats, queue })
+  }
+
   if (!isPhase119Enabled()) {
     return NextResponse.json({ enabled: false, error: "phase-119 flag disabled" }, { status: 404 })
   }

@@ -723,6 +723,61 @@ export function auditCrtWidgetWiring(): { ok: boolean; note: string } {
 export { isPhase117Enabled, flag117RollbackNote } from "@/lib/ipfs-pinning";
 export type { MultiPinResult, PinResult } from "@/lib/ipfs-pinning";
 
+// ─── phase-157 (Module #57): NFT grid virtualization ────────────────────────
+// Rendering all owned tokens froze low-end devices. The pure windowing math
+// lives in lib/nft-grid-virtualization (dependency-free, client + server).
+// Re-exported here so the avatar route and profile surfaces share one source.
+// Rollback: unset NEXT_PUBLIC_FEATURE_PHASE_157 / FEATURE_PHASE_157.
+export {
+  isNftGridVirtualizationEnabled,
+  flag157RollbackNote,
+  computeGridWindow,
+  computeColumnCount,
+  clampScrollTop,
+  sliceVisible,
+  nftGridOverscanPx,
+  VirtualGridParamsSchema,
+  VirtualGridError,
+  DEFAULT_OVERSCAN_ROWS,
+  DEFAULT_OVERSCAN_PX,
+  LEGACY_OVERSCAN_PX,
+} from "@/lib/nft-grid-virtualization";
+export type { VirtualGridParams, VirtualGridWindow } from "@/lib/nft-grid-virtualization";
+
+/**
+ * phase-157: server helper — resolves a windowed page of avatar records for a
+ * batch of wallets in one call, so a grid of many owned-token owners avoids
+ * N round-trips. Best-effort per wallet; failures yield a null avatar.
+ */
+export const BatchAvatarQuerySchema = z.object({
+  wallets: z.array(z.string().trim().length(56).regex(/^G[A-Z2-7]{55}$/)).min(1).max(50),
+});
+
+export async function getAvatarsForWallets(
+  wallets: string[],
+): Promise<Array<{ wallet: string; avatar: { tokenId: number; image: string; name: string } | null }>> {
+  const unique = [...new Set(wallets.map((w) => w.trim()))].slice(0, 50);
+  return Promise.all(
+    unique.map(async (wallet) => {
+      try {
+        const profile = await getProfile(wallet);
+        if (!profile?.avatar_token_id) return { wallet, avatar: null };
+        const locale = normalizeProfileLocale(profile.locale) ?? DEFAULT_PROFILE_LOCALE;
+        return {
+          wallet,
+          avatar: {
+            tokenId: profile.avatar_token_id,
+            image: profile.avatar_image_url ?? "",
+            name: localizeAvatarName(profile.avatar_token_id, locale),
+          },
+        };
+      } catch {
+        return { wallet, avatar: null };
+      }
+    }),
+  );
+}
+
 // ── Issue #105: Trending Signals Aggregator (phase-87) ───────────────────────
 
 export function isPhase87Enabled(): boolean {
