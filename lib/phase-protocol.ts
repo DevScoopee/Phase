@@ -1544,13 +1544,18 @@ export function extractIpfsGatewaySubpath(uri: string): string | null {
   return sub.length > 0 ? sub : null
 }
 
-/** Lista de URLs HTTPS para `<img src>` (reintento gateway si la primera cae). */
+/**
+ * Lista de URLs HTTPS para `<img src>` (reintento gateway si la primera cae).
+ * El proxy propio (`/api/ipfs`) va primero: hace fallback multi-gateway y health
+ * scoring en el servidor, y cachea la respuesta. Los gateways públicos directos
+ * quedan como red de seguridad si el proxy mismo no responde.
+ */
 export function ipfsHttpsGatewayUrls(uri: string): string[] {
   const t = uri.trim()
   if (!t) return []
   const ipfsPath = extractIpfsGatewaySubpath(t)
   if (ipfsPath) {
-    const out: string[] = []
+    const out: string[] = [`/api/ipfs/${ipfsPath}`]
     for (const b of ipfsGatewayBasesOrdered()) {
       const u = `${b}/${ipfsPath}`
       if (!out.includes(u)) out.push(u)
@@ -1904,6 +1909,21 @@ export async function checkHasPhased(
   const art = await fetchUserPhaseArtifact(userAddress, collectionId)
   if (!art || art.tokenId <= 0) return { phased: false }
   return { phased: true, phaseId: art.tokenId, energyLevelBp: art.energyLevelBp }
+}
+
+/**
+ * Multi-claim guard for the custodian-release pipeline: custody alone (token held
+ * by the PHASELQ issuer) is not authorization to release it to an arbitrary
+ * wallet. This is authorized only when the requested tokenId matches the
+ * on-chain phase artifact (`get_user_phase`) already resolved for the
+ * requesting recipient — i.e. they are the wallet that actually phased/settled
+ * this exact token.
+ */
+export function isCustodianReleaseAuthorized(
+  recipientArtifact: { tokenId: number } | null,
+  requestedTokenId: number,
+): boolean {
+  return recipientArtifact != null && recipientArtifact.tokenId === requestedTokenId
 }
 
 /**

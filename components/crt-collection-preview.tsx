@@ -19,6 +19,8 @@ type Props = {
   owner: string | null
   contentHash?: string
   duplicateOfTokenId?: number
+  // module #52 (phase-52): quest_expiry lifecycle state for this artifact's quest, when known.
+  questExpiryState?: "active" | "grace" | "expired"
 }
 
 const SCANLINES = {
@@ -61,6 +63,7 @@ export function CrtCollectionPreview({
   owner,
   contentHash,
   duplicateOfTokenId,
+  questExpiryState,
 }: Props) {
   const collectionName = parseCollectionName(name)
   const creatorDisplay = owner ? truncateAddress(owner) : "UNKNOWN"
@@ -70,6 +73,11 @@ export function CrtCollectionPreview({
     // Queued + deduped (priority warn) so duplicate notices never clobber
     // concurrent preview navigation messages.
     toasts.warn(`DUPLICATE_OF_#${duplicateOfTokenId}`, { title: `PHASE · ${collectionName}` })
+  }
+
+  if (questExpiryState === "grace") {
+    // module #52 (phase-52): grace-window notice, queued/deduped like the duplicate warning.
+    toasts.warn("QUEST_IN_GRACE_PERIOD", { title: `PHASE · ${collectionName}` })
   }
 
   const displayAttrs = attributes.filter(
@@ -163,6 +171,9 @@ export function CrtCollectionPreview({
           )}
           {duplicateOfTokenId && (
             <MetaRow label="DUPLICATE_OF" value={`#${duplicateOfTokenId}`} />
+          )}
+          {questExpiryState && (
+            <MetaRow label="QUEST_EXPIRY" value={questExpiryState.toUpperCase()} />
           )}
           {displayAttrs.map((attr) => (
             <MetaRow

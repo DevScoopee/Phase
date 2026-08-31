@@ -4,9 +4,12 @@ import { z } from "zod"
 import { classicLiqIssuerForStellarToml } from "@/lib/classic-liq"
 import {
   buildTransferPhaseNftTransaction,
+  fetchTokenCollectionIdForToken,
   fetchTokenOwnerAddress,
+  fetchUserPhaseArtifact,
   getGatewayHealthSnapshot,
   getTransactionResult,
+  isCustodianReleaseAuthorized,
   NETWORK_PASSPHRASE,
   phaseProtocolContractIdForServer,
   sendTransaction,
@@ -16,6 +19,11 @@ export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 const PHASE_PROTOCOL_CONTRACT = phaseProtocolContractIdForServer()
+
+// Best-effort in-process lock: prevents concurrent duplicate claims of the same
+// custodial token from racing each other into buildTransferPhaseNftTransaction
+// before the first transfer has landed on-chain.
+const inFlightCustodianReleases = new Set<number>()
 
 // phase-121: gateway health dashboard flag (rollback: unset NEXT_PUBLIC_FEATURE_PHASE_121)
 function isPhase121Enabled(): boolean {
@@ -151,9 +159,35 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: false, error: "Recipient is already the on-chain owner." }, { status: 400 })
   }
 
+  // Multi-claim guard: custody alone is not authorization. Verify on-chain that
+  // this exact tokenId is the one this recipientWallet actually phased/settled
+  // (`get_user_phase`), so an arbitrary caller cannot release someone else's
+  // custodial token to their own wallet by guessing/enumerating tokenIds.
+  const id = Math.floor(tokenId)
+  const collectionId = await fetchTokenCollectionIdForToken(id, recipient, PHASE_PROTOCOL_CONTRACT)
+  const recipientArtifact = await fetchUserPhaseArtifact(recipient, collectionId ?? 0)
+  if (!isCustodianReleaseAuthorized(recipientArtifact, id)) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "TOKEN_NOT_ASSIGNED_TO_RECIPIENT",
+        error: "This token was not phased/settled by the requested recipient wallet; refusing to release custody.",
+      },
+      { status: 403 },
+    )
+  }
+
+  if (inFlightCustodianReleases.has(id)) {
+    return NextResponse.json(
+      { ok: false, code: "RELEASE_IN_PROGRESS", error: "A custodian release for this token is already in progress." },
+      { status: 409 },
+    )
+  }
+  inFlightCustodianReleases.add(id)
+
   try {
     const start = Date.now()
-    const xdr = await buildTransferPhaseNftTransaction(issuerG, recipient, Math.floor(tokenId), { contractId: PHASE_PROTOCOL_CONTRACT })
+    const xdr = await buildTransferPhaseNftTransaction(issuerG, recipient, id, { contractId: PHASE_PROTOCOL_CONTRACT })
     const tx = TransactionBuilder.fromXDR(xdr, NETWORK_PASSPHRASE)
     tx.sign(kp)
     const sendResult = await sendTransaction(tx.toXDR())
@@ -170,7 +204,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       } catch { /* ignore */ }
     }
     return NextResponse.json(
-      { ok: true, hash: hash ?? null, contractId: PHASE_PROTOCOL_CONTRACT, tokenId: Math.floor(tokenId) },
+      { ok: true, hash: hash ?? null, contractId: PHASE_PROTOCOL_CONTRACT, tokenId: id },
       { headers: isPhase121Enabled() ? { "X-Phase-Custodian-Latency-Ms": String(latencyMs) } : undefined },
     )
   } catch (e) {
@@ -182,5 +216,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       } catch { /* ignore */ }
     }
     return NextResponse.json({ ok: false, error: msg }, { status: 502 })
+  } finally {
+    inFlightCustodianReleases.delete(id)
   }
 }

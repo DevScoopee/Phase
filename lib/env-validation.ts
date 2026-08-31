@@ -358,6 +358,186 @@ export function formatEnvValidationErrors(result: EnvValidationResult): string {
   return lines.join("\n")
 }
 
+// ── module #50 (phase-50): quest A/B variant experimentation framework ─────
+//
+// Reward tuning used to be guesswork: a single hard-coded payout with no way to
+// compare alternatives against the same audience. This isolated, flag-gated
+// module assigns a wallet to a weighted variant of a quest experiment
+// deterministically (same wallet → same variant for the life of the
+// experiment), with an optional holdout group, schema-validated config, and
+// typed error boundaries. Nothing here mutates any store — assignment is a pure
+// function of (experimentId, wallet, config).
+//
+// Feature flag: phase-50 (NEXT_PUBLIC_FEATURE_PHASE_50 / FEATURE_PHASE_50)
+// Rollback: unset the flag → assignQuestVariant throws FLAG_DISABLED and callers
+//           fall back to their static reward. No data migration to undo.
+
+export function isQuestExperimentEnabled(): boolean {
+  const v = (process.env.NEXT_PUBLIC_FEATURE_PHASE_50 ?? process.env.FEATURE_PHASE_50 ?? "").trim().toLowerCase()
+  return v === "1" || v === "true" || v === "yes" || v === "on"
+}
+
+export function flag50RollbackNote(): string {
+  return "Rollback phase-50: unset NEXT_PUBLIC_FEATURE_PHASE_50 / FEATURE_PHASE_50 or set to 0/false and restart. Quest reward assignment reverts to the caller's static payout; no data migration to undo."
+}
+
+const QUEST_ID_REGEX = /^[a-z0-9][a-z0-9._-]{0,62}[a-z0-9]$/i
+
+export const QuestVariantSchema = z.object({
+  id: z.string().trim().regex(QUEST_ID_REGEX, "Variant id must be 2-64 chars, alphanumeric plus . _ -"),
+  weight: z.number().finite().gt(0).max(1_000_000),
+  rewardAmount: z.number().finite().min(0).max(1_000_000_000),
+  rewardCurrency: z.string().trim().min(1).max(12).default("PHASELQ"),
+  cooldownHours: z.number().finite().min(0).max(8_760).default(24),
+})
+
+export type QuestVariant = z.infer<typeof QuestVariantSchema>
+
+export const QuestExperimentSchema = z
+  .object({
+    experimentId: z.string().trim().regex(QUEST_ID_REGEX, "experimentId must be 2-64 chars, alphanumeric plus . _ -"),
+    enabled: z.boolean().default(true),
+    holdoutPercent: z.number().finite().min(0).max(90).default(0),
+    variants: z.array(QuestVariantSchema).min(2).max(8),
+  })
+  .refine(
+    (cfg) => new Set(cfg.variants.map((v) => v.id)).size === cfg.variants.length,
+    { message: "Variant ids must be unique within an experiment", path: ["variants"] },
+  )
+
+export type QuestExperiment = z.infer<typeof QuestExperimentSchema>
+
+export class QuestExperimentError extends Error {
+  code: "FLAG_DISABLED" | "VALIDATION_FAILED" | "EXPERIMENT_DISABLED"
+  details?: unknown
+  constructor(code: QuestExperimentError["code"], message: string, details?: unknown) {
+    super(message)
+    this.name = "QuestExperimentError"
+    this.code = code
+    this.details = details
+  }
+}
+
+/** Deterministic 0..9999 bucket for (experimentId, wallet) — FNV-1a, no PRNG state. */
+export function questExperimentBucket(experimentId: string, wallet: string): number {
+  const payload = `${experimentId.trim().toLowerCase()}|${wallet.trim()}`
+  let h = 0x811c9dc5
+  for (let i = 0; i < payload.length; i++) {
+    h = Math.imul(h ^ payload.charCodeAt(i), 0x01000193)
+  }
+  return (h >>> 0) % 10_000
+}
+
+/** Parses and validates a raw experiment config; throws QuestExperimentError on bad input. */
+export function parseQuestExperimentConfig(raw: unknown): QuestExperiment {
+  const parsed = QuestExperimentSchema.safeParse(raw)
+  if (!parsed.success) {
+    throw new QuestExperimentError("VALIDATION_FAILED", "Invalid quest experiment config", parsed.error.flatten())
+  }
+  return parsed.data
+}
+
+export type QuestVariantAssignment = {
+  experimentId: string
+  wallet: string
+  bucket: number
+  holdout: boolean
+  variantId: string | null
+  variant: QuestVariant | null
+}
+
+/**
+ * Assigns a wallet to a weighted variant (or the holdout group) of a quest
+ * experiment. Deterministic: the same wallet always resolves to the same
+ * variant while the config's variant set and weights are unchanged.
+ */
+export function assignQuestVariant(rawConfig: unknown, wallet: string, opts: { force?: boolean } = {}): QuestVariantAssignment {
+  if (!opts.force && !isQuestExperimentEnabled()) {
+    throw new QuestExperimentError("FLAG_DISABLED", "Quest A/B experimentation disabled (phase-50 flag off)", {
+      rollback: flag50RollbackNote(),
+    })
+  }
+  const cleanWallet = wallet.trim()
+  if (!cleanWallet) {
+    throw new QuestExperimentError("VALIDATION_FAILED", "wallet is required for variant assignment")
+  }
+  const config = parseQuestExperimentConfig(rawConfig)
+  if (!config.enabled) {
+    throw new QuestExperimentError("EXPERIMENT_DISABLED", `Experiment "${config.experimentId}" is disabled`)
+  }
+
+  const bucket = questExperimentBucket(config.experimentId, cleanWallet)
+  const holdoutCutoff = Math.round(config.holdoutPercent * 100) // percent → 0..9000 of 10000
+  if (bucket < holdoutCutoff) {
+    return { experimentId: config.experimentId, wallet: cleanWallet, bucket, holdout: true, variantId: null, variant: null }
+  }
+
+  const totalWeight = config.variants.reduce((sum, v) => sum + v.weight, 0)
+  const span = 10_000 - holdoutCutoff
+  const scaled = ((bucket - holdoutCutoff) / span) * totalWeight
+  let cursor = 0
+  for (const variant of config.variants) {
+    cursor += variant.weight
+    if (scaled < cursor) {
+      return { experimentId: config.experimentId, wallet: cleanWallet, bucket, holdout: false, variantId: variant.id, variant }
+    }
+  }
+  const last = config.variants[config.variants.length - 1]!
+  return { experimentId: config.experimentId, wallet: cleanWallet, bucket, holdout: false, variantId: last.id, variant: last }
+}
+
+/** Weight distribution summary for diagnostics / dashboards — no wallet input. */
+export function summarizeQuestExperiment(rawConfig: unknown): {
+  experimentId: string
+  enabled: boolean
+  holdoutPercent: number
+  variants: { id: string; sharePercent: number; rewardAmount: number }[]
+} {
+  const config = parseQuestExperimentConfig(rawConfig)
+  const totalWeight = config.variants.reduce((sum, v) => sum + v.weight, 0)
+  const assignable = 100 - config.holdoutPercent
+  return {
+    experimentId: config.experimentId,
+    enabled: config.enabled,
+    holdoutPercent: config.holdoutPercent,
+    variants: config.variants.map((v) => ({
+      id: v.id,
+      sharePercent: Math.round((v.weight / totalWeight) * assignable * 100) / 100,
+      rewardAmount: v.rewardAmount,
+    })),
+  }
+}
+
+/**
+ * `scripts/diagnose-env.ts` / `diagnose-env.ts` wiring hook: exercises the
+ * schema and the deterministic assignment path against a probe config so config
+ * drift or bucketing regressions surface in the readiness summary.
+ */
+export function auditQuestExperimentWiring(): { ok: boolean; note: string } {
+  if (!isQuestExperimentEnabled()) {
+    return { ok: true, note: "[phase-50] quest A/B experimentation disabled; nothing to audit." }
+  }
+  const probe = {
+    experimentId: "diagnose-probe",
+    holdoutPercent: 10,
+    variants: [
+      { id: "control", weight: 1, rewardAmount: 100 },
+      { id: "variant-a", weight: 1, rewardAmount: 150 },
+    ],
+  }
+  try {
+    const a = assignQuestVariant(probe, "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF", { force: true })
+    const b = assignQuestVariant(probe, "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF", { force: true })
+    if (a.variantId !== b.variantId || a.bucket !== b.bucket) {
+      return { ok: false, note: "[phase-50] quest variant assignment is not deterministic (report)." }
+    }
+    summarizeQuestExperiment(probe)
+    return { ok: true, note: `[phase-50] quest A/B experimentation wiring OK. ${flag50RollbackNote()}` }
+  } catch (e) {
+    return { ok: false, note: `[phase-50] quest experiment schema drift (unexpected, report): ${e instanceof Error ? e.message : String(e)}` }
+  }
+}
+
 // ── phase-80, phase-81, bulk-listing, escrow wiring diagnostics ────────────
 
 /**

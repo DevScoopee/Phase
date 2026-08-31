@@ -6,6 +6,8 @@ import {
   saveProfileHandle,
   isPhase66Enabled,
   getCrtBundleSavingsSummary,
+  isFaucetRateLimitRedisEnabled,
+  auditFaucetRateLimitWiring,
 } from "@/lib/profile-store"
 
 export const runtime = "nodejs"
@@ -56,6 +58,7 @@ export async function GET(req: NextRequest) {
     handle: profile?.handle ?? null,
     updatedAt: profile?.updatedAt ?? null,
     ...(isPhase66Enabled() ? { crt_code_split: getCrtBundleSavingsSummary() } : {}),
+    ...(isFaucetRateLimitRedisEnabled() ? { faucet_rate_limit: auditFaucetRateLimitWiring() } : {}),
   })
 }
 

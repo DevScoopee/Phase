@@ -68,7 +68,7 @@ flowchart TB
 | `app/` | App Router routes, layouts, API handlers, global/tactical styles |
 | `components/` | Feature UI components (forge/chamber/rewards/wallet integration) |
 | `lib/phase-protocol.ts` | Soroban integration helpers, constants, error normalization |
-| `lib/classic-liq.ts` | Classic asset trustline utilities (`changeTrust` XDR, Horizon checks) + CID integrity helpers via `cid-cache` (phase-119) |
+| `lib/classic-liq.ts` | Classic asset trustline utilities (`changeTrust` XDR, Horizon checks) + CID integrity helpers via `cid-cache` (phase-119) + rate-limit-aware batch submission to Horizon (phase-134) |
 | `lib/phase-copy.ts` | Centralized i18n dictionary (EN/ES) |
 | `lib/server-data-paths.ts` | Writable data location abstraction |
 | `lib/feature-flags.ts` | Flag registry (phase-107,111,113,114 + 116,117,119,120 + 121..124, env resolution, rollback notes) |
@@ -83,8 +83,10 @@ flowchart TB
 | `lib/achievement-store.ts` | Achievement unlocks JSON store + chronological timeline (phase-114) |
 | `lib/gateway-health.ts` | Gateway latency scoring + dashboard snapshot (phase-121) |
 | `lib/offchain-delta.ts` | Off-chain delta store, hash/stub helpers (phase-122) |
-| `lib/ipfs-fallback.ts` / `lib/phase-nft-metadata-build.ts` | IPFS timeout fallback chain (phase-123) |
+| `lib/ipfs-fallback.ts` / `lib/phase-nft-metadata-build.ts` | IPFS timeout fallback chain, gateway priority ordered by live health score (phase-123) |
 | `lib/metadata-migration.ts` | Metadata version migration v1→v2 (phase-124) |
+| `lib/wallet-nft-index-cache.ts` | LRU-cached wallet NFT token-id index with stale-on-error fallback (phase-135) |
+| `lib/explore-owners-cache.ts` | Cached Explore owner-scan result with stale-on-error fallback (phase-135) |
 | `contracts/` | Soroban Rust contracts and tooling docs |
 | `docs/` | Technical and operational documentation |
 
@@ -137,6 +139,9 @@ All handlers live in `app/api/**/route.ts`.
 | `phase-116` | `POST/GET /api/signals/[id]/replies` | Narrative contributor attribution: `contributors`, `creditLedger` on reply create; `GET` ledger endpoint with shareBps/roles | `404` disabled, ledger empty |
 | `phase-117` | `GET/POST /api/profile/avatar` | Multi-gateway redundancy: `GET` rewrites avatar URL via verified gateway (headers `X-Phase117`), `POST` pins with quorum (`quorum`, `achieved`, `checksum`) | Single gateway, no quorum |
 | `phase-119` | `POST/GET /api/classic-liq/trustline` | CID cache + integrity: validates `cid`/`expectedSha256`/`cidPath`, `GET` exposes cache stats, headers `X-Phase119` | Direct submit, no verification |
+| `phase-134` | `POST /api/classic-liq/trustline` | Accepts `signedXdrs: string[]` (batch) alongside legacy `signedXdr`; submits with bounded concurrency + 429/503 backoff | Each XDR submits immediately and sequentially, no retry |
+| `phase-135` | `GET /api/wallet/phase-nfts` | Serves the wallet's token-id index from an LRU cache when fresh; degrades to stale cached data (not a 503) if every live lookup fails; logs scan duration | No cache; a live-lookup failure propagates as before |
+| `phase-135` | `GET /api/explore` | Serves the raw owner-scan result from cache when fresh; degrades to the last-known-good scan (not a 500) if a live scan fails | No cache; a scan failure fails the request as before |
 | `phase-120` | `POST /api/ipfs` & `GET /api/og/*` | Upload retry + checksum: `POST /api/ipfs` retries with backoff (`X-Checksum-Sha256`, `X-Phase120-Attempts`), `GET /api/og/*` supports `?pin=1` & reports `X-Phase-Pin-*`, `X-Phase-Og-Template` | Single-shot Pinata, no pin headers |
 | `phase-121` | `GET /api/phase-nft/custodian-release` | Gateway health dashboard: sorted gateway list with latency scoring (`score`, `avgLatencyMs`, `uptime`) | `404` disabled |
 | `phase-122` | `POST /api/phase-nft/verify` | Adds `delta` + `storage` fields (off-chain manifest, stub note) | Fields omitted |
@@ -200,7 +205,7 @@ Critical groups:
 - Gemini runtime (`GEMINI_API_KEY`)
 - Writable server data directory (`PHASE_SERVER_DATA_DIR`)
 
-### 9.1 Feature flags (phase-88..91, 107,111,113,114 + 116..124)
+### 9.1 Feature flags (phase-88..91, 107,111,113,114 + 116..124, 134, 135)
 
 All flags default to **off** (safe rollback). Set to `1`/`true` to enable.
 
@@ -222,6 +227,8 @@ NEXT_PUBLIC_FEATURE_PHASE_121=1
 NEXT_PUBLIC_FEATURE_PHASE_122=1
 NEXT_PUBLIC_FEATURE_PHASE_123=1
 NEXT_PUBLIC_FEATURE_PHASE_124=1
+NEXT_PUBLIC_FEATURE_PHASE_134=1
+NEXT_PUBLIC_FEATURE_PHASE_135=1
 # Server-only aliases also accepted: FEATURE_PHASE_104, etc.
 ```
 
@@ -251,6 +258,14 @@ npx tsc --noEmit
 ```
 
 Contract commands are documented in [`contracts/README.md`](../contracts/README.md).
+
+### 11.1 CI/CD
+
+`.github/workflows/ci.yml` runs on every PR and push to `main`:
+
+- `contracts` — compiles and tests both Soroban crates (`mock-token`, `phase-protocol`) against `wasm32-unknown-unknown`.
+- `web` — `npm run lint`, `npm run typecheck` (both currently non-blocking pending a cleanup of pre-existing errors — see the job for the tracked count), and `npm run build`.
+- `deploy-staging` — on push to `main` only, behind a `staging` GitHub environment: builds + optimizes `phase-protocol` and runs `scripts/deploy-phase-sep50.ts` against testnet using repo secrets/vars.
 
 ---
 

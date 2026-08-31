@@ -143,6 +143,11 @@ export default function ExplorePage() {
                 <p className="text-[9px] uppercase tracking-widest text-cyan-500/50">
                   {isEs ? `PÁG. ${page} / ${totalPages}` : `PAGE ${page} / ${totalPages}`}
                 </p>
+                {data.quest_expiry_windows_enabled && (
+                  <p className="text-[8px] uppercase tracking-widest text-cyan-500/40">
+                    {isEs ? "· ventanas de expiración activas" : "· expiry windows active"}
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -282,7 +287,7 @@ function ArtifactCard({
       >
         <PhaseProtectedPreview
           uri={item.image}
-          chainVerified={false}
+          ownerTruncated={item.ownerTruncated}
           viewerAddress={address}
           labels={PREVIEW_LABELS}
         />
