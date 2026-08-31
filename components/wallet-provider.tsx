@@ -15,8 +15,20 @@ import {
   isAlbedoSelectedInKit,
   requestAlbedoImplicitTxFlow,
 } from "@/lib/albedo-intent-client"
-import { initStellarWalletKit, kit, KitEventType, parseError } from "@/lib/stellar-wallet-kit"
+import {
+  initStellarWalletKit,
+  isHardwareWalletSelected,
+  isWalletConnectSelected,
+  kit,
+  KitEventType,
+  parseError,
+  TESTNET_PASSPHRASE,
+} from "@/lib/stellar-wallet-kit"
 import { cn } from "@/lib/utils"
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────────────────────
 
 type WalletContextValue = {
   address: string | null
@@ -24,6 +36,10 @@ type WalletContextValue = {
   hint: string | null
   artistAlias: string | null
   aliasLoading: boolean
+  /** Whether the active module is a hardware wallet (Ledger). */
+  isHardwareWallet: boolean
+  /** Whether the active module is WalletConnect. */
+  isWalletConnect: boolean
   connect: () => Promise<void>
   disconnect: () => void
   /** Re-sync con la wallet vía kit; devuelve la dirección activa o null. */
@@ -37,15 +53,30 @@ type WalletContextValue = {
   saveArtistAlias: (alias: string) => Promise<{ ok: true } | { ok: false; error: string }>
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────────────────────
+
 const WalletContext = createContext<WalletContextValue | null>(null)
 
 /**
  * React 18 Strict Mode (dev) monta/desmonta dos veces: sin esto, el auto-claim del faucet
  * dispara POST duplicados (409 already claimed / 412 trustline) y ensucia la consola de red.
  */
-/** Solo amortigua el doble `useEffect` de Strict Mode (~ms); no sustituye al ref por wallet. */
 const FAUCET_AUTO_CLAIM_DEDUPE_MS = 4000
 const lastFaucetAutoClaimAt = new Map<string, number>()
+
+/**
+ * How often the heartbeat checks that the connected wallet is still reachable.
+ * For hardware wallets (Ledger) this is shorter because USB HID connections can
+ * drop silently; for extension wallets we rely on kit state events instead.
+ */
+const HEARTBEAT_INTERVAL_HW_MS = 8_000
+const HEARTBEAT_INTERVAL_SW_MS = 30_000
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Provider
+// ─────────────────────────────────────────────────────────────────────────────
 
 export function WalletProvider({ children }: { children: ReactNode }) {
   if (typeof window !== "undefined") {
@@ -57,18 +88,30 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [hint, setHint] = useState<string | null>(null)
   const [artistAlias, setArtistAlias] = useState<string | null>(null)
   const [aliasLoading, setAliasLoading] = useState(false)
+  const [isHardwareWallet, setIsHardwareWallet] = useState(false)
+  const [isWalletConnect, setIsWalletConnect] = useState(false)
 
-  /**
-   * Tras conectar, el kit mantiene la dirección en memoria; al desconectar en la app
-   * no queremos que un `refresh()` vuelva a rellenarla hasta un nuevo `connect`.
-   */
+  /** True when user deliberately disconnected — blocks session restoration. */
   const userDisconnectedRef = useRef(false)
   const autoFundedWalletsRef = useRef<Set<string>>(new Set())
+  const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   /** Albedo: sin `implicit_flow` para `tx`, el popup de firma se bloquea tras awaits largos (Soroban). */
   const [albedoTxPrep, setAlbedoTxPrep] = useState<"hidden" | "needed" | "checking">("hidden")
   const [albedoPrepBusy, setAlbedoPrepBusy] = useState(false)
   const [albedoPrepError, setAlbedoPrepError] = useState<string | null>(null)
+
+  // Network passphrase mismatch alert — shown when Ledger is connected but the
+  // kit's active network doesn't match TESTNET_PASSPHRASE.
+  const [networkMismatch, setNetworkMismatch] = useState<string | null>(null)
+
+  // ── helpers ──────────────────────────────────────────────────────────────
+
+  /** Sync module-type flags from localStorage (mirrors kit persisted selection). */
+  const syncModuleFlags = useCallback(() => {
+    setIsHardwareWallet(isHardwareWalletSelected())
+    setIsWalletConnect(isWalletConnectSelected())
+  }, [])
 
   const syncAlbedoTxPrep = useCallback(async (addr: string | null) => {
     if (!addr || typeof window === "undefined") {
@@ -87,6 +130,33 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       setAlbedoTxPrep("needed")
     }
   }, [])
+
+  /**
+   * Validate that a hardware-wallet connection is using the expected network
+   * passphrase.  Ledger's Stellar app is mode-specific; signing testnet XDRs
+   * with a mainnet app returns a wrong signature silently.
+   */
+  const validateHardwareNetwork = useCallback(async () => {
+    if (typeof window === "undefined") return
+    if (!isHardwareWalletSelected()) {
+      setNetworkMismatch(null)
+      return
+    }
+    try {
+      const { networkPassphrase } = await kit.getNetwork()
+      if (networkPassphrase && networkPassphrase !== TESTNET_PASSPHRASE) {
+        setNetworkMismatch(
+          `Ledger está conectado a "${networkPassphrase.slice(0, 48)}…" pero la app espera la testnet. Abrí la app Stellar en tu Ledger y seleccioná la red correcta (Test SDF Network). / Ledger is on the wrong network. Open the Stellar app on your Ledger and switch to the correct network.`,
+        )
+      } else {
+        setNetworkMismatch(null)
+      }
+    } catch {
+      // Not critical — leave any previous mismatch shown.
+    }
+  }, [])
+
+  // ── session refresh ────────────────────────────────────────────────────────
 
   const refresh = useCallback((): Promise<string | null> => {
     const run = async (): Promise<string | null> => {
@@ -122,29 +192,145 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  useEffect(() => {
-    void refresh().catch(() => {})
-  }, [refresh])
+  // ── heartbeat ─────────────────────────────────────────────────────────────
 
+  /**
+   * Start a recurring heartbeat that re-verifies the active wallet is still
+   * reachable. For hardware wallets this detects silent USB HID disconnects.
+   * For WalletConnect it keeps the session alive and detects remote disconnects.
+   */
+  const startHeartbeat = useCallback(
+    (addr: string) => {
+      if (heartbeatTimerRef.current) clearInterval(heartbeatTimerRef.current)
+      const interval = isHardwareWalletSelected() ? HEARTBEAT_INTERVAL_HW_MS : HEARTBEAT_INTERVAL_SW_MS
+
+      heartbeatTimerRef.current = setInterval(async () => {
+        if (userDisconnectedRef.current) {
+          clearInterval(heartbeatTimerRef.current!)
+          heartbeatTimerRef.current = null
+          return
+        }
+        try {
+          const { address: current } = await kit.getAddress()
+          if (!current || current !== addr) {
+            // Session expired or wallet changed — surface a hint.
+            setHint(
+              "Wallet sesión expirada. Reconectá tu wallet. / Wallet session expired. Please reconnect.",
+            )
+            setAddress(null)
+            clearInterval(heartbeatTimerRef.current!)
+            heartbeatTimerRef.current = null
+          }
+        } catch {
+          // Hardware wallet USB disconnect: clear address and notify.
+          if (isHardwareWalletSelected()) {
+            setAddress(null)
+            setHint(
+              "Ledger desconectado. Volvé a enchufar el dispositivo y reconectá. / Ledger disconnected. Re-plug the device and reconnect.",
+            )
+          }
+          clearInterval(heartbeatTimerRef.current!)
+          heartbeatTimerRef.current = null
+        }
+      }, interval)
+    },
+    [],
+  )
+
+  const stopHeartbeat = useCallback(() => {
+    if (heartbeatTimerRef.current) {
+      clearInterval(heartbeatTimerRef.current)
+      heartbeatTimerRef.current = null
+    }
+  }, [])
+
+  // ── effects ───────────────────────────────────────────────────────────────
+
+  /** Initial session restoration on mount. */
   useEffect(() => {
-    const onFocus = () => void refresh().catch(() => {})
+    syncModuleFlags()
+    void refresh().then((addr) => {
+      if (addr) startHeartbeat(addr)
+    }).catch(() => {})
+  }, [refresh, startHeartbeat, syncModuleFlags])
+
+  /** Re-check session when the tab regains focus (catches page navigations). */
+  useEffect(() => {
+    const onFocus = () => {
+      void refresh().then((addr) => {
+        if (addr && !heartbeatTimerRef.current) startHeartbeat(addr)
+      }).catch(() => {})
+    }
     window.addEventListener("focus", onFocus)
     return () => window.removeEventListener("focus", onFocus)
-  }, [refresh])
+  }, [refresh, startHeartbeat])
 
+  /** Subscribe to kit state events (extension wallets dispatch these). */
   useEffect(() => {
     initStellarWalletKit()
     const stop = kit.on(KitEventType.STATE_UPDATED, ({ payload }: { payload: any }) => {
       try {
         if (userDisconnectedRef.current) return
-        setAddress(payload.address ?? null)
+        const addr = payload.address ?? null
+        setAddress(addr)
+        if (addr) startHeartbeat(addr)
+        else stopHeartbeat()
       } catch {
         setAddress(null)
+        stopHeartbeat()
       }
     })
     return stop
-  }, [])
+  }, [startHeartbeat, stopHeartbeat])
 
+  /**
+   * HID device disconnect events — WebUSB fires `connect`/`disconnect` events
+   * on `navigator.usb`.  When the Ledger is physically unplugged the heartbeat
+   * will catch it, but we also listen here for an immediate UX response.
+   */
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("usb" in navigator)) return
+
+    const usb = (navigator as Navigator & { usb?: USBManager }).usb
+    if (!usb) return
+
+    const onDisconnect = () => {
+      if (!isHardwareWalletSelected()) return
+      if (userDisconnectedRef.current) return
+      stopHeartbeat()
+      setAddress(null)
+      setHint(
+        "Ledger desconectado (USB). Volvé a enchufar y reconectá. / Ledger disconnected (USB). Re-plug and reconnect.",
+      )
+    }
+
+    const onConnect = () => {
+      if (!isHardwareWalletSelected()) return
+      // Clear the stale disconnect hint and attempt to restore the session.
+      setHint(null)
+      void refresh().then((addr) => {
+        if (addr) startHeartbeat(addr)
+      }).catch(() => {})
+    }
+
+    usb.addEventListener("disconnect", onDisconnect)
+    usb.addEventListener("connect", onConnect)
+    return () => {
+      usb.removeEventListener("disconnect", onDisconnect)
+      usb.removeEventListener("connect", onConnect)
+    }
+  }, [refresh, startHeartbeat, stopHeartbeat])
+
+  /** Validate hardware wallet network passphrase whenever address or module changes. */
+  useEffect(() => {
+    if (isHardwareWallet && address) {
+      void validateHardwareNetwork().catch(() => {})
+    } else {
+      setNetworkMismatch(null)
+    }
+  }, [address, isHardwareWallet, validateHardwareNetwork])
+
+  /** Faucet auto-claim (unchanged from original). */
   useEffect(() => {
     if (!address || userDisconnectedRef.current) return
     if (autoFundedWalletsRef.current.has(address)) return
@@ -256,6 +442,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     void syncAlbedoTxPrep(address)
   }, [address, syncAlbedoTxPrep])
 
+  // ── actions ───────────────────────────────────────────────────────────────
+
   const connect = useCallback((): Promise<void> => {
     const run = async (): Promise<void> => {
       userDisconnectedRef.current = false
@@ -267,16 +455,19 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           throw new Error("authModal not available")
         }
         const { address: next } = await kit.authModal()
+        syncModuleFlags()
         if (!userDisconnectedRef.current) {
           setAddress(next)
-          // Defer: el kit persiste `selectedModuleId` en localStorage en un effect de Preact.
+          startHeartbeat(next)
           queueMicrotask(() => void syncAlbedoTxPrep(next))
+          queueMicrotask(() => void validateHardwareNetwork())
         }
         setHint(null)
       } catch (e) {
         const pe = parseError(e)
         setAddress(null)
-        if (pe.code !== "-1") {
+        stopHeartbeat()
+        if (pe.code !== -1) {
           setHint(pe.message || "Wallet connection failed")
         }
       } finally {
@@ -286,9 +477,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     return run().catch(() => {
       setConnecting(false)
       setAddress(null)
+      stopHeartbeat()
       setHint("Wallet unavailable")
     })
-  }, [syncAlbedoTxPrep])
+  }, [syncAlbedoTxPrep, syncModuleFlags, startHeartbeat, stopHeartbeat, validateHardwareNetwork])
 
   const openWalletPicker = useCallback((): Promise<string | null> => {
     userDisconnectedRef.current = false
@@ -300,13 +492,17 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       .authModal()
       .then(({ address: next }: { address: any }) => {
         const g = typeof next === "string" ? next.trim() : ""
+        syncModuleFlags()
         if (!g) {
           setAddress(null)
+          stopHeartbeat()
           return null
         }
         setAddress(g)
         setHint(null)
+        startHeartbeat(g)
         queueMicrotask(() => void syncAlbedoTxPrep(g))
+        queueMicrotask(() => void validateHardwareNetwork())
         return g
       })
       .catch((e: unknown) => {
@@ -316,17 +512,23 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         }
         return null
       })
-  }, [syncAlbedoTxPrep])
+  }, [syncAlbedoTxPrep, syncModuleFlags, startHeartbeat, stopHeartbeat, validateHardwareNetwork])
 
   const disconnect = useCallback(() => {
     userDisconnectedRef.current = true
+    stopHeartbeat()
     void kit.disconnect().catch(() => {})
     setAddress(null)
     setArtistAlias(null)
     setHint(null)
     setAlbedoTxPrep("hidden")
     setAlbedoPrepError(null)
-  }, [])
+    setNetworkMismatch(null)
+    setIsHardwareWallet(false)
+    setIsWalletConnect(false)
+  }, [stopHeartbeat])
+
+  // ── context value ─────────────────────────────────────────────────────────
 
   const value = useMemo(
     () => ({
@@ -335,6 +537,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       hint,
       artistAlias,
       aliasLoading,
+      isHardwareWallet,
+      isWalletConnect,
       connect,
       disconnect,
       refresh,
@@ -348,6 +552,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       hint,
       artistAlias,
       aliasLoading,
+      isHardwareWallet,
+      isWalletConnect,
       connect,
       disconnect,
       refresh,
@@ -357,10 +563,45 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     ],
   )
 
+  // ── render ────────────────────────────────────────────────────────────────
+
   return (
     <>
       <WalletContext.Provider value={value}>{children}</WalletContext.Provider>
-      {address && albedoTxPrep === "needed" && (
+
+      {/* ── Network passphrase mismatch alert (Ledger on wrong network) ──── */}
+      {networkMismatch && address && isHardwareWallet && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          className={cn(
+            "fixed bottom-0 left-0 right-0 z-[400] border-t border-red-500/50 bg-background/95 px-4 py-3 text-sm shadow-lg backdrop-blur-sm",
+          )}
+        >
+          <div className="mx-auto flex max-w-3xl flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-start gap-2">
+              {/* Ledger icon indicator */}
+              <span className="mt-0.5 shrink-0 text-red-400" aria-hidden>
+                ⬡
+              </span>
+              <p className="text-foreground leading-snug">
+                <strong className="text-red-400">Ledger — red incorrecta.</strong>{" "}
+                {networkMismatch}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void validateHardwareNetwork().catch(() => {})}
+              className="shrink-0 rounded-md border border-red-500/50 bg-red-500/10 px-3 py-1.5 font-mono text-xs font-semibold text-red-300 hover:bg-red-500/20"
+            >
+              Reintentar / Retry
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Albedo implicit-tx permission banner ─────────────────────────── */}
+      {address && albedoTxPrep === "needed" && !networkMismatch && (
         <div
           role="status"
           className={cn(
@@ -410,10 +651,24 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   )
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Hook
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function useWallet() {
   const ctx = useContext(WalletContext)
   if (!ctx) {
     throw new Error("useWallet must be used within WalletProvider")
   }
   return ctx
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Internal types
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Minimal shape of the WebUSB manager (navigator.usb). */
+interface USBManager extends EventTarget {
+  addEventListener(type: "connect" | "disconnect", listener: EventListenerOrEventListenerObject): void
+  removeEventListener(type: "connect" | "disconnect", listener: EventListenerOrEventListenerObject): void
 }
