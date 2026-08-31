@@ -36,6 +36,7 @@ export const exploreResponseSchema = z.object({
   page: z.number().int().nonnegative(),
   perPage: z.number().int().positive(),
   content_hash_dedup_enabled: z.boolean().optional(),
+  quest_expiry_windows_enabled: z.boolean().optional(),
 })
 
 export type ExploreResponse = z.infer<typeof exploreResponseSchema>
@@ -127,4 +128,188 @@ export function paginateExploreItems<T>(items: readonly T[], page: number, perPa
 
 export function filterWorldOnly(items: ExploreItem[]): ExploreItem[] {
   return items.filter((item) => Boolean(item.worldName))
+}
+
+// ── module #52 (phase-52): quest_expiry windows with grace-period extension ──
+//
+// Quests had no lifetime: once written they sat in the store forever, so stale
+// entries accumulated without bound and the explore/quest surfaces had to
+// filter them by hand. This isolated, flag-gated, pure module gives every quest
+// a TTL, an optional grace window after the TTL, and a bounded number of
+// grace-period extensions. `computeQuestExpiry` is the single source of truth
+// for a quest's lifecycle state; `pruneExpiredQuests` is the sweep the store
+// runs to stop the unbounded growth.
+//
+// Feature flag: phase-52 (NEXT_PUBLIC_FEATURE_PHASE_52 / FEATURE_PHASE_52)
+// Rollback: unset the flag → callers keep every quest indefinitely (prior
+//           behaviour). No data migration to undo.
+
+export function isQuestExpiryEnabled(): boolean {
+  const v = (process.env.NEXT_PUBLIC_FEATURE_PHASE_52 ?? process.env.FEATURE_PHASE_52 ?? "").trim().toLowerCase()
+  return v === "1" || v === "true" || v === "yes" || v === "on"
+}
+
+export function flag52RollbackNote(): string {
+  return "Rollback phase-52: unset NEXT_PUBLIC_FEATURE_PHASE_52 / FEATURE_PHASE_52 or set to 0/false and restart. Quests stop expiring and are retained indefinitely; no data migration to undo."
+}
+
+export type QuestExpiryState = "active" | "grace" | "expired"
+
+const ONE_YEAR_MS = 365 * 24 * 3_600_000
+
+export const QuestExpiryPolicySchema = z.object({
+  ttlMs: z.number().int().positive().max(ONE_YEAR_MS),
+  graceMs: z.number().int().nonnegative().max(ONE_YEAR_MS).default(0),
+  extensionMs: z.number().int().nonnegative().max(ONE_YEAR_MS).default(0),
+  maxExtensions: z.number().int().nonnegative().max(24).default(0),
+})
+
+export type QuestExpiryPolicy = z.infer<typeof QuestExpiryPolicySchema>
+
+export const QuestRecordSchema = z.object({
+  questId: z.string().trim().min(1).max(128),
+  createdAt: z.number().int().nonnegative(),
+  completedAt: z.number().int().nonnegative().nullable().default(null),
+  extensionsGranted: z.number().int().nonnegative().max(24).default(0),
+})
+
+export type QuestRecord = z.infer<typeof QuestRecordSchema>
+
+export class QuestExpiryError extends Error {
+  code: "FLAG_DISABLED" | "VALIDATION_FAILED" | "EXTENSION_EXHAUSTED" | "ALREADY_EXPIRED"
+  details?: unknown
+  constructor(code: QuestExpiryError["code"], message: string, details?: unknown) {
+    super(message)
+    this.name = "QuestExpiryError"
+    this.code = code
+    this.details = details
+  }
+}
+
+export type QuestExpiryStatus = {
+  questId: string
+  state: QuestExpiryState
+  expiresAt: number
+  graceUntil: number
+  msRemaining: number
+  extensionsGranted: number
+  extensionsRemaining: number
+}
+
+function parsePolicy(raw: unknown): QuestExpiryPolicy {
+  const parsed = QuestExpiryPolicySchema.safeParse(raw)
+  if (!parsed.success) {
+    throw new QuestExpiryError("VALIDATION_FAILED", "Invalid quest expiry policy", parsed.error.flatten())
+  }
+  return parsed.data
+}
+
+function parseRecord(raw: unknown): QuestRecord {
+  const parsed = QuestRecordSchema.safeParse(raw)
+  if (!parsed.success) {
+    throw new QuestExpiryError("VALIDATION_FAILED", "Invalid quest record", parsed.error.flatten())
+  }
+  return parsed.data
+}
+
+/** Pure lifecycle resolver: where a quest sits in its TTL → grace → expired timeline. */
+export function computeQuestExpiry(rawRecord: unknown, rawPolicy: unknown, now: number = Date.now()): QuestExpiryStatus {
+  const record = parseRecord(rawRecord)
+  const policy = parsePolicy(rawPolicy)
+
+  const grantedExtensionMs = record.extensionsGranted * policy.extensionMs
+  const expiresAt = record.createdAt + policy.ttlMs + grantedExtensionMs
+  const graceUntil = expiresAt + policy.graceMs
+  const extensionsRemaining = Math.max(0, policy.maxExtensions - record.extensionsGranted)
+
+  let state: QuestExpiryState
+  if (record.completedAt != null || now < expiresAt) {
+    state = "active"
+  } else if (now < graceUntil) {
+    state = "grace"
+  } else {
+    state = "expired"
+  }
+
+  return {
+    questId: record.questId,
+    state,
+    expiresAt,
+    graceUntil,
+    msRemaining: Math.max(0, graceUntil - now),
+    extensionsGranted: record.extensionsGranted,
+    extensionsRemaining,
+  }
+}
+
+/**
+ * Grants one grace-period extension, returning the updated record. Throws when
+ * the extension budget is spent or the quest is already past its grace window
+ * (an expired quest cannot be revived).
+ */
+export function grantGracePeriodExtension(rawRecord: unknown, rawPolicy: unknown, now: number = Date.now()): QuestRecord {
+  const record = parseRecord(rawRecord)
+  const policy = parsePolicy(rawPolicy)
+  if (policy.maxExtensions === 0 || policy.extensionMs === 0) {
+    throw new QuestExpiryError("EXTENSION_EXHAUSTED", `Quest "${record.questId}" policy allows no extensions`)
+  }
+  if (record.extensionsGranted >= policy.maxExtensions) {
+    throw new QuestExpiryError("EXTENSION_EXHAUSTED", `Quest "${record.questId}" has used all ${policy.maxExtensions} extensions`)
+  }
+  const status = computeQuestExpiry(record, policy, now)
+  if (status.state === "expired") {
+    throw new QuestExpiryError("ALREADY_EXPIRED", `Quest "${record.questId}" is past its grace window and cannot be extended`)
+  }
+  return { ...record, extensionsGranted: record.extensionsGranted + 1 }
+}
+
+export function partitionQuestsByExpiry(
+  rawRecords: unknown[],
+  rawPolicy: unknown,
+  now: number = Date.now(),
+): { active: QuestExpiryStatus[]; grace: QuestExpiryStatus[]; expired: QuestExpiryStatus[] } {
+  const policy = parsePolicy(rawPolicy)
+  const out = { active: [] as QuestExpiryStatus[], grace: [] as QuestExpiryStatus[], expired: [] as QuestExpiryStatus[] }
+  for (const raw of rawRecords) {
+    const status = computeQuestExpiry(raw, policy, now)
+    out[status.state].push(status)
+  }
+  return out
+}
+
+/** The store sweep: drops quests whose grace window has fully elapsed. */
+export function pruneExpiredQuests<T>(
+  records: readonly T[],
+  rawPolicy: unknown,
+  pick: (record: T) => unknown,
+  now: number = Date.now(),
+): { kept: T[]; removed: T[] } {
+  const policy = parsePolicy(rawPolicy)
+  const kept: T[] = []
+  const removed: T[] = []
+  for (const record of records) {
+    const status = computeQuestExpiry(pick(record), policy, now)
+    ;(status.state === "expired" ? removed : kept).push(record)
+  }
+  return { kept, removed }
+}
+
+export function auditQuestExpiryWiring(): { ok: boolean; note: string } {
+  if (!isQuestExpiryEnabled()) {
+    return { ok: true, note: "[phase-52] quest_expiry windows disabled; nothing to audit." }
+  }
+  const policy = { ttlMs: 1_000, graceMs: 500, extensionMs: 1_000, maxExtensions: 1 }
+  const record = { questId: "diagnose-probe", createdAt: 0 }
+  try {
+    const active = computeQuestExpiry(record, policy, 500)
+    const grace = computeQuestExpiry(record, policy, 1_200)
+    const expired = computeQuestExpiry(record, policy, 5_000)
+    if (active.state !== "active" || grace.state !== "grace" || expired.state !== "expired") {
+      return { ok: false, note: `[phase-52] quest expiry state machine drift: ${active.state}/${grace.state}/${expired.state} (report).` }
+    }
+    grantGracePeriodExtension(record, policy, 1_200)
+    return { ok: true, note: `[phase-52] quest_expiry windows wiring OK. ${flag52RollbackNote()}` }
+  } catch (e) {
+    return { ok: false, note: `[phase-52] quest expiry schema drift (unexpected, report): ${e instanceof Error ? e.message : String(e)}` }
+  }
 }
