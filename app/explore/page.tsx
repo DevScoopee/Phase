@@ -282,7 +282,7 @@ function ArtifactCard({
       >
         <PhaseProtectedPreview
           uri={item.image}
-          chainVerified={false}
+          ownerTruncated={item.ownerTruncated}
           viewerAddress={address}
           labels={PREVIEW_LABELS}
         />
