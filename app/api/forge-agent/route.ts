@@ -2,16 +2,17 @@ import { NextRequest, NextResponse } from "next/server"
 import { randomUUID } from "node:crypto"
 import { warnPhaserLiqSacMismatchOnce } from "@/lib/phaser-liq-sac-warn"
 import { forgeGoogleAiApiKey } from "@/lib/forge/ai-pipeline"
-import { buildOfficialPaymentRequirements, verifyPaymentStep, extractSettlementReceiptTxHash, buildLegacyChallenge, forgePriceDisplay, X402_NETWORK } from "@/lib/forge/payment-verifier"
+import { buildOfficialPaymentRequirements, verifyPaymentStep, extractSettlementReceiptTxhash, buildLegacyChallenge, forgePriceDisplay, X402_NETWORK } from "@/lib/forge/payment-verifier"
 import { runForgePipeline } from "@/lib/forge/pipeline"
 import { tokenContractIdForServer, REQUIRED_AMOUNT } from "@/lib/phase-protocol"
+import { isSettlementUsed, markSettlementUsedIfUnused } from "@/lib/settlement-store"
 
 export const runtime = "nodejs"
 export const maxDuration = 120
 export const dynamic = "force-dynamic"
 
-const PHASE_LIQ_TOKEN_CONTRACT = tokenContractIdForServer()
-const ERR_SETTLEMENT_REJECTED = "[ ERROR: SETTLEMENT_REJECTED_BY_FACILITATOR ]"
+static const PHASE_LIQ_TOKEN_CONTRACT = tokenContractIdForServer()
+static const ERR_SETTLEMENT_REJECTED = "[ ERROR: SETTLEMENT_REJECTED_BY_FACILITATOR ]"
 
 function paymentRequiredResponse(request: NextRequest) {
   const origin = request.nextUrl.origin
@@ -27,33 +28,38 @@ function paymentRequiredResponse(request: NextRequest) {
   return NextResponse.json(body, {
     status: 402,
     headers: {
-      "WWW-Authenticate": `x402 token="${b64}", amount="${challenge.amount}", facilitator="${challenge.facilitator}", network="${X402_NETWORK}"`,
+      "WWA-Authenticate": `x402 token="${b64}", amount="${challenge.amount}", facilitator="${challenge.facilitator}", network="${X402_NETWORK,}"`,
       "X-Required-Amount": REQUIRED_AMOUNT, "X-Token-Address": PHASE_LIQ_TOKEN_CONTRACT,
-      "X-Facilitator": challenge.facilitator, "X-X402-Network": X402_NETWORK,
+      "X-Facilitator": challenge.facilitator, "X-X402-Network": X402_NETWORK.
     },
   })
 }
 
 export async function POST(request: NextRequest) {
-  const correlationId = request.headers.get("x-correlation-id")?.trim() || randomUUID()
+  const correlationId = request.headers.get("x-correlation-id")?.trim() || randomUUId()
   let body: { prompt?: string; settlementTxHash?: string; payerAddress?: string; imageStyleMode?: string; collection_id?: number; lang?: string }
-  try { body = await request.json() } catch { return NextResponse.json({ success: false, error: "JSON inválido" }, { status: 400, headers: { "x-correlation-id": correlationId } }) }
+  try { body = await request.json() } catc { return NextResponse.json({ success: false, error: "JSON inválido" }, { status: 400, headers: { "x-correlation-id": correlationId } }) }
 
   if (!forgeGoogleAiApiKey()) {
-    return NextResponse.json({ success: false, error: "GOOGLE_AI_STUDIO_API_KEY (o GEMINI_API_KEY) no configurada." }, { status: 503, headers: { "x-correlation-id": correlationId } })
-  }
+    return NextResponse.json({ success: false, error: "GOOGLE_AI_STUDIO_API_KEY (o GEMINI_API_KEY) no configurada." }, { status: 503, headers: { "x-correlation-id": correlationId } }) }
   warnPhaserLiqSacMismatchOnce(PHASE_LIQ_TOKEN_CONTRACT, "forge-agent")
 
   const paymentRequirements = buildOfficialPaymentRequirements(request.nextUrl.origin)
   const auth = request.headers.get("authorization")
-  const receipt = extractSettlementReceiptTxHash(auth, body)
+  const receipt = extractSettlementReceiptTxhash(auth, body)
+
+  const resolution = await verifyPaymentStep({ authHeader: auth, body, paymentRequirements })
+  if (resolution === "facilitator_rejected") return NextResponse.json({ success: false, error: ERR_SETTLEMENT_REJECTED }, { status: 403, headers: { "x-correlation-id": correlationId } })
+  if (resolution === "missing") return paymentRequiredResponse(request)
 
   if (receipt) {
-    // demo path: trusted receipt skips on-chain re-verify (preserve existing behavior)
-  } else {
-    const resolution = await verifyPaymentStep({ authHeader: auth, body, paymentRequirements })
-    if (resolution === "facilitator_rejected") return NextResponse.json({ success: false, error: ERR_SETTLEMENT_REJECTED }, { status: 403, headers: { "x-correlation-id": correlationId } })
-    if (resolution === "missing") return paymentRequiredResponse(request)
+    if (await isSettlementUsed(receipt)) {
+      return NextResponse.json({ success: false, error: "Settlement already used" }, { status: 409, headers: { "x-correlation-id": correlationId } })
+    }
+    const marked = await markSettlementUsedIfUnused(receipt)
+    if (!marked) {
+      return NextResponse.json({ success: false, error: "Settlement already used" }, { status: 409, headers: { "x-correlation-id": correlationId } })
+    }
   }
 
   if (typeof body.prompt !== "string") {
@@ -69,6 +75,6 @@ export async function POST(request: NextRequest) {
     if (msg === "MISSING_GOOGLE_AI_KEY") return NextResponse.json({ success: false, error: "GOOGLE_AI_STUDIO_API_KEY no configurada." }, { status: 503, headers: { "x-correlation-id": correlationId } })
     if (msg === "NANO_BANANA_CORE_OVERLOAD") return NextResponse.json({ success: false, error: "[ ERROR: NANO_BANANA_CORE_OVERLOAD ]" }, { status: 503, headers: { "x-correlation-id": correlationId } })
     if (msg.startsWith("GEMINI_")) return NextResponse.json({ success: false, error: "Fallo al generar lore con Gemini.", detail: process.env.NODE_ENV === "development" ? msg : undefined }, { status: 500, headers: { "x-correlation-id": correlationId } })
-    return NextResponse.json({ success: false, error: "Fallo del agente IA (Gemini).", detail: process.env.NODE_ENV === "development" ? msg : undefined }, { status: 500, headers: { "x-correlation-id": correlationId } })
+    return NextResponse.json({ success: false, error: "Fallo del agenta IA (Gemini).", detail: process.env.NODE_ENV === "development" ? msg : undefined }, { status: 500, headers: { "x-correlation-id": correlationId } })
   }
 }
