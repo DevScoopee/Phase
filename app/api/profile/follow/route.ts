@@ -1,19 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { StrKey } from "@stellar/stellar-sdk";
 import {
   followUser,
   unfollowUser,
   getFollowCounts,
+  getFollowSuggestions,
   isFollowing,
   isPhase118Enabled,
+  isPhase138Enabled,
+  recordRequestCost,
+  getRequestCost,
+  FollowSuggestionQuerySchema,
   validateSep50MetadataBeforePin,
 } from "@/lib/follow-store";
 import { createNotification } from "@/lib/notification-store";
 import { getProfile } from "@/lib/profile-store";
 import { checkAndUnlock } from "@/lib/achievement-store";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/** phase-138: stable id to attribute a request's infra cost against. */
+function requestCostId(request: NextRequest): string {
+  return (
+    request.headers.get("x-correlation-id")?.trim() ||
+    request.headers.get("x-request-id")?.trim() ||
+    randomUUID()
+  ).slice(0, 128);
+}
 
 export async function GET(request: NextRequest) {
   const wallet = request.nextUrl.searchParams.get("wallet")?.trim() ?? "";
@@ -64,6 +80,27 @@ export async function GET(request: NextRequest) {
         return { ...suggestion, displayName: profile?.display_name };
       }),
     );
+
+    // phase-138: attribute the Horizon fan-out + profile enrichment cost to this request
+    if (isPhase138Enabled()) {
+      const costId = requestCostId(request);
+      recordRequestCost({ requestId: costId, operation: "follow.suggestions", source: "api" });
+      recordRequestCost({ requestId: costId, operation: "horizon.account_lookup", source: "horizon" });
+      recordRequestCost({ requestId: costId, operation: "horizon.asset_holders", source: "horizon" });
+      if (enriched.length > 0) {
+        recordRequestCost({
+          requestId: costId,
+          operation: "profile.enrichment",
+          count: enriched.length,
+          source: "store",
+        });
+      }
+      const costUnits = getRequestCost(costId).totalUnits;
+      return NextResponse.json(
+        { suggestions: enriched, costUnits },
+        { headers: { "X-Phase138-Cost-Units": String(costUnits) } },
+      );
+    }
     return NextResponse.json({ suggestions: enriched });
   }
   const viewer = request.nextUrl.searchParams.get("viewer")?.trim() ?? "";
@@ -125,8 +162,14 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const costId = requestCostId(request);
+
   if (body.action === "follow") {
     await followUser(body.from, body.to);
+    if (isPhase138Enabled()) {
+      recordRequestCost({ requestId: costId, operation: "follow.write", source: "api", wallet: body.from });
+      recordRequestCost({ requestId: costId, operation: "notification.create", source: "api" });
+    }
     // Fire-and-forget: notify the followed user
     void (async () => {
       try {
@@ -144,6 +187,9 @@ export async function POST(request: NextRequest) {
     })();
   } else {
     await unfollowUser(body.from, body.to);
+    if (isPhase138Enabled()) {
+      recordRequestCost({ requestId: costId, operation: "follow.write", source: "api", wallet: body.from });
+    }
   }
 
   const counts = await getFollowCounts(body.to);
@@ -151,5 +197,6 @@ export async function POST(request: NextRequest) {
     ok: true,
     ...counts,
     metadata_validation_enabled: isPhase118Enabled(),
+    ...(isPhase138Enabled() ? { costUnits: getRequestCost(costId).totalUnits } : {}),
   });
 }

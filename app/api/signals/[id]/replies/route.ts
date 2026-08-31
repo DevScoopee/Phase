@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { StrKey } from "@stellar/stellar-sdk"
-import { getSignal, createReply, AttributionInReplySchema, recordReplyAttribution, getSignalContributors, computeCreditLedger } from "@/lib/signal-store"
+import { getSignal, createReply, AttributionInReplySchema, recordReplyAttribution, getSignalContributors, computeCreditLedger, isPhase136Enabled, resolveCidGateway, extractIpfsCidPath } from "@/lib/signal-store"
 import { createNotification } from "@/lib/notification-store"
 import { dispatchPushNotification, extractMentionedWallets, isPhase92Enabled } from "@/lib/push-notifications"
 import { createApiRequestContext } from "@/lib/api-observability"
@@ -12,6 +12,19 @@ export const dynamic = "force-dynamic"
 
 function isPhase116Enabled(): boolean {
   return isFeatureEnabled("phase-116")
+}
+
+/** phase-136: resolve a signal's NFT image CID through the cached gateway picker. */
+function resolveSignalImage(nftImage: string | undefined): { image: string; gateway: string } | null {
+  if (!isPhase136Enabled()) return null
+  const cidPath = extractIpfsCidPath(nftImage)
+  if (!cidPath) return null
+  try {
+    const resolved = resolveCidGateway(cidPath)
+    return { image: resolved.url, gateway: resolved.gateway }
+  } catch {
+    return null
+  }
 }
 
 type ReplyBody = {
@@ -195,16 +208,22 @@ export async function POST(
       }
     }
 
+    const resolvedImage = resolveSignalImage(signal.nft_image)
+
     return api.json(
       {
         reply,
         ...(isPhase116Enabled() ? { contributors: contributors?.contributors ?? [], creditLedger: creditLedger ?? [] } : {}),
+        ...(resolvedImage ? { signalMedia: resolvedImage } : {}),
       },
       {
         status: 201,
         event: "signals.reply.created",
-        metadata: { signal_id: id, reply_id: reply.id, phase116: isPhase116Enabled(), attribCount: attributionParsed?.length ?? 0 },
-        headers: isPhase116Enabled() ? { "X-Phase116": "enabled" } : {},
+        metadata: { signal_id: id, reply_id: reply.id, phase116: isPhase116Enabled(), phase136: isPhase136Enabled(), attribCount: attributionParsed?.length ?? 0 },
+        headers: {
+          ...(isPhase116Enabled() ? { "X-Phase116": "enabled" } : {}),
+          ...(resolvedImage ? { "X-Phase136-Gateway": resolvedImage.gateway } : {}),
+        },
       },
     )
   } catch (error) {
@@ -227,9 +246,16 @@ export async function GET(
     if (!signal) return api.json({ error: "Signal not found" }, { status: 404, event: "signals.ledger.signal_missing" })
     const contributors = await getSignalContributors(id)
     const creditLedger = await computeCreditLedger(id)
+    const resolvedImage = resolveSignalImage(signal.nft_image)
     return api.json(
-      { signalId: id, contributors: contributors?.contributors ?? [], totalShareBps: contributors?.totalShareBps ?? 0, creditLedger },
-      { event: "signals.ledger.loaded", metadata: { signal_id: id } },
+      {
+        signalId: id,
+        contributors: contributors?.contributors ?? [],
+        totalShareBps: contributors?.totalShareBps ?? 0,
+        creditLedger,
+        ...(resolvedImage ? { signalMedia: resolvedImage } : {}),
+      },
+      { event: "signals.ledger.loaded", metadata: { signal_id: id, phase136: isPhase136Enabled() } },
     )
   } catch (error) {
     return api.errorJson(error, 500, "signals.ledger.load_failed")

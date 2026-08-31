@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
 import { WalletAvatar } from "@/components/wallet-avatar"
-import { getSignal, getReplies, getSignalContributors, computeCreditLedger, isPhase116Enabled } from "@/lib/signal-store"
+import { getSignal, getReplies, getSignalContributors, computeCreditLedger, isPhase116Enabled, isPhase136Enabled, resolveCidGateway, extractIpfsCidPath } from "@/lib/signal-store"
 import { SignalDetailClient } from "./signal-detail-client"
 
 export const dynamic = "force-dynamic"
@@ -37,6 +37,17 @@ export default async function SignalDetailPage({ params }: Props) {
 
   const replies = await getReplies(id)
   const shortWallet = `${signal.author_wallet.slice(0, 4)}…${signal.author_wallet.slice(-4)}`
+
+  // phase-136: resolve the signal's NFT image CID through the cached gateway picker
+  let nftImageSrc = signal.nft_image
+  const nftCidPath = extractIpfsCidPath(signal.nft_image)
+  if (isPhase136Enabled() && nftCidPath) {
+    try {
+      nftImageSrc = resolveCidGateway(nftCidPath).url
+    } catch {
+      // fall back to the stored URL (zero regression)
+    }
+  }
 
   // phase-116: load contributor ledger when flag enabled (preserves signal detail wiring)
   const phase116 = isPhase116Enabled()
@@ -101,9 +112,9 @@ export default async function SignalDetailPage({ params }: Props) {
 
           {signal.nft_token_id !== undefined && (
             <div className="flex items-center gap-3 border border-[var(--color-border-tertiary)] p-2">
-              {signal.nft_image && (
+              {nftImageSrc && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={signal.nft_image} alt={signal.nft_name} className="h-10 w-10 object-cover" />
+                <img src={nftImageSrc} alt={signal.nft_name} className="h-10 w-10 object-cover" />
               )}
               <div className="flex flex-col">
                 <span className="font-mono text-[10px] text-foreground/80">{signal.nft_name}</span>
