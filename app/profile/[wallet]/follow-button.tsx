@@ -1,99 +1,167 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import Link from "next/link"
-import { useWallet } from "@/components/wallet-provider"
-import type { FollowSuggestion } from "@/lib/follow-store"
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import { useWallet } from "@/components/wallet-provider";
+import type { FollowSuggestion } from "@/lib/follow-store";
 
 type Props = {
-  targetWallet: string
-}
+  targetWallet: string;
+};
 
-export function FollowSuggestions({ profileWallet }: { profileWallet: string }) {
-  const { address } = useWallet()
-  const [suggestions, setSuggestions] = useState<FollowSuggestion[]>([])
+export function FollowSuggestions({
+  profileWallet,
+}: {
+  profileWallet: string;
+}) {
+  const { address } = useWallet();
+  const [suggestions, setSuggestions] = useState<FollowSuggestion[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
 
   useEffect(() => {
-    if (!address || address !== profileWallet) return
-    const controller = new AbortController()
-    fetch(`/api/profile/follow?mode=suggestions&wallet=${encodeURIComponent(address)}&limit=6`, {
-      signal: controller.signal,
-    })
-      .then(async (response) => response.ok
-        ? response.json() as Promise<{ suggestions?: FollowSuggestion[] }>
-        : { suggestions: [] })
-      .then((data) => setSuggestions(data.suggestions ?? []))
-      .catch(() => {})
-    return () => controller.abort()
-  }, [address, profileWallet])
+    if (!address || address !== profileWallet) return;
+    const controller = new AbortController();
+    setIsSearching(true);
 
-  if (!address || address !== profileWallet || suggestions.length === 0) return null
+    const searchParam = searchQuery
+      ? `&search=${encodeURIComponent(searchQuery)}`
+      : "";
+    fetch(
+      `/api/profile/follow?mode=suggestions&wallet=${encodeURIComponent(address)}&limit=6${searchParam}`,
+      {
+        signal: controller.signal,
+      },
+    )
+      .then(async (response) =>
+        response.ok
+          ? (response.json() as Promise<{ suggestions?: FollowSuggestion[] }>)
+          : { suggestions: [] },
+      )
+      .then((data) => {
+        setSuggestions(data.suggestions ?? []);
+        setIsSearching(false);
+      })
+      .catch(() => {
+        setIsSearching(false);
+      });
+    return () => controller.abort();
+  }, [address, profileWallet, searchQuery]);
+
+  if (!address || address !== profileWallet) return null;
 
   return (
     <section aria-labelledby="follow-suggestions-title" className="space-y-3">
       <div className="flex items-baseline justify-between border-b border-violet-800/20 pb-1">
-        <h2 id="follow-suggestions-title" className="text-[9px] uppercase tracking-widest text-zinc-500">
+        <h2
+          id="follow-suggestions-title"
+          className="text-[9px] uppercase tracking-widest text-zinc-500"
+        >
           PEOPLE_TO_FOLLOW
         </h2>
         <span className="text-[8px] text-zinc-600">STELLAR GRAPH</span>
       </div>
-      <div className="divide-y divide-violet-800/20 border-y border-violet-800/20">
-        {suggestions.map((suggestion) => (
-          <Link
-            key={suggestion.wallet}
-            href={`/profile/${suggestion.wallet}`}
-            className="flex items-center gap-3 py-2.5 text-[10px] transition-colors hover:text-violet-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-violet-400"
-          >
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-zinc-300">{suggestion.displayName ?? `${suggestion.wallet.slice(0, 6)}…${suggestion.wallet.slice(-4)}`}</span>
-              {suggestion.displayName && <span className="block truncate text-[8px] text-zinc-600">{suggestion.wallet}</span>}
-            </span>
-            <span className="shrink-0 text-[8px] text-zinc-500">
-              {suggestion.mutualFollows > 0 ? `${suggestion.mutualFollows} mutual` : `${suggestion.sharedAssets} shared assets`}
-            </span>
-            <span aria-hidden="true" className="text-violet-500">→</span>
-          </Link>
-        ))}
-      </div>
+
+      {/* Typo-tolerant search input */}
+      <input
+        type="text"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        placeholder="Search users (typo-tolerant)"
+        className="w-full bg-zinc-900/50 border border-violet-800/20 px-3 py-1.5 text-[10px] text-zinc-300 placeholder-zinc-600 focus:border-violet-500/40 focus:outline-none"
+      />
+
+      {isSearching && (
+        <div className="text-center text-[9px] text-zinc-500 py-2">
+          Searching...
+        </div>
+      )}
+
+      {!isSearching && suggestions.length === 0 && searchQuery && (
+        <div className="text-center text-[9px] text-zinc-500 py-2">
+          No matches found
+        </div>
+      )}
+
+      {!isSearching && suggestions.length > 0 && (
+        <div className="divide-y divide-violet-800/20 border-y border-violet-800/20">
+          {suggestions.map((suggestion) => (
+            <Link
+              key={suggestion.wallet}
+              href={`/profile/${suggestion.wallet}`}
+              className="flex items-center gap-3 py-2.5 text-[10px] transition-colors hover:text-violet-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-violet-400"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-zinc-300">
+                  {suggestion.displayName ??
+                    `${suggestion.wallet.slice(0, 6)}…${suggestion.wallet.slice(-4)}`}
+                </span>
+                {suggestion.displayName && (
+                  <span className="block truncate text-[8px] text-zinc-600">
+                    {suggestion.wallet}
+                  </span>
+                )}
+              </span>
+              <span className="shrink-0 text-[8px] text-zinc-500">
+                {suggestion.mutualFollows > 0
+                  ? `${suggestion.mutualFollows} mutual`
+                  : `${suggestion.sharedAssets} shared assets`}
+              </span>
+              {suggestion.matchScore && suggestion.matchScore < 1 && (
+                <span className="text-[7px] text-violet-400">
+                  ~{Math.round(suggestion.matchScore * 100)}%
+                </span>
+              )}
+              <span aria-hidden="true" className="text-violet-500">
+                →
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
     </section>
-  )
+  );
 }
 
 export function FollowButton({ targetWallet }: Props) {
-  const { address } = useWallet()
-  const [following, setFollowing] = useState<boolean | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { address } = useWallet();
+  const [following, setFollowing] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!address || address === targetWallet) return
-    fetch(`/api/profile/follow?wallet=${encodeURIComponent(targetWallet)}&viewer=${encodeURIComponent(address)}`)
+    if (!address || address === targetWallet) return;
+    fetch(
+      `/api/profile/follow?wallet=${encodeURIComponent(targetWallet)}&viewer=${encodeURIComponent(address)}`,
+    )
       .then((r) => r.json() as Promise<{ isFollowing?: boolean | null }>)
       .then((data) => setFollowing(data.isFollowing ?? false))
-      .catch(() => {})
-  }, [address, targetWallet])
+      .catch(() => {});
+  }, [address, targetWallet]);
 
-  if (!address || address === targetWallet) return null
+  if (!address || address === targetWallet) return null;
 
   async function toggle() {
-    if (!address || busy) return
-    setBusy(true)
-    setError(null)
-    const action = following ? "unfollow" : "follow"
+    if (!address || busy) return;
+    setBusy(true);
+    setError(null);
+    const action = following ? "unfollow" : "follow";
     try {
       const res = await fetch("/api/profile/follow", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ from: address, to: targetWallet, action }),
-      })
+      });
       if (res.ok) {
-        setFollowing(!following)
+        setFollowing(!following);
       } else {
-        const data = (await res.json().catch(() => null)) as { error?: string } | null
-        setError(data?.error ?? "Follow request failed")
+        const data = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        setError(data?.error ?? "Follow request failed");
       }
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
   }
 
@@ -112,8 +180,8 @@ export function FollowButton({ targetWallet }: Props) {
         {following === null
           ? "···"
           : following
-          ? "[ FOLLOWING ]"
-          : "[ FOLLOW ]"}
+            ? "[ FOLLOWING ]"
+            : "[ FOLLOW ]"}
       </button>
       {error && (
         <span className="max-w-48 text-right font-mono text-[9px] uppercase tracking-wider text-red-400">
@@ -121,5 +189,5 @@ export function FollowButton({ targetWallet }: Props) {
         </span>
       )}
     </span>
-  )
+  );
 }
