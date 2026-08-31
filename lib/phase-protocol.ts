@@ -1907,6 +1907,21 @@ export async function checkHasPhased(
 }
 
 /**
+ * Multi-claim guard for the custodian-release pipeline: custody alone (token held
+ * by the PHASELQ issuer) is not authorization to release it to an arbitrary
+ * wallet. This is authorized only when the requested tokenId matches the
+ * on-chain phase artifact (`get_user_phase`) already resolved for the
+ * requesting recipient — i.e. they are the wallet that actually phased/settled
+ * this exact token.
+ */
+export function isCustodianReleaseAuthorized(
+  recipientArtifact: { tokenId: number } | null,
+  requestedTokenId: number,
+): boolean {
+  return recipientArtifact != null && recipientArtifact.tokenId === requestedTokenId
+}
+
+/**
  * Escaneo defensivo para detectar propiedad real de cualquier NFT PHASE,
  * incluso fuera de `collection_id=0` o de la colección creada por el usuario.
  */
