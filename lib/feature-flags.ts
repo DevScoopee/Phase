@@ -26,6 +26,8 @@
  * - phase-131: quest streak daily-claim multiplier with decay rules
  * - phase-132: referral-quest attribution with anti-gaming caps
  * - phase-133: faucet distributor balance auto-top-up via Mercury
+ * - phase-134: rate-limit-aware batch trustline submission to Horizon
+ * - phase-135: cached wallet/explore NFT ownership index with stale-on-error fallback
  */
 
 export type PhaseFeatureFlag =
@@ -73,7 +75,9 @@ export type PhaseFeatureFlag =
   | "phase-130"
   | "phase-131"
   | "phase-132"
-  | "phase-133";
+  | "phase-133"
+  | "phase-134"
+  | "phase-135";
 
 const FLAG_ENV_MAP: Record<PhaseFeatureFlag, string[]> = {
   "phase-66": ["NEXT_PUBLIC_FEATURE_PHASE_66", "FEATURE_PHASE_66"],
@@ -120,6 +124,8 @@ const FLAG_ENV_MAP: Record<PhaseFeatureFlag, string[]> = {
   "phase-131": ["NEXT_PUBLIC_FEATURE_PHASE_131", "FEATURE_PHASE_131"],
   "phase-132": ["NEXT_PUBLIC_FEATURE_PHASE_132", "FEATURE_PHASE_132"],
   "phase-133": ["NEXT_PUBLIC_FEATURE_PHASE_133", "FEATURE_PHASE_133"],
+  "phase-134": ["NEXT_PUBLIC_FEATURE_PHASE_134", "FEATURE_PHASE_134"],
+  "phase-135": ["NEXT_PUBLIC_FEATURE_PHASE_135", "FEATURE_PHASE_135"],
 };
 
 function isTruthy(v: string | undefined): boolean {

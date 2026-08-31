@@ -46,7 +46,7 @@ export async function GET(
       headers: {
         ...CORS,
         "Content-Type": result.contentType,
-        "Cache-Control": "public, s-maxage=31536000, immutable",
+        "Cache-Control": "public, max-age=2592000, s-maxage=31536000, immutable",
         ...(isPhase123Enabled() ? { "X-Phase-Gateway": result.gateway, "X-Phase-Latency-Ms": String(result.latencyMs) } : {}),
       },
     })
