@@ -215,6 +215,24 @@ export async function readClassicWalletStatus(
   }
 }
 
+/**
+ * Read native XLM balance from Horizon
+ */
+export async function readNativeXlmBalance(walletAddress: string): Promise<number | null> {
+  if (!StrKey.isValidEd25519PublicKey(walletAddress)) {
+    return null
+  }
+  const res = await fetch(`${HORIZON_URL}/accounts/${encodeURIComponent(walletAddress)}`, {
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+  })
+  if (!res.ok) {
+    return null
+  }
+  const data = (await res.json()) as HorizonAccountResponse
+  return nativeXlmBalanceFromHorizonAccount(data)
+}
+
 export async function buildClassicTrustlineTransactionXdr(
   walletAddress: string,
   asset: ClassicLiqAsset,
