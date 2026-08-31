@@ -613,3 +613,270 @@ export async function generateThumbnail(
     url: `https://gateway.pinata.cloud/ipfs/${ipfsCid}`,
   };
 }
+
+// ── Issue #64 (phase-136): per-CID IPFS gateway resolution cache ──────────────
+//
+// Isolated, flag-gated. Every metadata read re-resolved a CID against the
+// gateway list from scratch, so repeated reads of the same attachment paid the
+// gateway-selection cost again and again, and a degrading gateway kept being
+// picked until it hard-failed. This module memoizes the resolution per CID
+// (TTL) and keeps a rolling health score per gateway (success ratio + EWMA
+// latency) so the best gateway wins and a cache entry pinned to a failing
+// gateway is dropped on the next recorded failure.
+//
+// Feature flag: phase-136 (NEXT_PUBLIC_FEATURE_PHASE_136 / FEATURE_PHASE_136)
+// Rollback: unset the flag → resolveCidGateway() falls back to a deterministic
+//           first-gateway pick with no caching. No persistent state to revert.
+
+export function isPhase136Enabled(): boolean {
+  return isFeatureEnabled("phase-136");
+}
+
+export function flag136RollbackNote(): string {
+  return "Rollback phase-136: unset NEXT_PUBLIC_FEATURE_PHASE_136 / FEATURE_PHASE_136 or set to 0/false and restart. CID resolution falls back to a first-gateway pick with no cache; no data migration to undo.";
+}
+
+export const CID_RESOLUTION_GATEWAYS = [
+  "https://w3s.link/ipfs",
+  "https://dweb.link/ipfs",
+  "https://ipfs.io/ipfs",
+  "https://cloudflare-ipfs.com/ipfs",
+] as const;
+
+const CID_RESOLUTION_DEFAULT_TTL_MS = 5 * 60 * 1000;
+const CID_RESOLUTION_MAX_ENTRIES = 256;
+const GATEWAY_LATENCY_EWMA_ALPHA = 0.3;
+
+export const CidResolutionRequestSchema = z.object({
+  cid: z
+    .string()
+    .trim()
+    .min(4)
+    .max(512)
+    .regex(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/, "Invalid CID or CID path"),
+  ttlMs: z
+    .number()
+    .int()
+    .min(1_000)
+    .max(24 * 60 * 60 * 1000)
+    .optional(),
+});
+
+export type CidResolutionRequest = z.infer<typeof CidResolutionRequestSchema>;
+
+export const GatewayOutcomeSchema = z.object({
+  gateway: z.string().trim().url(),
+  ok: z.boolean(),
+  latencyMs: z.number().min(0).max(120_000).default(0),
+});
+
+export type GatewayOutcome = z.infer<typeof GatewayOutcomeSchema>;
+
+export type CidGatewayResolution = {
+  cid: string;
+  url: string;
+  gateway: string;
+  score: number;
+  fromCache: boolean;
+  resolvedAt: number;
+  expiresAt: number;
+};
+
+export class CidResolutionError extends Error {
+  code: "FLAG_DISABLED" | "VALIDATION_FAILED" | "NO_GATEWAY";
+  details?: unknown;
+  constructor(
+    code: CidResolutionError["code"],
+    message: string,
+    details?: unknown,
+  ) {
+    super(message);
+    this.name = "CidResolutionError";
+    this.code = code;
+    this.details = details;
+  }
+}
+
+type GatewayHealth = { ok: number; fail: number; ewmaLatencyMs: number };
+type CidResolutionEntry = {
+  gateway: string;
+  url: string;
+  resolvedAt: number;
+  expiresAt: number;
+};
+
+const cidResolutionCache = new Map<string, CidResolutionEntry>();
+const gatewayHealth = new Map<string, GatewayHealth>();
+
+function normalizeGatewayBase(gateway: string): string {
+  return gateway.trim().replace(/\/+$/, "");
+}
+
+function normalizeCidPath(cid: string): string {
+  return cid.trim().replace(/^ipfs:\/\//i, "").replace(/^\/+/, "");
+}
+
+/**
+ * Pulls the `<cid>/<path?>` portion out of an `ipfs://…` URI or a
+ * `https://gateway/ipfs/…` URL. Returns null for a non-IPFS value so callers can
+ * skip resolution and keep the stored URL untouched.
+ */
+export function extractIpfsCidPath(value: string | undefined | null): string | null {
+  if (!value) return null;
+  const ipfsUri = value.match(/^ipfs:\/\/([A-Za-z0-9][A-Za-z0-9._/-]*)$/i);
+  if (ipfsUri) return ipfsUri[1]!;
+  const gatewayUrl = value.match(/\/ipfs\/([A-Za-z0-9][A-Za-z0-9._/-]*)$/i);
+  if (gatewayUrl) return gatewayUrl[1]!;
+  return null;
+}
+
+/** 0–100 health score: 70% success ratio, 30% latency (0ms→100, ≥5s→0). */
+export function scoreGateway(gateway: string): number {
+  const h = gatewayHealth.get(normalizeGatewayBase(gateway));
+  if (!h || h.ok + h.fail === 0) return 50;
+  const successRatio = h.ok / (h.ok + h.fail);
+  const latencyScore = Math.max(0, 100 - (h.ewmaLatencyMs / 5_000) * 100);
+  return Math.round(successRatio * 100 * 0.7 + latencyScore * 0.3);
+}
+
+function bestGateway(): { gateway: string; score: number } {
+  let best = normalizeGatewayBase(CID_RESOLUTION_GATEWAYS[0]);
+  let bestScore = -1;
+  for (const raw of CID_RESOLUTION_GATEWAYS) {
+    const gateway = normalizeGatewayBase(raw);
+    const score = scoreGateway(gateway);
+    if (score > bestScore) {
+      best = gateway;
+      bestScore = score;
+    }
+  }
+  return { gateway: best, score: bestScore < 0 ? 50 : bestScore };
+}
+
+function evictCidResolutionIfNeeded(): void {
+  if (cidResolutionCache.size <= CID_RESOLUTION_MAX_ENTRIES) return;
+  const oldest = cidResolutionCache.keys().next().value as string | undefined;
+  if (oldest) cidResolutionCache.delete(oldest);
+}
+
+/**
+ * Resolves a CID (or CID/path) to a gateway-routed URL, memoized per CID with a
+ * TTL and backed by rolling gateway health scores. When phase-136 is off this
+ * returns a deterministic first-gateway pick and never touches the cache.
+ */
+export function resolveCidGateway(
+  cid: string,
+  opts: { ttlMs?: number; now?: number; force?: boolean } = {},
+): CidGatewayResolution {
+  const cidPath = normalizeCidPath(cid);
+  const now = opts.now ?? Date.now();
+
+  if (!opts.force && !isPhase136Enabled()) {
+    const gateway = normalizeGatewayBase(CID_RESOLUTION_GATEWAYS[0]);
+    return {
+      cid: cidPath,
+      url: `${gateway}/${cidPath}`,
+      gateway,
+      score: 50,
+      fromCache: false,
+      resolvedAt: now,
+      expiresAt: now,
+    };
+  }
+
+  const parsed = CidResolutionRequestSchema.safeParse({
+    cid: cidPath,
+    ttlMs: opts.ttlMs,
+  });
+  if (!parsed.success) {
+    throw new CidResolutionError(
+      "VALIDATION_FAILED",
+      "valid CID or CID path required",
+      parsed.error.flatten(),
+    );
+  }
+
+  const cached = cidResolutionCache.get(cidPath);
+  if (cached && cached.expiresAt > now) {
+    return {
+      cid: cidPath,
+      url: cached.url,
+      gateway: cached.gateway,
+      score: scoreGateway(cached.gateway),
+      fromCache: true,
+      resolvedAt: cached.resolvedAt,
+      expiresAt: cached.expiresAt,
+    };
+  }
+
+  const { gateway, score } = bestGateway();
+  const ttlMs = parsed.data.ttlMs ?? CID_RESOLUTION_DEFAULT_TTL_MS;
+  const entry: CidResolutionEntry = {
+    gateway,
+    url: `${gateway}/${cidPath}`,
+    resolvedAt: now,
+    expiresAt: now + ttlMs,
+  };
+  cidResolutionCache.delete(cidPath);
+  cidResolutionCache.set(cidPath, entry);
+  evictCidResolutionIfNeeded();
+
+  return {
+    cid: cidPath,
+    url: entry.url,
+    gateway,
+    score,
+    fromCache: false,
+    resolvedAt: now,
+    expiresAt: entry.expiresAt,
+  };
+}
+
+/**
+ * Feeds a gateway request outcome back into the health model. A failure also
+ * invalidates every cached CID currently pinned to that gateway so the next
+ * resolution re-picks.
+ */
+export function recordCidGatewayOutcome(raw: unknown): void {
+  const parsed = GatewayOutcomeSchema.safeParse(raw);
+  if (!parsed.success) return;
+  const gateway = normalizeGatewayBase(parsed.data.gateway);
+  const h = gatewayHealth.get(gateway) ?? { ok: 0, fail: 0, ewmaLatencyMs: 0 };
+  if (parsed.data.ok) h.ok += 1;
+  else h.fail += 1;
+  const latency = parsed.data.latencyMs;
+  h.ewmaLatencyMs =
+    h.ewmaLatencyMs === 0
+      ? latency
+      : h.ewmaLatencyMs * (1 - GATEWAY_LATENCY_EWMA_ALPHA) +
+        latency * GATEWAY_LATENCY_EWMA_ALPHA;
+  gatewayHealth.set(gateway, h);
+
+  if (!parsed.data.ok) {
+    for (const [cidPath, entry] of cidResolutionCache.entries()) {
+      if (entry.gateway === gateway) cidResolutionCache.delete(cidPath);
+    }
+  }
+}
+
+export function getCidGatewayCacheStats(): {
+  enabled: boolean;
+  entries: number;
+  gateways: Array<{ gateway: string; score: number; ok: number; fail: number }>;
+} {
+  return {
+    enabled: isPhase136Enabled(),
+    entries: cidResolutionCache.size,
+    gateways: CID_RESOLUTION_GATEWAYS.map((raw) => {
+      const gateway = normalizeGatewayBase(raw);
+      const h = gatewayHealth.get(gateway) ?? { ok: 0, fail: 0, ewmaLatencyMs: 0 };
+      return { gateway, score: scoreGateway(gateway), ok: h.ok, fail: h.fail };
+    }),
+  };
+}
+
+/** Test/ops hook to reset process-local phase-136 state. */
+export function __resetCidGatewayCacheForTests(): void {
+  cidResolutionCache.clear();
+  gatewayHealth.clear();
+}

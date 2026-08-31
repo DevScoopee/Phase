@@ -1,8 +1,22 @@
 import { NextRequest } from "next/server"
-import { DEFAULT_PROFILE_LOCALE, getProfile, isProfilePinningRedundancyEnabled, localizeAvatarName, normalizeProfileLocale, resolveAvatarWithFallback } from "@/lib/profile-store"
+import { DEFAULT_PROFILE_LOCALE, getProfile, isProfilePinningRedundancyEnabled, isPhase137Enabled, localizeAvatarName, normalizeProfileLocale, ProfileError, resolveAvatarWithFallback, toProfileErrorResponse } from "@/lib/profile-store"
 import { StrKey } from "@stellar/stellar-sdk"
 import { createApiRequestContext } from "@/lib/api-observability"
 import { z } from "zod"
+
+/** phase-137: emit a structured error body when the taxonomy flag is on, else the legacy generic 500. */
+function respondWithProfileError(
+  api: ReturnType<typeof createApiRequestContext>,
+  error: unknown,
+  event: string,
+  legacyStatus = 500,
+) {
+  if (isPhase137Enabled()) {
+    const { body, status } = toProfileErrorResponse(error)
+    return api.json(body, { status, event, metadata: { code: body.code, category: body.category, retryable: body.retryable } })
+  }
+  return api.errorJson(error, legacyStatus, event)
+}
 
 export const dynamic = "force-dynamic"
 
@@ -21,6 +35,13 @@ export async function GET(request: NextRequest) {
   const wallet = parsedQ.success ? parsedQ.data.wallet : rawWallet
 
   if (!wallet || !StrKey.isValidEd25519PublicKey(wallet)) {
+    if (isPhase137Enabled()) {
+      const err = new ProfileError("INVALID_WALLET", "Wallet address is not a valid ed25519 public key")
+      return api.json(
+        { avatar: null, ...err.toResponse() },
+        { status: err.status, event: "profile.avatar.validation_failed", metadata: { reason: "wallet", code: err.code } },
+      )
+    }
     return api.json(
       { avatar: null },
       { status: 400, event: "profile.avatar.validation_failed", metadata: { reason: "wallet" } },
@@ -80,7 +101,7 @@ export async function GET(request: NextRequest) {
       },
     )
   } catch (error) {
-    return api.errorJson(error, 500, "profile.avatar.load_failed")
+    return respondWithProfileError(api, error, "profile.avatar.load_failed")
   }
 }
 
@@ -109,13 +130,23 @@ export async function POST(request: NextRequest) {
   try {
     // fetch image bytes server-side (with timeout)
     const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(8000) })
-    if (!imgRes.ok) return api.json({ error: `Failed to fetch image (${imgRes.status})` }, { status: 502, event: "profile.avatar.fetch_failed" })
+    if (!imgRes.ok) {
+      if (isPhase137Enabled()) {
+        const err = new ProfileError(imgRes.status >= 500 ? "GATEWAY_5XX" : "GATEWAY_4XX", `Failed to fetch image (${imgRes.status})`, { status: imgRes.status })
+        return api.json(err.toResponse(), { status: err.status, event: "profile.avatar.fetch_failed", metadata: { code: err.code } })
+      }
+      return api.json({ error: `Failed to fetch image (${imgRes.status})` }, { status: 502, event: "profile.avatar.fetch_failed" })
+    }
     const ab = await imgRes.arrayBuffer()
     const blob = new Blob([ab], { type: imgRes.headers.get("content-type") ?? "image/png" })
 
     const { pinAvatarWithRedundancy } = await import("@/lib/profile-store")
     const result = await pinAvatarWithRedundancy(blob, { quorum, fileName: `avatar-${wallet.slice(0, 6)}.png` })
     if (!result.ok) {
+      if (isPhase137Enabled()) {
+        const err = new ProfileError(result.code === "NOT_CONFIGURED" ? "NOT_CONFIGURED" : "PIN_QUORUM_FAILED", result.error, { pinCode: result.code, quorum: result.quorum, achieved: result.achieved })
+        return api.json(err.toResponse(), { status: err.status, event: "profile.avatar.pin_failed", metadata: { code: err.code } })
+      }
       return api.json({ error: result.error, code: result.code, quorum: result.quorum, achieved: result.achieved }, { status: 502, event: "profile.avatar.pin_failed" })
     }
     // Persist new avatar_image_url as verified gateway URL
@@ -129,6 +160,6 @@ export async function POST(request: NextRequest) {
       { event: "profile.avatar.pinned", metadata: { wallet, cid: result.cid } },
     )
   } catch (error) {
-    return api.errorJson(error, 500, "profile.avatar.pin_failed")
+    return respondWithProfileError(api, error, "profile.avatar.pin_failed")
   }
 }
