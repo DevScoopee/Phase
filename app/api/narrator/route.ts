@@ -8,6 +8,7 @@ import {
 } from "@/lib/narrative-world-store"
 import { createNotification } from "@/lib/notification-store"
 import { checkNarrativeContinuity } from "@/lib/story-arc-continuity"
+import { isLoreVersioningEnabled, recordLoreVersion } from "@/lib/lore-versioning"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -90,7 +91,7 @@ export async function POST(request: NextRequest) {
   const tone = toneInstructions[world.narrator_tone ?? "enigmatic"] ?? toneInstructions["enigmatic"]
 
   const loreInput = typeof body.lore === "string" ? body.lore.trim() : ""
-  const recentNarratives = await getRecentNarrativesForCollection(collectionId, 2)
+  const recentNarratives = await getRecentNarrativesForCollection(collectionId, 5)
   const previousContext =
     recentNarratives.length > 0
       ? `\n\nPrevious narrative connections in this world:\n${recentNarratives.map((n, i) => `${i + 1}. ${n.narrative}`).join("\n")}`

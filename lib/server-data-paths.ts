@@ -30,6 +30,8 @@ const FILES = {
   watchlists: "watchlists.json",
   questRegistry: "quest-registry.json",
   distributorHealth: "distributor-health.json",
+  generationJobs: "generation-jobs.json",
+  generationDlq: "generation-dlq.json",
 } as const
 
 export type ServerDataFile = keyof typeof FILES
