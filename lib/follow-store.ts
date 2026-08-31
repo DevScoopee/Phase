@@ -425,3 +425,177 @@ export async function getFollowSuggestions(
   ]);
   return rankFollowSuggestions(wallet, store, onChainNeighbors, limit);
 }
+
+// ── Issue #67 (phase-138): cost attribution ledger per request ────────────────
+//
+// Isolated, flag-gated. Infra spend (Horizon fan-out on the follow-suggestions
+// path, notification writes, profile enrichment) was never attributed to the
+// request that caused it, so the treasury could not reconcile spend against
+// revenue. This module keeps a bounded in-memory ledger of per-request cost
+// units keyed by a taxonomy of billable operations, plus aggregation helpers
+// for a treasury view. Units are dimensionless "cost points" (relative weights),
+// not a currency.
+//
+// Feature flag: phase-138 (NEXT_PUBLIC_FEATURE_PHASE_138 / FEATURE_PHASE_138)
+// Rollback: unset the flag → recordRequestCost() is a no-op and getCostLedger()
+//           returns empty. Purely in-memory; nothing to migrate.
+
+export function isPhase138Enabled(): boolean {
+  return isFeatureEnabled("phase-138");
+}
+
+export function flag138RollbackNote(): string {
+  return "Rollback phase-138: unset NEXT_PUBLIC_FEATURE_PHASE_138 / FEATURE_PHASE_138 or set to 0/false and restart. The cost ledger is in-memory only; nothing to migrate.";
+}
+
+export const BILLABLE_OPERATIONS = [
+  "follow.suggestions",
+  "follow.write",
+  "follow.graph_read",
+  "horizon.account_lookup",
+  "horizon.asset_holders",
+  "profile.enrichment",
+  "notification.create",
+  "forge.request",
+] as const;
+
+export type BillableOperation = (typeof BILLABLE_OPERATIONS)[number];
+
+/** Default relative cost weight per operation. */
+export const OPERATION_UNIT_COST: Record<BillableOperation, number> = {
+  "follow.suggestions": 1,
+  "follow.write": 1,
+  "follow.graph_read": 1,
+  "horizon.account_lookup": 2,
+  "horizon.asset_holders": 3,
+  "profile.enrichment": 1,
+  "notification.create": 1,
+  "forge.request": 20,
+};
+
+export const CostAttributionInputSchema = z.object({
+  requestId: z.string().trim().min(1).max(128),
+  operation: z.enum(BILLABLE_OPERATIONS),
+  count: z.number().int().min(1).max(10_000).default(1),
+  units: z.number().min(0).max(1_000_000).optional(),
+  source: z.string().trim().min(1).max(64).default("internal"),
+  wallet: z
+    .string()
+    .trim()
+    .regex(/^G[A-Z2-7]{55}$/)
+    .optional(),
+});
+
+export type CostAttributionInput = z.infer<typeof CostAttributionInputSchema>;
+
+export type CostLedgerEntry = {
+  requestId: string;
+  operation: BillableOperation;
+  count: number;
+  units: number;
+  source: string;
+  wallet?: string;
+  at: number;
+};
+
+export class CostAttributionError extends Error {
+  code: "VALIDATION_FAILED";
+  details?: unknown;
+  constructor(message: string, details?: unknown) {
+    super(message);
+    this.name = "CostAttributionError";
+    this.code = "VALIDATION_FAILED";
+    this.details = details;
+  }
+}
+
+const COST_LEDGER_MAX_ENTRIES = 5_000;
+const costLedger: CostLedgerEntry[] = [];
+
+/**
+ * Appends a cost line for a request. Returns the units booked (0 when the flag
+ * is off). Throws CostAttributionError only on a malformed payload.
+ */
+export function recordRequestCost(raw: unknown): number {
+  const parsed = CostAttributionInputSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new CostAttributionError(
+      "valid cost attribution input required",
+      parsed.error.flatten(),
+    );
+  }
+  if (!isPhase138Enabled()) return 0;
+
+  const input = parsed.data;
+  const units =
+    input.units ?? OPERATION_UNIT_COST[input.operation] * input.count;
+  costLedger.push({
+    requestId: input.requestId,
+    operation: input.operation,
+    count: input.count,
+    units,
+    source: input.source,
+    ...(input.wallet ? { wallet: input.wallet } : {}),
+    at: Date.now(),
+  });
+  if (costLedger.length > COST_LEDGER_MAX_ENTRIES) {
+    costLedger.splice(0, costLedger.length - COST_LEDGER_MAX_ENTRIES);
+  }
+  return units;
+}
+
+export function getRequestCost(requestId: string): {
+  requestId: string;
+  totalUnits: number;
+  entries: CostLedgerEntry[];
+} {
+  const entries = costLedger.filter((e) => e.requestId === requestId);
+  return {
+    requestId,
+    totalUnits: entries.reduce((sum, e) => sum + e.units, 0),
+    entries,
+  };
+}
+
+export function getCostLedger(
+  opts: { operation?: BillableOperation; sinceMs?: number; limit?: number } = {},
+): CostLedgerEntry[] {
+  let rows = costLedger;
+  if (opts.operation) rows = rows.filter((e) => e.operation === opts.operation);
+  if (opts.sinceMs != null) {
+    const cutoff = Date.now() - opts.sinceMs;
+    rows = rows.filter((e) => e.at >= cutoff);
+  }
+  const limit = opts.limit ?? 500;
+  return rows.slice(-limit);
+}
+
+export function summarizeCostByOperation(): {
+  enabled: boolean;
+  totalUnits: number;
+  totalRequests: number;
+  byOperation: Record<string, { units: number; count: number }>;
+} {
+  const byOperation: Record<string, { units: number; count: number }> = {};
+  const requestIds = new Set<string>();
+  let totalUnits = 0;
+  for (const e of costLedger) {
+    requestIds.add(e.requestId);
+    totalUnits += e.units;
+    const bucket = byOperation[e.operation] ?? { units: 0, count: 0 };
+    bucket.units += e.units;
+    bucket.count += e.count;
+    byOperation[e.operation] = bucket;
+  }
+  return {
+    enabled: isPhase138Enabled(),
+    totalUnits,
+    totalRequests: requestIds.size,
+    byOperation,
+  };
+}
+
+/** Test/ops hook to reset the in-memory ledger. */
+export function __resetCostLedgerForTests(): void {
+  costLedger.length = 0;
+}

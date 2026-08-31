@@ -28,6 +28,9 @@
  * - phase-133: faucet distributor balance auto-top-up via Mercury
  * - phase-134: rate-limit-aware batch trustline submission to Horizon
  * - phase-135: cached wallet/explore NFT ownership index with stale-on-error fallback
+ * - phase-136: per-CID IPFS gateway resolution cache with TTL + gateway health scoring
+ * - phase-137: structured error taxonomy for profile avatar / x402 invoice failures
+ * - phase-138: cost attribution ledger per follow/forge request for treasury accounting
  */
 
 export type PhaseFeatureFlag =
@@ -77,7 +80,10 @@ export type PhaseFeatureFlag =
   | "phase-132"
   | "phase-133"
   | "phase-134"
-  | "phase-135";
+  | "phase-135"
+  | "phase-136"
+  | "phase-137"
+  | "phase-138";
 
 const FLAG_ENV_MAP: Record<PhaseFeatureFlag, string[]> = {
   "phase-66": ["NEXT_PUBLIC_FEATURE_PHASE_66", "FEATURE_PHASE_66"],
@@ -126,6 +132,9 @@ const FLAG_ENV_MAP: Record<PhaseFeatureFlag, string[]> = {
   "phase-133": ["NEXT_PUBLIC_FEATURE_PHASE_133", "FEATURE_PHASE_133"],
   "phase-134": ["NEXT_PUBLIC_FEATURE_PHASE_134", "FEATURE_PHASE_134"],
   "phase-135": ["NEXT_PUBLIC_FEATURE_PHASE_135", "FEATURE_PHASE_135"],
+  "phase-136": ["NEXT_PUBLIC_FEATURE_PHASE_136", "FEATURE_PHASE_136"],
+  "phase-137": ["NEXT_PUBLIC_FEATURE_PHASE_137", "FEATURE_PHASE_137"],
+  "phase-138": ["NEXT_PUBLIC_FEATURE_PHASE_138", "FEATURE_PHASE_138"],
 };
 
 function isTruthy(v: string | undefined): boolean {
@@ -200,6 +209,9 @@ export function getEnabledFeatureFlags(): PhaseFeatureFlag[] {
     "phase-131",
     "phase-132",
     "phase-133",
+    "phase-136",
+    "phase-137",
+    "phase-138",
   ];
   return all.filter(isFeatureEnabled)
 }

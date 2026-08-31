@@ -18,6 +18,8 @@ export function FollowSuggestions({
   const [suggestions, setSuggestions] = useState<FollowSuggestion[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
+  // phase-138: per-request infra cost surfaced for treasury visibility
+  const [costUnits, setCostUnits] = useState<number | null>(null);
 
   useEffect(() => {
     if (!address || address !== profileWallet) return;
@@ -33,13 +35,13 @@ export function FollowSuggestions({
         signal: controller.signal,
       },
     )
-      .then(async (response) =>
-        response.ok
-          ? (response.json() as Promise<{ suggestions?: FollowSuggestion[] }>)
-          : { suggestions: [] },
-      )
+      .then(async (response): Promise<{
+        suggestions?: FollowSuggestion[];
+        costUnits?: number;
+      }> => (response.ok ? response.json() : { suggestions: [] }))
       .then((data) => {
         setSuggestions(data.suggestions ?? []);
+        setCostUnits(typeof data.costUnits === "number" ? data.costUnits : null);
         setIsSearching(false);
       })
       .catch(() => {
@@ -59,7 +61,9 @@ export function FollowSuggestions({
         >
           PEOPLE_TO_FOLLOW
         </h2>
-        <span className="text-[8px] text-zinc-600">STELLAR GRAPH</span>
+        <span className="text-[8px] text-zinc-600">
+          {costUnits !== null ? `STELLAR GRAPH · ${costUnits}u` : "STELLAR GRAPH"}
+        </span>
       </div>
 
       {/* Typo-tolerant search input */}

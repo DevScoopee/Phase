@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { serverDataJsonPath } from "@/lib/server-data-paths";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 
 export type ProfileData = {
   display_name?: string;
@@ -1046,4 +1047,179 @@ async function writeJson<T extends object>(
 ): Promise<void> {
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, JSON.stringify(data, null, 2), "utf8");
+}
+
+// ── Issues #65 / #66 (phase-137): structured error taxonomy ───────────────────
+//
+// Isolated, flag-gated. Avatar / gateway / x402-invoice failures all surfaced as
+// a single generic 500 "Internal server error", so a Pinata timeout, a checksum
+// mismatch and a bad wallet were indistinguishable in production logs and the
+// client could not tell a retryable blip from a permanent failure. This module
+// maps any thrown value onto a closed taxonomy of codes, each carrying a
+// deterministic HTTP status, a category and a retryable flag, plus a serializer
+// for API responses.
+//
+// Feature flag: phase-137 (NEXT_PUBLIC_FEATURE_PHASE_137 / FEATURE_PHASE_137)
+// Rollback: unset the flag → classifyProfileError() still works but routes keep
+//           their legacy generic 500; no schema or data change to revert.
+
+export function isPhase137Enabled(): boolean {
+  return isFeatureEnabled("phase-137");
+}
+
+export function flag137RollbackNote(): string {
+  return "Rollback phase-137: unset NEXT_PUBLIC_FEATURE_PHASE_137 / FEATURE_PHASE_137 or set to 0/false and restart. Routes fall back to a generic 500; no data migration to undo.";
+}
+
+export const PROFILE_ERROR_CODES = [
+  "INVALID_WALLET",
+  "AVATAR_NOT_FOUND",
+  "GATEWAY_TIMEOUT",
+  "GATEWAY_UNREACHABLE",
+  "GATEWAY_5XX",
+  "GATEWAY_4XX",
+  "CHECKSUM_MISMATCH",
+  "MALFORMED_RESPONSE",
+  "PIN_QUORUM_FAILED",
+  "NOT_CONFIGURED",
+  "RATE_LIMITED",
+  "FLAG_DISABLED",
+  "INTERNAL",
+] as const;
+
+export type ProfileErrorCode = (typeof PROFILE_ERROR_CODES)[number];
+
+export type ProfileErrorCategory =
+  | "client"
+  | "upstream"
+  | "integrity"
+  | "config"
+  | "internal";
+
+type ProfileErrorSpec = {
+  status: number;
+  category: ProfileErrorCategory;
+  retryable: boolean;
+};
+
+const PROFILE_ERROR_TABLE: Record<ProfileErrorCode, ProfileErrorSpec> = {
+  INVALID_WALLET: { status: 400, category: "client", retryable: false },
+  AVATAR_NOT_FOUND: { status: 404, category: "client", retryable: false },
+  GATEWAY_TIMEOUT: { status: 504, category: "upstream", retryable: true },
+  GATEWAY_UNREACHABLE: { status: 502, category: "upstream", retryable: true },
+  GATEWAY_5XX: { status: 502, category: "upstream", retryable: true },
+  GATEWAY_4XX: { status: 502, category: "upstream", retryable: false },
+  CHECKSUM_MISMATCH: { status: 502, category: "integrity", retryable: false },
+  MALFORMED_RESPONSE: { status: 502, category: "integrity", retryable: false },
+  PIN_QUORUM_FAILED: { status: 502, category: "upstream", retryable: true },
+  NOT_CONFIGURED: { status: 500, category: "config", retryable: false },
+  RATE_LIMITED: { status: 429, category: "upstream", retryable: true },
+  FLAG_DISABLED: { status: 404, category: "config", retryable: false },
+  INTERNAL: { status: 500, category: "internal", retryable: false },
+};
+
+export const ProfileErrorResponseSchema = z.object({
+  error: z.string().min(1),
+  code: z.enum(PROFILE_ERROR_CODES),
+  category: z.enum(["client", "upstream", "integrity", "config", "internal"]),
+  retryable: z.boolean(),
+  details: z.unknown().optional(),
+});
+
+export type ProfileErrorResponse = z.infer<typeof ProfileErrorResponseSchema>;
+
+export class ProfileError extends Error {
+  readonly code: ProfileErrorCode;
+  readonly status: number;
+  readonly category: ProfileErrorCategory;
+  readonly retryable: boolean;
+  readonly details?: unknown;
+
+  constructor(
+    code: ProfileErrorCode,
+    message: string,
+    details?: unknown,
+  ) {
+    super(message);
+    this.name = "ProfileError";
+    this.code = code;
+    const spec = PROFILE_ERROR_TABLE[code];
+    this.status = spec.status;
+    this.category = spec.category;
+    this.retryable = spec.retryable;
+    this.details = details;
+  }
+
+  toResponse(): ProfileErrorResponse {
+    return {
+      error: this.message,
+      code: this.code,
+      category: this.category,
+      retryable: this.retryable,
+      ...(this.details !== undefined ? { details: this.details } : {}),
+    };
+  }
+}
+
+function statusToCode(status: number): ProfileErrorCode {
+  if (status === 429) return "RATE_LIMITED";
+  if (status === 408 || status === 504) return "GATEWAY_TIMEOUT";
+  if (status >= 500) return "GATEWAY_5XX";
+  if (status >= 400) return "GATEWAY_4XX";
+  return "INTERNAL";
+}
+
+/**
+ * Maps any thrown value onto the taxonomy. Recognises ProfileError (pass-through),
+ * fetch AbortError / timeouts, DNS / connection failures, `{ status }`-shaped
+ * upstream errors, CID integrity errors and Zod parse errors.
+ */
+export function classifyProfileError(err: unknown): ProfileError {
+  if (err instanceof ProfileError) return err;
+
+  if (err instanceof z.ZodError) {
+    return new ProfileError(
+      "MALFORMED_RESPONSE",
+      "Upstream payload failed schema validation",
+      err.flatten(),
+    );
+  }
+
+  if (err instanceof Error) {
+    const name = err.name;
+    const msg = err.message.toLowerCase();
+
+    if (name === "AbortError" || name === "TimeoutError" || msg.includes("timeout") || msg.includes("timed out")) {
+      return new ProfileError("GATEWAY_TIMEOUT", "Gateway request timed out", { cause: err.message });
+    }
+    if (name === "CidIntegrityError" || msg.includes("checksum") || msg.includes("tamper") || msg.includes("hash mismatch")) {
+      return new ProfileError("CHECKSUM_MISMATCH", "Fetched bytes failed integrity verification", { cause: err.message });
+    }
+    if (msg.includes("fetch failed") || msg.includes("enotfound") || msg.includes("econnrefused") || msg.includes("network")) {
+      return new ProfileError("GATEWAY_UNREACHABLE", "Gateway is unreachable", { cause: err.message });
+    }
+
+    const status = (err as { status?: unknown }).status;
+    if (typeof status === "number" && Number.isFinite(status)) {
+      return new ProfileError(statusToCode(status), `Gateway responded ${status}`, { status });
+    }
+
+    const code = (err as { code?: unknown }).code;
+    if (typeof code === "string" && (PROFILE_ERROR_CODES as readonly string[]).includes(code)) {
+      return new ProfileError(code as ProfileErrorCode, err.message);
+    }
+
+    return new ProfileError("INTERNAL", err.message);
+  }
+
+  return new ProfileError("INTERNAL", typeof err === "string" ? err : "Unknown profile error");
+}
+
+/** Convenience for route handlers: `{ body, status }` for a caught value. */
+export function toProfileErrorResponse(err: unknown): {
+  body: ProfileErrorResponse;
+  status: number;
+} {
+  const classified = classifyProfileError(err);
+  return { body: classified.toResponse(), status: classified.status };
 }
