@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
   const tone = toneInstructions[world.narrator_tone ?? "enigmatic"] ?? toneInstructions["enigmatic"]
 
   const loreInput = typeof body.lore === "string" ? body.lore.trim() : ""
-  const recentNarratives = await getRecentNarrativesForCollection(collectionId, 2)
+  const recentNarratives = await getRecentNarrativesForCollection(collectionId, 5)
   const previousContext =
     recentNarratives.length > 0
       ? `\n\nPrevious narrative connections in this world:\n${recentNarratives.map((n, i) => `${i + 1}. ${n.narrative}`).join("\n")}`
