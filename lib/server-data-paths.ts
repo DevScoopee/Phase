@@ -28,6 +28,7 @@ const FILES = {
   artistAttestations: "artist-attestations.json",
   pushSubscriptions: "push-subscriptions.json",
   watchlists: "watchlists.json",
+  questRegistry: "quest-registry.json",
 } as const
 
 export type ServerDataFile = keyof typeof FILES

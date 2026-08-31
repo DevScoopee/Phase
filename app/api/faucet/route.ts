@@ -37,6 +37,13 @@ import { isQuestSnapshotEnabled, loadQuestSnapshot, saveQuestSnapshot, pruneStal
 import { isStreakMultiplierEnabled, getStreakInfo, applyStreakMultiplier, recordDailyClaim, type StreakInfo } from "@/lib/quest-streak"
 import { isReferralQuestEnabled, validateReferralCode, recordReferral, getReferralStats } from "@/lib/referral-quest"
 import { isDistributorTopupEnabled, prepareTopup } from "@/lib/distributor-topup"
+import { 
+  evaluateAllQuests, 
+  getQuestRegistry, 
+  getQuestRewardAmount, 
+  isValidQuestId, 
+  type QuestEvaluationResult 
+} from "@/lib/quest-registry"
 
 /** Vercel: Hobby ~10s; Pro/Enterprise permite más — subir si el faucet sigue en 504. */
 export const maxDuration = 60
@@ -50,46 +57,28 @@ const DAILY_WINDOW_MS = 24 * 60 * 60 * 1000
 const FAUCET_PENDING_TTL_MS = 8 * 60 * 1000
 const FAUCET_POLL_INTERVAL_MS = 1000
 const FAUCET_MAX_POLLS_PER_REQUEST = 4
-const QUEST_REWARD_STROOPS = "30000000"
-const NEW_QUEST_REWARD_STROOPS = "50000000"
 const DAILY_REWARD_STROOPS = "20000000"
-/** `get_user_phase(wallet, cid)` por cid — acotado; evita depender solo del escaneo owner_of en los últimos N ids. */
-const QUEST_COLLECTION_PHASE_SCAN_CAP = 256
-
 /** Por debajo de esto, Soroban suele fallar (trap / ihf_trapped) por falta de XLM para fees y renta. */
 const MIN_SIGNER_NATIVE_XLM = 5
 
-const QUEST_IDS = [
-  "quest_connect_wallet",
-  "quest_first_collection",
-  "quest_first_settle",
-  "quest_first_world",
-  "quest_three_collections",
-] as const
-type QuestId = (typeof QUEST_IDS)[number]
-type RewardType = "genesis" | "daily" | QuestId
+type RewardType = "genesis" | "daily" | string
 
 type WalletClaims = {
   genesisAt?: number
   dailyAt?: number
-  quests?: Partial<Record<QuestId, number>>
+  quests?: Record<string, number>
   /** Mint ya enviado; reutilizamos el hash para seguir el poll sin reenviar (serverless timeout). */
   faucetPending?: { hash: string; reward: RewardType; at: number }
 }
 
 type FaucetClaims = Record<string, WalletClaims>
-type QuestProgress = {
-  completed: boolean
-  progressPct: number
-  requirementText: string
-}
 
-/** GET /api/faucet llama `readQuestProgress` muchas veces; cache corto evita re-escanear el ledger en cada render. */
-const questProgressCache = new Map<string, { at: number; data: Record<QuestId, QuestProgress> }>()
+/** GET /api/faucet llama `evaluateAllQuests` muchas veces; cache corto evita re-escanear el ledger en cada render. */
+const questProgressCache = new Map<string, { at: number; data: Record<string, QuestEvaluationResult> }>()
 const QUEST_PROGRESS_CACHE_TTL_MS = 5000
 
-async function readQuestProgressCached(wallet: string | null): Promise<Record<QuestId, QuestProgress>> {
-  if (!wallet) return readQuestProgress(null)
+async function readQuestProgressCached(wallet: string | null): Promise<Record<string, QuestEvaluationResult>> {
+  if (!wallet) return evaluateAllQuests(null)
   const now = Date.now()
   const hit = questProgressCache.get(wallet)
   if (hit && now - hit.at < QUEST_PROGRESS_CACHE_TTL_MS) return hit.data
@@ -101,7 +90,7 @@ async function readQuestProgressCached(wallet: string | null): Promise<Record<Qu
       return snapshot
     }
   }
-  const data = await readQuestProgress(wallet)
+  const data = await evaluateAllQuests(wallet)
   questProgressCache.set(wallet, { at: now, data })
   // phase-130: persist snapshot for cold-start recovery
   void saveQuestSnapshot(wallet, data).catch(() => {})
@@ -118,10 +107,14 @@ type RewardStatus = {
   requirementText?: string
 }
 
-function parseRewardType(input: unknown): RewardType {
+async function parseRewardType(input: unknown): Promise<RewardType> {
   const value = typeof input === "string" ? input.trim().toLowerCase() : ""
   if (value === "genesis" || value === "daily") return value
-  if (QUEST_IDS.includes(value as QuestId)) return value as QuestId
+  
+  // Check if it's a valid quest ID from the registry
+  const registry = await getQuestRegistry()
+  if (isValidQuestId(registry, value)) return value
+  
   return "genesis"
 }
 
@@ -210,113 +203,28 @@ function isQuestReward(reward: RewardType): reward is QuestId {
   return QUEST_IDS.includes(reward as QuestId)
 }
 
-async function readQuestProgress(wallet: string | null): Promise<Record<QuestId, QuestProgress>> {
-  const connectText = "Connect wallet is required."
-  const collectionText =
-    "Forge a collection, or mint once in any collection (Chamber / EXECUTE_SETTLEMENT)."
-  const settleText = "Complete a Chamber settlement (signed phase mint on-chain)."
-  const worldText = "Create a narrative world in World Studio."
-  const threeColText = "Mint in 3 different collections."
-  if (!wallet) {
-    return {
-      quest_connect_wallet:   { completed: false, progressPct: 0, requirementText: connectText },
-      quest_first_collection: { completed: false, progressPct: 0, requirementText: collectionText },
-      quest_first_settle:     { completed: false, progressPct: 0, requirementText: settleText },
-      quest_first_world:      { completed: false, progressPct: 0, requirementText: worldText },
-      quest_three_collections:{ completed: false, progressPct: 0, requirementText: threeColText },
-    }
-  }
-
-  try {
-    const [creatorCollectionId, defaultPhase, totalColsRaw, creatorIds, worldsStore] = await Promise.all([
-      fetchCreatorCollectionId(wallet),
-      checkHasPhased(wallet, 0),
-      fetchTotalCollections(),
-      fetchCreatorCollectionIds(wallet),
-      getAllWorldCollections(),
-    ])
-    const hasCreatorCollection = Boolean(creatorCollectionId && creatorCollectionId > 0)
-
-    // quest_first_world: any creator collection has an active world
-    const worldCollectionIds = new Set(Object.keys(worldsStore).map(Number))
-    const hasFirstWorld = creatorIds.some((id) => worldCollectionIds.has(id))
-
-    let hasMintedPhase = Boolean(defaultPhase.phased)
-    if (!hasMintedPhase && hasCreatorCollection && creatorCollectionId != null) {
-      const ownCol = await checkHasPhased(wallet, creatorCollectionId)
-      hasMintedPhase = Boolean(ownCol.phased)
-    }
-
-    // Combined scan: find hasMintedPhase + count minted collections (for quest_three_collections)
-    let mintedCollectionCount = hasMintedPhase ? 1 : 0
-    const colCap = Math.min(Math.max(totalColsRaw, 0), QUEST_COLLECTION_PHASE_SCAN_CAP)
-    if (colCap > 0) {
-      const conc = 8
-      for (let start = 1; start <= colCap; start += conc) {
-        if (hasMintedPhase && mintedCollectionCount >= 3) break
-        const batch: Promise<{ phased: boolean }>[] = []
-        for (let j = 0; j < conc && start + j <= colCap; j++) {
-          batch.push(checkHasPhased(wallet, start + j))
-        }
-        const results = await Promise.all(batch)
-        for (const r of results) {
-          if (r.phased) {
-            hasMintedPhase = true
-            mintedCollectionCount++
-          }
-        }
-      }
-    }
-
-    /** Respaldo: NFT con id bajo no entra en la ventana "últimos N" de `userOwnsAnyPhaseToken`. */
-    const QUEST_OWNER_SCAN_WINDOW = 2000
-    const hasSettlement =
-      hasMintedPhase || (await userOwnsAnyPhaseToken(wallet, QUEST_OWNER_SCAN_WINDOW))
-
-    const hasCollectionEngagement = hasCreatorCollection || hasMintedPhase
-    const threeColsDone = mintedCollectionCount >= 3
-
-    return {
-      quest_connect_wallet: { completed: true, progressPct: 100, requirementText: connectText },
-      quest_first_collection: {
-        completed: hasCollectionEngagement,
-        progressPct: hasCollectionEngagement ? 100 : hasCreatorCollection ? 50 : 0,
-        requirementText: collectionText,
-      },
-      quest_first_settle: {
-        completed: hasSettlement,
-        progressPct: hasSettlement ? 100 : hasCollectionEngagement ? 50 : 0,
-        requirementText: settleText,
-      },
-      quest_first_world: {
-        completed: hasFirstWorld,
-        progressPct: hasFirstWorld ? 100 : hasCreatorCollection ? 40 : 0,
-        requirementText: worldText,
-      },
-      quest_three_collections: {
-        completed: threeColsDone,
-        progressPct: Math.min(100, Math.round((mintedCollectionCount / 3) * 100)),
-        requirementText: threeColText,
-      },
-    }
-  } catch {
-    return {
-      quest_connect_wallet:   { completed: true,  progressPct: 100, requirementText: connectText },
-      quest_first_collection: { completed: false, progressPct: 0,   requirementText: collectionText },
-      quest_first_settle:     { completed: false, progressPct: 0,   requirementText: settleText },
-      quest_first_world:      { completed: false, progressPct: 0,   requirementText: worldText },
-      quest_three_collections:{ completed: false, progressPct: 0,   requirementText: threeColText },
-    }
-  }
+async function rewardAmountStroops(reward: RewardType): Promise<string> {
+  if (reward === "genesis") return PHASER_FAUCET_MINT_STROOPS
+  if (reward === "daily") return DAILY_REWARD_STROOPS
+  
+  // Get reward from quest registry
+  const registry = await getQuestRegistry()
+  return getQuestRewardAmount(registry, reward)
 }
 
-function claimStatusForReward(claim: WalletClaims, reward: RewardType, now: number): RewardStatus {
+async function isQuestReward(reward: RewardType): Promise<boolean> {
+  if (reward === "genesis" || reward === "daily") return false
+  const registry = await getQuestRegistry()
+  return isValidQuestId(registry, reward)
+}
+
+async function claimStatusForReward(claim: WalletClaims, reward: RewardType, now: number): Promise<RewardStatus> {
   if (reward === "genesis") {
     return {
       claimable: !claim.genesisAt,
       claimedAt: claim.genesisAt ?? null,
       nextAt: null,
-      amountStroops: rewardAmountStroops("genesis"),
+      amountStroops: await rewardAmountStroops("genesis"),
     }
   }
 
@@ -327,7 +235,7 @@ function claimStatusForReward(claim: WalletClaims, reward: RewardType, now: numb
       claimable,
       claimedAt: last || null,
       nextAt: claimable ? null : last + DAILY_WINDOW_MS,
-      amountStroops: rewardAmountStroops("daily"),
+      amountStroops: await rewardAmountStroops("daily"),
     }
   }
 
@@ -336,7 +244,7 @@ function claimStatusForReward(claim: WalletClaims, reward: RewardType, now: numb
     claimable: !at,
     claimedAt: at || null,
     nextAt: null,
-    amountStroops: rewardAmountStroops(reward),
+    amountStroops: await rewardAmountStroops(reward),
   }
 }
 
@@ -344,55 +252,43 @@ async function buildWalletStatus(wallet: string | null, claims: FaucetClaims) {
   const now = Date.now()
   const claim = wallet ? claims[wallet] ?? {} : {}
   const questProgress = await readQuestProgressCached(wallet)
-  const rawGenesis = claimStatusForReward(claim, "genesis", now)
-  const rawDaily = claimStatusForReward(claim, "daily", now)
-  const rawQuestConnect = claimStatusForReward(claim, "quest_connect_wallet", now)
-  const rawQuestCollection = claimStatusForReward(claim, "quest_first_collection", now)
-  const rawQuestSettle = claimStatusForReward(claim, "quest_first_settle", now)
-
-  const questConnect: RewardStatus = {
-    ...rawQuestConnect,
-    claimable: rawQuestConnect.claimable && questProgress.quest_connect_wallet.completed,
-    requirementMet: Boolean(rawQuestConnect.claimedAt) || questProgress.quest_connect_wallet.completed,
-    progressPct: rawQuestConnect.claimedAt ? 100 : questProgress.quest_connect_wallet.progressPct,
-    requirementText: questProgress.quest_connect_wallet.requirementText,
+  
+  // Get quest registry to build dynamic quest list
+  const registry = await getQuestRegistry()
+  const enabledQuests = registry.quests.filter((q) => q.enabled).sort((a, b) => a.order - b.order)
+  
+  // Build rewards object dynamically
+  const [rawGenesis, rawDaily] = await Promise.all([
+    claimStatusForReward(claim, "genesis", now),
+    claimStatusForReward(claim, "daily", now),
+  ])
+  
+  const rewards: Record<string, RewardStatus> = {
+    genesis: rawGenesis,
+    daily: rawDaily,
   }
-  const questCollection: RewardStatus = {
-    ...rawQuestCollection,
-    claimable: rawQuestCollection.claimable && questProgress.quest_first_collection.completed,
-    requirementMet: Boolean(rawQuestCollection.claimedAt) || questProgress.quest_first_collection.completed,
-    progressPct: rawQuestCollection.claimedAt ? 100 : questProgress.quest_first_collection.progressPct,
-    requirementText: questProgress.quest_first_collection.requirementText,
+  
+  // Process all quests dynamically
+  const questStatuses: RewardStatus[] = []
+  for (const quest of enabledQuests) {
+    const rawStatus = await claimStatusForReward(claim, quest.id, now)
+    const progress = questProgress[quest.id]
+    
+    if (progress) {
+      const questStatus: RewardStatus = {
+        ...rawStatus,
+        claimable: rawStatus.claimable && progress.completed,
+        requirementMet: Boolean(rawStatus.claimedAt) || progress.completed,
+        progressPct: rawStatus.claimedAt ? 100 : progress.progressPct,
+        requirementText: progress.requirementText,
+      }
+      rewards[quest.id] = questStatus
+      questStatuses.push(questStatus)
+    }
   }
-  const questSettle: RewardStatus = {
-    ...rawQuestSettle,
-    claimable: rawQuestSettle.claimable && questProgress.quest_first_settle.completed,
-    requirementMet: Boolean(rawQuestSettle.claimedAt) || questProgress.quest_first_settle.completed,
-    progressPct: rawQuestSettle.claimedAt ? 100 : questProgress.quest_first_settle.progressPct,
-    requirementText: questProgress.quest_first_settle.requirementText,
-  }
-
-  const rawQuestFirstWorld = claimStatusForReward(claim, "quest_first_world", now)
-  const rawQuestThreeCols  = claimStatusForReward(claim, "quest_three_collections", now)
-
-  const questFirstWorld: RewardStatus = {
-    ...rawQuestFirstWorld,
-    claimable: rawQuestFirstWorld.claimable && questProgress.quest_first_world.completed,
-    requirementMet: Boolean(rawQuestFirstWorld.claimedAt) || questProgress.quest_first_world.completed,
-    progressPct: rawQuestFirstWorld.claimedAt ? 100 : questProgress.quest_first_world.progressPct,
-    requirementText: questProgress.quest_first_world.requirementText,
-  }
-  const questThreeCols: RewardStatus = {
-    ...rawQuestThreeCols,
-    claimable: rawQuestThreeCols.claimable && questProgress.quest_three_collections.completed,
-    requirementMet: Boolean(rawQuestThreeCols.claimedAt) || questProgress.quest_three_collections.completed,
-    progressPct: rawQuestThreeCols.claimedAt ? 100 : questProgress.quest_three_collections.progressPct,
-    requirementText: questProgress.quest_three_collections.requirementText,
-  }
-
-  const allQuests = [questConnect, questCollection, questSettle, questFirstWorld, questThreeCols]
-  const questsDone = allQuests.filter((r) => r.claimedAt || r.requirementMet).length
-  const totalQuests = allQuests.length
+  
+  const questsDone = questStatuses.filter((r) => r.claimedAt || r.requirementMet).length
+  const totalQuests = questStatuses.length
 
   // phase-131: include streak multiplier info for daily reward display
   let streakInfo: StreakInfo | undefined
@@ -420,15 +316,7 @@ async function buildWalletStatus(wallet: string | null, claims: FaucetClaims) {
       total: totalQuests,
       progressPct: Math.round((questsDone / totalQuests) * 100),
     },
-    rewards: {
-      genesis: rawGenesis,
-      daily: rawDaily,
-      quest_connect_wallet: questConnect,
-      quest_first_collection: questCollection,
-      quest_first_settle: questSettle,
-      quest_first_world: questFirstWorld,
-      quest_three_collections: questThreeCols,
-    },
+    rewards,
     ...(streakInfo ? { streak: streakInfo } : {}),
     ...(referralStats ? { referral: referralStats } : {}),
   }
@@ -451,10 +339,10 @@ async function markClaim(wallet: string, reward: RewardType) {
   walletClaim.faucetPending = undefined
   const now = Date.now()
   if (reward === "genesis") walletClaim.genesisAt = now
-  if (reward === "daily") walletClaim.dailyAt = now
-  if (QUEST_IDS.includes(reward as QuestId)) {
+  else if (reward === "daily") walletClaim.dailyAt = now
+  else if (await isQuestReward(reward)) {
     walletClaim.quests = walletClaim.quests ?? {}
-    walletClaim.quests[reward as QuestId] = now
+    walletClaim.quests[reward] = now
   }
   claims[wallet] = walletClaim
   await writeClaims(claims)
@@ -624,16 +512,16 @@ export async function POST(req: NextRequest) {
   const claims = await readClaims()
   const walletClaim = claims[userAddress] ?? {}
 
-  if (isQuestReward(reward)) {
-    const q = await readQuestProgress(userAddress)
+  if (await isQuestReward(reward)) {
+    const q = await evaluateAllQuests(userAddress)
     const quest = q[reward]
-    if (!quest.completed) {
+    if (!quest || !quest.completed) {
       return NextResponse.json(
         {
-          error: `Quest requirement not met: ${quest.requirementText}`,
+          error: `Quest requirement not met: ${quest?.requirementText ?? "Quest not found"}`,
           reward,
           requirementMet: false,
-          progressPct: quest.progressPct,
+          progressPct: quest?.progressPct ?? 0,
         },
         { status: 412 },
       )
