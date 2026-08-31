@@ -13,6 +13,8 @@ import {
   getRequestCost,
   FollowSuggestionQuerySchema,
   validateSep50MetadataBeforePin,
+  getFollowSuggestions,
+  FollowSuggestionQuerySchema,
 } from "@/lib/follow-store";
 import { createNotification } from "@/lib/notification-store";
 import { getProfile } from "@/lib/profile-store";

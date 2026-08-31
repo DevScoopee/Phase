@@ -2,6 +2,17 @@ import { nanoid } from "nanoid";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { getDb } from "@/lib/sqlite-db";
 
+export type MediaAttachment = {
+  ipfs_cid: string;
+  ipfs_url: string;
+  media_type: "image" | "video" | "audio";
+  thumbnail_cid?: string;
+  thumbnail_url?: string;
+  file_size?: number;
+  width?: number;
+  height?: number;
+};
+
 export type SignalPollOption = {
   id: string;
   text: string;
@@ -576,17 +587,6 @@ export function isPhase86Enabled(): boolean {
     .toLowerCase();
   return v === "1" || v === "true" || v === "yes" || v === "on";
 }
-
-export type MediaAttachment = {
-  ipfs_cid: string;
-  ipfs_url: string;
-  media_type: "image" | "video" | "audio";
-  thumbnail_cid?: string;
-  thumbnail_url?: string;
-  file_size?: number;
-  width?: number;
-  height?: number;
-};
 
 export async function addMediaToSignal(
   signalId: string,

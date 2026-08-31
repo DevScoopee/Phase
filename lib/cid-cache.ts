@@ -176,7 +176,11 @@ export async function setCachedCid(
   if (!cidParsed.success) {
     throw new CidIntegrityError("CID_INVALID", cleanCid, `Invalid CID: ${cidParsed.error.message}`)
   }
-  const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes instanceof ArrayBuffer ? bytes : bytes)
+  const buf = Buffer.isBuffer(bytes) 
+    ? bytes 
+    : bytes instanceof ArrayBuffer 
+      ? Buffer.from(bytes) 
+      : Buffer.from(bytes as Uint8Array)
   const sha = sha256Hex(buf)
   if (opts.expectedSha256 && !verifyBytesIntegrity(buf, opts.expectedSha256)) {
     throw new CidIntegrityError("HASH_MISMATCH", cleanCid, `Bytes hash mismatch for CID ${cleanCid.slice(0, 8)}…`)
