@@ -37,6 +37,23 @@ type AvatarData = {
   locale?: string
 }
 
+// phase-137: structured error taxonomy — the avatar route may answer with
+// { code, category, retryable } instead of a bare { avatar: null }. A retryable
+// code (upstream timeout / unreachable gateway) earns one silent retry before
+// the component settles on initials.
+type AvatarErrorEnvelope = {
+  avatar: AvatarData | null
+  code?: string
+  category?: string
+  retryable?: boolean
+}
+
+async function fetchAvatarOnce(wallet: string, signal: AbortSignal): Promise<AvatarErrorEnvelope> {
+  const r = await fetch(`/api/profile/avatar?wallet=${encodeURIComponent(wallet)}`, { signal })
+  const data = (await r.json().catch(() => ({ avatar: null }))) as AvatarErrorEnvelope
+  return data
+}
+
 function getInitials(wallet: string, displayName?: string): string {
   if (displayName?.trim()) {
     const words = displayName.trim().split(/\s+/)
@@ -64,6 +81,7 @@ export function WalletAvatar({
   const [visible, setVisible] = useState(false)
   const [fallbackIndex, setFallbackIndex] = useState(0)
   const [fallbackUrls, setFallbackUrls] = useState<string[]>([])
+  const [errorCode, setErrorCode] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
 
   // IntersectionObserver for lazy loading
@@ -88,29 +106,40 @@ export function WalletAvatar({
   useEffect(() => {
     if (!visible || !wallet) return
 
+    const controller = new AbortController()
     let aborted = false
     setLoading(true)
     setFallbackIndex(0)
     setFallbackUrls([])
+    setErrorCode(null)
 
-    fetch(`/api/profile/avatar?wallet=${encodeURIComponent(wallet)}`)
-      .then((r) => r.json() as Promise<{ avatar: AvatarData | null }>)
-      .then((data) => {
-        if (!aborted) {
-          setAvatar(data.avatar)
-          if (data.avatar?.image) {
-            setFallbackUrls(buildFallbackUrls(data.avatar.image))
-          }
+    ;(async () => {
+      try {
+        let data = await fetchAvatarOnce(wallet, controller.signal)
+        // phase-137: one silent retry when the taxonomy flags a retryable upstream blip
+        if (!data.avatar && data.retryable) {
+          setErrorCode(data.code ?? null)
+          await new Promise((resolve) => setTimeout(resolve, 400))
+          if (aborted) return
+          data = await fetchAvatarOnce(wallet, controller.signal)
         }
-      })
-      .catch(() => {
+        if (aborted) return
+        setAvatar(data.avatar)
+        setErrorCode(data.avatar ? null : data.code ?? null)
+        if (data.avatar?.image) {
+          setFallbackUrls(buildFallbackUrls(data.avatar.image))
+        }
+      } catch {
         // Silently fail - will show initials
-      })
-      .finally(() => {
+      } finally {
         if (!aborted) setLoading(false)
-      })
+      }
+    })()
 
-    return () => { aborted = true }
+    return () => {
+      aborted = true
+      controller.abort()
+    }
   }, [visible, wallet])
 
   const handleImgError = useCallback(() => {
@@ -168,6 +197,8 @@ export function WalletAvatar({
         background: "#534AB7",
         fontSize: `${fontSize}px`,
       }}
+      data-avatar-error={errorCode ?? undefined}
+      title={errorCode ? `Avatar unavailable (${errorCode})` : undefined}
     >
       {initials}
     </div>
