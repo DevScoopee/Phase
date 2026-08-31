@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
 import { WalletAvatar } from "@/components/wallet-avatar"
-import { getSignal, getReplies, getSignalContributors, computeCreditLedger, isPhase116Enabled } from "@/lib/signal-store"
+import { getSignal, getReplies, getSignalContributors, computeCreditLedger, isPhase116Enabled, isFaucetDenyListEnabled, isWalletDenied } from "@/lib/signal-store"
 import { SignalDetailClient } from "./signal-detail-client"
 
 export const dynamic = "force-dynamic"
@@ -46,6 +46,17 @@ export default async function SignalDetailPage({ params }: Props) {
     try {
       contributors = await getSignalContributors(id)
       creditLedger = await computeCreditLedger(id)
+    } catch {
+      // best-effort
+    }
+  }
+
+  // phase-156 (Module #56): flag whether this signal's author is on the governed
+  // deny-list, so the detail view can show it. Best-effort; false when flag off.
+  let authorRestricted = false
+  if (isFaucetDenyListEnabled()) {
+    try {
+      authorRestricted = await isWalletDenied(signal.author_wallet)
     } catch {
       // best-effort
     }
@@ -98,6 +109,12 @@ export default async function SignalDetailPage({ params }: Props) {
           <h1 className="font-mono text-[15px] font-semibold text-foreground leading-snug">
             {signal.title}
           </h1>
+
+          {authorRestricted && (
+            <p className="font-mono text-[9px] uppercase tracking-widest text-amber-600 border border-amber-600/40 px-1.5 py-0.5 self-start">
+              ⚠ AUTHOR ON DENY-LIST
+            </p>
+          )}
 
           {signal.nft_token_id !== undefined && (
             <div className="flex items-center gap-3 border border-[var(--color-border-tertiary)] p-2">

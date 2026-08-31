@@ -23,6 +23,7 @@ import {
   safeDisplayName,
   withOgErrorBoundary,
 } from "@/lib/og-render-utils";
+import { isSybilResistanceEnabled } from "@/lib/sybil-resistance";
 
 export const runtime = "nodejs";
 
@@ -408,6 +409,30 @@ export async function GET(request: NextRequest) {
     return resp;
   };
 
+  // phase-145 (Module #45): attach a sybil-resistance signal when a wallet is
+  // supplied (e.g. the profile that owns/shares this chamber). Header-only,
+  // best-effort, does not change pixels.
+  const walletParam = searchParams.get("wallet")?.trim() ?? "";
+  const finalize = async (resp: NextResponse): Promise<NextResponse> => {
+    const piped = await maybePin(resp);
+    if (isSybilResistanceEnabled()) {
+      piped.headers.set("X-Phase145", "enabled");
+      if (/^G[A-Z2-7]{55}$/.test(walletParam)) {
+        try {
+          const { assessWalletSybilRisk } = await import("@/lib/sybil-resistance");
+          const assessment = await assessWalletSybilRisk(walletParam);
+          if (assessment) {
+            piped.headers.set("X-Phase-Sybil-Band", assessment.band);
+            piped.headers.set("X-Phase-Sybil-Score", String(assessment.score));
+          }
+        } catch {
+          // best-effort
+        }
+      }
+    }
+    return piped;
+  };
+
   // Token-level OG (individual NFT)
   const rawToken = searchParams.get("token_id") ?? searchParams.get("token");
   const tokenId = rawToken ? parseInt(rawToken, 10) : NaN;
@@ -421,7 +446,7 @@ export async function GET(request: NextRequest) {
         headers: { "Content-Type": "text/plain" },
       });
     }
-    return maybePin(pngResponse(result.value));
+    return finalize(pngResponse(result.value));
   }
 
   // Collection-level OG — monitor frame with best-effort token metadata
@@ -440,7 +465,7 @@ export async function GET(request: NextRequest) {
       )
       .png()
       .toBuffer();
-    return maybePin(pngResponse(pngBuffer));
+    return finalize(pngResponse(pngBuffer));
   }
 
   const result = await withOgErrorBoundary(() =>
@@ -452,5 +477,5 @@ export async function GET(request: NextRequest) {
       headers: { "Content-Type": "text/plain" },
     });
   }
-  return maybePin(pngResponse(result.value));
+  return finalize(pngResponse(result.value));
 }

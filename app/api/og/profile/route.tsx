@@ -4,6 +4,10 @@ import sharp from "sharp";
 import { z } from "zod";
 import { getProfile } from "@/lib/profile-store";
 import {
+  isSybilResistanceEnabled,
+  assessWalletSybilRisk,
+} from "@/lib/sybil-resistance";
+import {
   getOgTheme,
   resolvePinIntent,
   truncate,
@@ -313,11 +317,31 @@ export async function GET(request: NextRequest) {
   const templatePath = resolveOgTemplatePath();
   const usedTemplate = templateName(templatePath);
 
+  // phase-145 (Module #45): sybil-resistance signal for the resolved wallet.
+  // Observability only — does not change pixels. Best-effort; never throws.
+  let sybilBand: string | null = null;
+  let sybilScore: number | null = null;
+  if (wallet.length >= 10 && isSybilResistanceEnabled()) {
+    try {
+      const assessment = await assessWalletSybilRisk(wallet);
+      if (assessment) {
+        sybilBand = assessment.band;
+        sybilScore = assessment.score;
+      }
+    } catch {
+      // best-effort — leave headers unset
+    }
+  }
+
   const headers: Record<string, string> = {
     "Content-Type": "image/png",
     "Cache-Control": "public, max-age=300, s-maxage=300",
     "X-Phase-Og-Template": usedTemplate,
     ...(isPhase120Enabled() ? { "X-Phase120": "enabled" } : {}),
+    ...(isSybilResistanceEnabled() ? { "X-Phase145": "enabled" } : {}),
+    ...(sybilBand
+      ? { "X-Phase-Sybil-Band": sybilBand, "X-Phase-Sybil-Score": String(sybilScore) }
+      : {}),
   };
   if (pinMeta?.pinned) {
     headers["X-Phase-Pin-URI"] = pinMeta.uri;

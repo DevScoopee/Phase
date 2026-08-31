@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server"
-import { DEFAULT_PROFILE_LOCALE, getProfile, isProfilePinningRedundancyEnabled, localizeAvatarName, normalizeProfileLocale, resolveAvatarWithFallback } from "@/lib/profile-store"
+import { DEFAULT_PROFILE_LOCALE, getProfile, isProfilePinningRedundancyEnabled, localizeAvatarName, normalizeProfileLocale, resolveAvatarWithFallback, isNftGridVirtualizationEnabled, BatchAvatarQuerySchema, getAvatarsForWallets } from "@/lib/profile-store"
 import { StrKey } from "@stellar/stellar-sdk"
 import { createApiRequestContext } from "@/lib/api-observability"
 import { z } from "zod"
@@ -16,6 +16,42 @@ const AvatarQuerySchema = z.object({
 
 export async function GET(request: NextRequest) {
   const api = createApiRequestContext(request, "/api/profile/avatar")
+
+  // phase-157 (Module #57): batch avatar fetch for a virtualized grid window.
+  // `?wallets=G...,G...` returns many avatars in one round-trip so a 10k-token
+  // grid does not fan out thousands of requests. No-op unless the flag is on.
+  const rawWallets = request.nextUrl.searchParams.get("wallets")
+  if (rawWallets) {
+    if (!isNftGridVirtualizationEnabled()) {
+      return api.json(
+        { error: "Batch avatar fetch disabled (phase-157 flag off)" },
+        { status: 404, event: "profile.avatar.batch_disabled" },
+      )
+    }
+    const parsedBatch = BatchAvatarQuerySchema.safeParse({
+      wallets: rawWallets.split(",").map((w) => w.trim()).filter(Boolean),
+    })
+    if (!parsedBatch.success) {
+      return api.json(
+        { error: "Invalid wallets list", details: parsedBatch.error.flatten() },
+        { status: 400, event: "profile.avatar.batch_validation_failed" },
+      )
+    }
+    try {
+      const avatars = await getAvatarsForWallets(parsedBatch.data.wallets)
+      return api.json(
+        { avatars },
+        {
+          event: "profile.avatar.batch_loaded",
+          metadata: { count: avatars.length },
+          headers: { "Cache-Control": "private, max-age=30", "X-Phase157": "enabled" },
+        },
+      )
+    } catch (error) {
+      return api.errorJson(error, 500, "profile.avatar.batch_failed")
+    }
+  }
+
   const rawWallet = request.nextUrl.searchParams.get("wallet")?.trim() ?? ""
   const parsedQ = AvatarQuerySchema.safeParse({ wallet: rawWallet })
   const wallet = parsedQ.success ? parsedQ.data.wallet : rawWallet
@@ -76,6 +112,7 @@ export async function GET(request: NextRequest) {
           "Cache-Control": "private, max-age=30",
           "X-Phase-Locale": preferredLocale,
           ...(isProfilePinningRedundancyEnabled() ? { "X-Phase117": "enabled", ...(gatewayMeta ? { "X-Phase-Gateway": gatewayMeta } : {}) } : {}),
+          ...(isNftGridVirtualizationEnabled() ? { "X-Phase157": "enabled" } : {}),
         },
       },
     )

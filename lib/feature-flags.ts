@@ -73,7 +73,11 @@ export type PhaseFeatureFlag =
   | "phase-130"
   | "phase-131"
   | "phase-132"
-  | "phase-133";
+  | "phase-133"
+  | "phase-144"
+  | "phase-145"
+  | "phase-156"
+  | "phase-157";
 
 const FLAG_ENV_MAP: Record<PhaseFeatureFlag, string[]> = {
   "phase-66": ["NEXT_PUBLIC_FEATURE_PHASE_66", "FEATURE_PHASE_66"],
@@ -120,6 +124,10 @@ const FLAG_ENV_MAP: Record<PhaseFeatureFlag, string[]> = {
   "phase-131": ["NEXT_PUBLIC_FEATURE_PHASE_131", "FEATURE_PHASE_131"],
   "phase-132": ["NEXT_PUBLIC_FEATURE_PHASE_132", "FEATURE_PHASE_132"],
   "phase-133": ["NEXT_PUBLIC_FEATURE_PHASE_133", "FEATURE_PHASE_133"],
+  "phase-144": ["NEXT_PUBLIC_FEATURE_PHASE_144", "FEATURE_PHASE_144"],
+  "phase-145": ["NEXT_PUBLIC_FEATURE_PHASE_145", "FEATURE_PHASE_145"],
+  "phase-156": ["NEXT_PUBLIC_FEATURE_PHASE_156", "FEATURE_PHASE_156"],
+  "phase-157": ["NEXT_PUBLIC_FEATURE_PHASE_157", "FEATURE_PHASE_157"],
 };
 
 function isTruthy(v: string | undefined): boolean {
@@ -194,6 +202,10 @@ export function getEnabledFeatureFlags(): PhaseFeatureFlag[] {
     "phase-131",
     "phase-132",
     "phase-133",
+    "phase-144",
+    "phase-145",
+    "phase-156",
+    "phase-157",
   ];
   return all.filter(isFeatureEnabled)
 }

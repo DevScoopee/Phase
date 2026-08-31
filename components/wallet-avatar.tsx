@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
+import { nftGridOverscanPx } from "@/lib/nft-grid-virtualization"
 
 // ??? phase-117: multi-gateway fallback client wiring ????????????????????????
 // Preserves original lazy-load + initials fallback. When an image fails,
@@ -66,7 +67,10 @@ export function WalletAvatar({
   const [fallbackUrls, setFallbackUrls] = useState<string[]>([])
   const ref = useRef<HTMLDivElement>(null)
 
-  // IntersectionObserver for lazy loading
+  // IntersectionObserver for lazy loading.
+  // phase-157 (Module #57): widen the overscan margin when grid virtualization
+  // is enabled so avatars in a large scrolling grid mount just ahead of view
+  // instead of all at once (or too late). Falls back to the legacy 50px.
   useEffect(() => {
     if (!ref.current) return
 
@@ -77,7 +81,7 @@ export function WalletAvatar({
           observer.disconnect()
         }
       },
-      { rootMargin: "50px" }
+      { rootMargin: `${nftGridOverscanPx()}px` }
     )
 
     observer.observe(ref.current)

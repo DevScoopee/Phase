@@ -329,6 +329,37 @@ export type {
   AddContributorRequest,
 } from "@/lib/contributor-ledger";
 
+// ─── phase-156 (Module #56): faucet / participation deny-list with governance veto ───
+// Isolated, flag-gated. Abusive wallets previously could not be cleanly excluded.
+// When enabled, the replies route rejects posts from denied wallets. When flag
+// off, isWalletDenied() returns false (zero regression).
+// Rollback: unset NEXT_PUBLIC_FEATURE_PHASE_156 / FEATURE_PHASE_156.
+export {
+  isFaucetDenyListEnabled,
+  flag156RollbackNote,
+  proposeDenyListEntry,
+  castGovernanceVeto,
+  liftDenyListEntry,
+  isWalletDenied,
+  getWalletDenyEntry,
+  listDenyList,
+  getDenyListEntry,
+  deriveDenyStatus,
+  governanceSigners,
+  isGovernanceSigner,
+  clearDenyListForTests,
+  FaucetDenyListError,
+  AddDenyRequestSchema,
+  GovernanceVetoSchema,
+  DEFAULT_VETO_QUORUM,
+} from "@/lib/faucet-deny-list";
+export type {
+  DenyListEntry,
+  DenyListStatus,
+  AddDenyRequest,
+  GovernanceVeto,
+} from "@/lib/faucet-deny-list";
+
 import { z } from "zod";
 
 export const AttributionInReplySchema = z.object({
