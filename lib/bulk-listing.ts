@@ -143,7 +143,7 @@ export function parseCSV(csvContent: string): CSVParseResult {
 
     try {
       const item: BulkListingItem = {
-        tokenId: values[tokenIdIdx] || "",
+        tokenId: Number(values[tokenIdIdx] || "0"),
         name: values[nameIdx] || "",
         description: descIdx !== -1 ? values[descIdx] : undefined,
         price: values[priceIdx] || "0",

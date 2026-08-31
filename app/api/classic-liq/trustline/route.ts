@@ -174,7 +174,7 @@ export async function GET(req: NextRequest) {
   try {
     const { getCidCacheStats } = await import("@/lib/cid-cache")
     const stats = getCidCacheStats()
-    return NextResponse.json(stats)
+    return NextResponse.json({ enabled: true, stats })
   } catch (e) {
     return NextResponse.json({ enabled: true, error: e instanceof Error ? e.message : String(e) }, { status: 500 })
   }

@@ -445,6 +445,7 @@ export function auditEscrowSettlementWiring(): { ok: boolean; note: string } {
       amount: "10000000",
       tokenId: 1,
       collectionId: 0,
+      timeoutSeconds: 86400,
     }
 
     const validation = validateEscrowCreation(probeEscrow)
