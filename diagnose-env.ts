@@ -9,6 +9,8 @@ import {
   validateFaucetIssuerConfig,
   auditFollowGraphPortabilityWiring,
   isPhase95Enabled,
+  auditQuestExperimentWiring,
+  isQuestExperimentEnabled,
 } from "@/lib/env-validation"
 import {
   classicLiqIssuerForStellarToml,
@@ -16,6 +18,9 @@ import {
 } from "@/lib/classic-liq"
 import { getPhaserLiqDiagnostic } from "@/lib/phaser-liq-sac-warn"
 import { TOKEN_ADDRESS, CONTRACT_ID } from "@/lib/phase-protocol"
+import { auditFaucetRateLimitWiring, isFaucetRateLimitRedisEnabled } from "@/lib/profile-store"
+import { auditQuestExpiryWiring, isQuestExpiryEnabled } from "@/lib/explore-domain"
+import { auditFaucetAnalyticsWiring, isFaucetAnalyticsEnabled } from "@/lib/notification-store"
 
 console.log("=".repeat(70))
 console.log("DIAGNÓSTICO DE CONFIGURACIÓN PHASE")
@@ -127,6 +132,37 @@ if (isPhase95Enabled()) {
   console.log("\n🔀 Follow-graph export/import portability (phase-95):")
   const portabilityAudit = auditFollowGraphPortabilityWiring()
   console.log(`   ${portabilityAudit.ok ? "✅" : "❌"} ${portabilityAudit.note}`)
+}
+
+// 5c. Quest A/B variant experimentation framework (module #50 / phase-50)
+if (isQuestExperimentEnabled()) {
+  console.log("\n🧪 Quest A/B variant experimentation (module #50):")
+  const questExpAudit = auditQuestExperimentWiring()
+  console.log(`   ${questExpAudit.ok ? "✅" : "❌"} ${questExpAudit.note}`)
+}
+
+// 5d. Race-safe faucet claim rate-limits (module #51 / phase-51)
+if (isFaucetRateLimitRedisEnabled()) {
+  console.log("\n🚦 Race-safe faucet claim rate-limits (module #51):")
+  const rateLimitAudit = auditFaucetRateLimitWiring()
+  console.log(`   ${rateLimitAudit.ok ? "✅" : "❌"} ${rateLimitAudit.note}`)
+  if (!process.env.FAUCET_RATE_LIMIT_REDIS_URL && !process.env.REDIS_URL && !process.env.KV_URL) {
+    console.warn("   ⚠️  No REDIS_URL / KV_URL / FAUCET_RATE_LIMIT_REDIS_URL set — using the process-local memory backend (safe for a single instance only).")
+  }
+}
+
+// 5e. quest_expiry windows with grace-period extension (module #52 / phase-52)
+if (isQuestExpiryEnabled()) {
+  console.log("\n⏳ quest_expiry windows with grace-period extension (module #52):")
+  const questExpiryAudit = auditQuestExpiryWiring()
+  console.log(`   ${questExpiryAudit.ok ? "✅" : "❌"} ${questExpiryAudit.note}`)
+}
+
+// 5f. Faucet analytics — claim funnel metrics (module #53 / phase-53)
+if (isFaucetAnalyticsEnabled()) {
+  console.log("\n📉 Faucet analytics — claim funnel metrics (module #53):")
+  const funnelAudit = auditFaucetAnalyticsWiring()
+  console.log(`   ${funnelAudit.ok ? "✅" : "❌"} ${funnelAudit.note}`)
 }
 
 // 6. Resumen

@@ -10,6 +10,7 @@ import { getAllWorldCollections } from "@/lib/narrative-world-store"
 import { isFeatureEnabled } from "@/lib/feature-flags"
 import {
   dedupeExploreItems,
+  isQuestExpiryEnabled,
   mapConcurrent,
   paginateExploreItems,
   truncateAddress,
@@ -122,7 +123,14 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { items, total: totalFound, page, perPage, content_hash_dedup_enabled: dedupeEnabled },
+      {
+        items,
+        total: totalFound,
+        page,
+        perPage,
+        content_hash_dedup_enabled: dedupeEnabled,
+        quest_expiry_windows_enabled: isQuestExpiryEnabled(),
+      },
       {
         headers: {
           ...CORS,
