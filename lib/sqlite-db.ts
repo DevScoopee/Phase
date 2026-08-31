@@ -101,7 +101,77 @@ CREATE TABLE IF NOT EXISTS signal_replies (
 );
 CREATE INDEX IF NOT EXISTS idx_replies_signal_created
   ON signal_replies (signal_id, created_at ASC);
+
+-- Issue #100 (phase-82): word-diffable snapshot of a signal's title/body taken
+-- immediately before each edit is applied, so history is reconstructible
+-- without re-deriving anything from the current row.
+CREATE TABLE IF NOT EXISTS signal_versions (
+  id          TEXT PRIMARY KEY,
+  signal_id   TEXT NOT NULL REFERENCES signals(id) ON DELETE CASCADE,
+  version     INTEGER NOT NULL,
+  title       TEXT NOT NULL,
+  body        TEXT NOT NULL,
+  edited_by   TEXT NOT NULL,
+  edited_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_signal_versions_signal
+  ON signal_versions (signal_id, version DESC);
+
+-- Issue #101 (phase-83): one row per (signal, wallet, emoji) toggle so a
+-- reaction count is a GROUP BY and "did I react" is a single lookup.
+CREATE TABLE IF NOT EXISTS signal_reactions (
+  id          TEXT PRIMARY KEY,
+  signal_id   TEXT NOT NULL REFERENCES signals(id) ON DELETE CASCADE,
+  wallet      TEXT NOT NULL,
+  emoji       TEXT NOT NULL,
+  created_at  INTEGER NOT NULL,
+  UNIQUE (signal_id, wallet, emoji)
+);
+CREATE INDEX IF NOT EXISTS idx_signal_reactions_signal
+  ON signal_reactions (signal_id);
+
+-- Issue #89 (phase-140): one row per accepted secondary sale, recording the
+-- creator/seller split applied at settlement.
+CREATE TABLE IF NOT EXISTS royalty_payouts (
+  id                    TEXT PRIMARY KEY,
+  listing_id            TEXT NOT NULL,
+  offer_id              TEXT NOT NULL,
+  creator_wallet        TEXT NOT NULL,
+  seller_wallet         TEXT NOT NULL,
+  sale_amount_phaselq   REAL NOT NULL,
+  royalty_bps           INTEGER NOT NULL,
+  royalty_amount_phaselq REAL NOT NULL,
+  seller_amount_phaselq  REAL NOT NULL,
+  created_at            INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_royalty_payouts_creator
+  ON royalty_payouts (creator_wallet, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_royalty_payouts_listing
+  ON royalty_payouts (listing_id);
 `;
+
+// Issue #89 (phase-140): `listings` predates the creator/royalty concept, so
+// the columns are added additively to the existing table rather than baked
+// into CREATE TABLE — that would no-op on a database file created before this
+// change. Both are nullable; a listing without them is simply not eligible
+// for royalty enforcement (phase-140 off, or no creator on file).
+const LISTING_COLUMNS: Array<{ name: string; ddl: string }> = [
+  { name: "creator_wallet", ddl: "creator_wallet TEXT" },
+  { name: "royalty_bps", ddl: "royalty_bps INTEGER" },
+];
+
+function ensureListingColumns(conn: DatabaseSync): void {
+  const existing = new Set(
+    (conn.prepare("PRAGMA table_info(listings)").all() as Array<{ name: string }>).map(
+      (row) => row.name,
+    ),
+  );
+  for (const column of LISTING_COLUMNS) {
+    if (!existing.has(column.name)) {
+      conn.exec(`ALTER TABLE listings ADD COLUMN ${column.ddl};`);
+    }
+  }
+}
 
 /**
  * Returns the process-wide SQLite connection, creating and migrating the
@@ -118,6 +188,7 @@ export function getDb(): DatabaseSync {
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec("PRAGMA foreign_keys = ON;");
   db.exec(SCHEMA);
+  ensureListingColumns(db);
 
   return db;
 }
