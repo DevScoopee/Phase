@@ -28,7 +28,7 @@ const FILES = {
   artistAttestations: "artist-attestations.json",
   pushSubscriptions: "push-subscriptions.json",
   watchlists: "watchlists.json",
-  sqliteDb: "phase.sqlite3",
+  faucetFunnelEvents: "faucet-funnel-events.json",
 } as const
 
 export type ServerDataFile = keyof typeof FILES

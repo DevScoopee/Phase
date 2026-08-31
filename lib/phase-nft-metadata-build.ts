@@ -55,13 +55,31 @@ export function resolveIpfsFallbackConfig(overrides: Partial<IpfsFallbackConfig>
   return parsed.data
 }
 
+/** Reorders `gateways` by live health score (best first); unranked gateways keep their relative order at the end. */
+async function prioritizeGatewaysByHealth(gateways: readonly string[]): Promise<string[]> {
+  try {
+    const { getGatewayRanking } = await import("@/lib/gateway-health")
+    const ranking = getGatewayRanking().map((g) => g.replace(/\/+$/, ""))
+    if (ranking.length === 0) return [...gateways]
+    const ranked = gateways.filter((g) => ranking.includes(g.replace(/\/+$/, "")))
+    ranked.sort(
+      (a, b) => ranking.indexOf(a.replace(/\/+$/, "")) - ranking.indexOf(b.replace(/\/+$/, "")),
+    )
+    const unranked = gateways.filter((g) => !ranking.includes(g.replace(/\/+$/, "")))
+    return [...ranked, ...unranked]
+  } catch {
+    return [...gateways]
+  }
+}
+
 export async function fetchWithIpfsFallback(ipfsPath: string, opts: { config?: Partial<IpfsFallbackConfig>; signal?: AbortSignal } = {}): Promise<IpfsFallbackResult> {
   const clean = ipfsPath.replace(/^\/+/, "").trim()
   if (!clean) return { ok: false, error: "Empty IPFS path", perGateway: [] }
   const cfg = resolveIpfsFallbackConfig(opts.config)
   const perGateway: Array<{ gateway: string; error: string; latencyMs: number }> = []
+  const orderedGateways = await prioritizeGatewaysByHealth(cfg.gateways)
 
-  for (const base of cfg.gateways) {
+  for (const base of orderedGateways) {
     const url = `${base.replace(/\/+$/, "")}/${clean}`
     const start = Date.now()
     const controller = new AbortController()
@@ -242,6 +260,51 @@ export type PhaseTokenMetadataJson = {
   collectionId: number | null
 }
 
+// SEP-50 (draft) requires token_uri to resolve to well-formed JSON with a stable
+// shape: non-empty name/description, an https:// or ipfs:// image, and an
+// https:// external_url. Validated before the endpoint ever serves the payload
+// to a wallet/indexer, so a malformed on-chain read fails loudly (502, caught by
+// the route's error boundary) instead of shipping broken metadata.
+export const PhaseTokenMetadataJsonSchema = z.object({
+  name: z.string().trim().min(1).max(128),
+  description: z.string().trim().min(1).max(1000),
+  image: z
+    .string()
+    .trim()
+    .min(1)
+    .max(2048)
+    .refine((v) => /^https:\/\//i.test(v) || /^ipfs:\/\/[A-Za-z0-9._/-]+$/i.test(v), {
+      message: "image must be https:// or ipfs://",
+    }),
+  external_url: z
+    .string()
+    .trim()
+    .min(1)
+    .max(2048)
+    .refine((v) => /^https:\/\//i.test(v), { message: "external_url must be https://" }),
+  attributes: z
+    .array(
+      z.object({
+        trait_type: z.string().trim().min(1).max(64),
+        value: z.union([z.string().trim().min(1).max(256), z.number().finite()]),
+        display_type: z.enum(["number"]).optional(),
+      }),
+    )
+    .max(64),
+  collectionId: z.number().int().positive().nullable(),
+})
+
+export class Sep50MetadataBuildError extends Error {
+  code: "SEP50_OUTPUT_INVALID"
+  details: unknown
+  constructor(message: string, details: unknown) {
+    super(message)
+    this.name = "Sep50MetadataBuildError"
+    this.code = "SEP50_OUTPUT_INVALID"
+    this.details = details
+  }
+}
+
 /**
  * Misma lógica que GET /api/metadata/[id]: JSON estilo OpenSea + id de colección resuelto on-chain.
  */
@@ -255,20 +318,18 @@ export async function buildPhaseTokenMetadataJson(
   const base = publicPhaseSiteBaseUrl()
   const colId = await fetchTokenCollectionIdForToken(tokenId, owner, contractId)
   const phaseLevel = await fetchPhaseLevelForToken(tokenId, contractId)
+  const hasCollection = colId != null && Number.isFinite(colId) && colId > 0
 
   let collectionName = "Phase"
   let imageRaw = ""
-  if (colId != null && colId > 0) {
-    const info = await fetchCollectionInfo(colId, contractId)
+  if (hasCollection) {
+    const info = await fetchCollectionInfo(colId as number, contractId)
     if (info?.name?.trim()) collectionName = info.name.trim()
     imageRaw = info?.imageUri?.trim() ?? ""
   }
 
   const image = resolvePublicImageUri(imageRaw, base)
-  const name =
-    colId != null && colId > 0
-      ? `${collectionName} Artifact #${tokenId}`
-      : `Phase Artifact #${tokenId}`
+  const name = hasCollection ? `${collectionName} Artifact #${tokenId}` : `Phase Artifact #${tokenId}`
 
   const description =
     phaseLevel && phaseLevel.length > 0
@@ -286,14 +347,14 @@ export async function buildPhaseTokenMetadataJson(
     }
   } catch { /* non-critical */ }
 
-  return {
+  const payload: PhaseTokenMetadataJson = {
     name,
     description,
     image,
-    external_url: `${base}/chamber${colId != null && colId > 0 ? `?collection=${colId}` : ""}`,
+    external_url: `${base}/chamber${hasCollection ? `?collection=${colId}` : ""}`,
     attributes: [
-      ...(colId != null && colId > 0
-        ? [{ trait_type: "collection_id", value: colId, display_type: "number" as const }]
+      ...(hasCollection
+        ? [{ trait_type: "collection_id", value: colId as number, display_type: "number" as const }]
         : []),
       { trait_type: "token_id", value: tokenId, display_type: "number" as const },
       ...(phaseLevel && phaseLevel.length > 0 ? [{ trait_type: "phase_level", value: phaseLevel }] : []),
@@ -309,8 +370,17 @@ export async function buildPhaseTokenMetadataJson(
           ]
         : []),
     ],
-    collectionId: colId != null && Number.isFinite(colId) ? colId : null,
+    collectionId: hasCollection ? (colId as number) : null,
   }
+
+  const validated = PhaseTokenMetadataJsonSchema.safeParse(payload)
+  if (!validated.success) {
+    throw new Sep50MetadataBuildError(
+      "Built metadata failed SEP-50 schema validation",
+      validated.error.flatten(),
+    )
+  }
+  return validated.data
 }
 
 // ─── phase-78: gas-estimate preview before listing submission (isolated, flag-gated) ───

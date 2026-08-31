@@ -1,20 +1,26 @@
 import { NextRequest, NextResponse } from "next/server"
-import { Horizon, Networks, TransactionBuilder } from "@stellar/stellar-sdk"
 import { z } from "zod"
-import { HORIZON_URL } from "@/lib/phase-protocol"
 import { logHorizonSubmitError } from "@/lib/stellar"
 import { isFeatureEnabled } from "@/lib/feature-flags"
+import { submitTrustlineBatch } from "@/lib/classic-liq"
 
 export const dynamic = 'force-dynamic'
 
 // ─── phase-119: CID integrity schema (isolated, additive) ────────────────────
+// ─── phase-134: accepts either a single `signedXdr` (legacy) or a
+// `signedXdrs` array (batch). CID verification (phase-119) only applies to
+// the single-XDR legacy path — batch callers are expected to have verified
+// content before signing.
 const TrustlinePostSchema = z.object({
-  signedXdr: z.string().trim().min(10),
+  signedXdr: z.string().trim().min(10).optional(),
+  signedXdrs: z.array(z.string().trim().min(10)).min(1).max(20).optional(),
   // optional re-pinned content CID to verify before trustline submission
   cid: z.string().trim().min(4).max(128).regex(/^(Qm[1-9A-HJ-NP-Za-km-z]{44}|bafy[a-z0-9]+|bafk[a-z0-9]+).*/).optional().nullable(),
   expectedSha256: z.string().regex(/^[a-f0-9]{64}$/).nullable().optional(),
   // if the caller also sends bytesRef (gateway URL) we can fetch + verify; otherwise just validate format
   cidPath: z.string().trim().max(512).regex(/^[A-Za-z0-9._\/-]+$/).optional().nullable(),
+}).refine((v) => Boolean(v.signedXdr?.trim()) || (v.signedXdrs?.length ?? 0) > 0, {
+  message: "signedXdr or signedXdrs is required.",
 })
 
 function isPhase119Enabled(): boolean {
@@ -34,13 +40,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "signedXdr es requerido.", details: parsed.error.flatten() }, { status: 400 })
   }
 
-  const signedXdr = parsed.data.signedXdr.trim()
-  if (!signedXdr) {
-    return NextResponse.json({ error: "signedXdr es requerido." }, { status: 400 })
-  }
+  const isBatch = (parsed.data.signedXdrs?.length ?? 0) > 0
+  const signedXdrs = isBatch ? parsed.data.signedXdrs!.map((x) => x.trim()) : [parsed.data.signedXdr!.trim()]
 
-  // phase-119: optional CID integrity verification (additive, does not block legacy callers)
-  if (isPhase119Enabled() && parsed.data.cid) {
+  // phase-119: optional CID integrity verification (additive, does not block legacy callers).
+  // Only applies to the single-XDR legacy path.
+  if (!isBatch && isPhase119Enabled() && parsed.data.cid) {
     const cidStr = parsed.data.cid.trim()
     const expected = parsed.data.expectedSha256 ?? null
     // Validate CID format strictly
@@ -76,21 +81,33 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  try {
-    const server = new Horizon.Server(HORIZON_URL)
-    const tx = TransactionBuilder.fromXDR(signedXdr, Networks.TESTNET)
-    const submit = await server.submitTransaction(tx)
-    // phase-119 observability headers
-    const headers: Record<string, string> = {}
-    if (isPhase119Enabled()) {
-      headers["X-Phase119"] = "enabled"
-      if (parsed.data.cid) headers["X-Phase-CID"] = parsed.data.cid.slice(0, 16)
-    }
-    return NextResponse.json({ ok: true, hash: submit.hash }, { headers })
-  } catch (e) {
-    logHorizonSubmitError("classic-liq/trustline submit", e)
-    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 502 })
+  const results = await submitTrustlineBatch(signedXdrs)
+  for (const r of results) {
+    if (!r.ok) logHorizonSubmitError("classic-liq/trustline submit", r.cause ?? r.error)
   }
+  // Drop internal `cause` before returning to the client.
+  const publicResults = results.map((r) =>
+    r.ok ? r : { signedXdr: r.signedXdr, ok: r.ok, error: r.error, attempts: r.attempts },
+  )
+
+  // phase-119 observability headers (legacy single-XDR path only)
+  const headers: Record<string, string> = {}
+  if (!isBatch && isPhase119Enabled()) {
+    headers["X-Phase119"] = "enabled"
+    if (parsed.data.cid) headers["X-Phase-CID"] = parsed.data.cid.slice(0, 16)
+  }
+
+  if (isBatch) {
+    const anyOk = results.some((r) => r.ok)
+    return NextResponse.json({ ok: anyOk, results: publicResults }, { status: anyOk ? 200 : 502, headers })
+  }
+
+  // Legacy single-XDR response shape — unchanged for existing callers.
+  const single = results[0]!
+  if (!single.ok) {
+    return NextResponse.json({ error: single.error }, { status: 502, headers })
+  }
+  return NextResponse.json({ ok: true, hash: single.hash }, { headers })
 }
 
 // GET exposes cache stats when flag enabled (observability, zero regression when off)
@@ -101,7 +118,7 @@ export async function GET() {
   try {
     const { getCidCacheStats } = await import("@/lib/cid-cache")
     const stats = getCidCacheStats()
-    return NextResponse.json({ enabled: true, ...stats })
+    return NextResponse.json(stats)
   } catch (e) {
     return NextResponse.json({ enabled: true, error: e instanceof Error ? e.message : String(e) }, { status: 500 })
   }

@@ -37,11 +37,42 @@ export function templateName(filePath: string): OgTemplateResolution["name"] {
 
 // ─── Remote image fetching ────────────────────────────────────────────────────
 
-export async function fetchImageBuffer(url: string, timeoutMs = 7000): Promise<Buffer | null> {
+// Collection/NFT image URIs are creator-supplied and proxied through arbitrary
+// IPFS gateways; without a hard cap, a single oversized source image buffered
+// whole (plus sharp's decode buffer) is enough to blow past the Vercel lambda
+// memory ceiling on this route. Streamed so an unbounded body with no/false
+// Content-Length still gets cut off instead of buffered in full.
+export const DEFAULT_MAX_OG_SOURCE_IMAGE_BYTES = 8 * 1024 * 1024
+
+export async function fetchImageBuffer(
+  url: string,
+  timeoutMs = 7000,
+  maxBytes = DEFAULT_MAX_OG_SOURCE_IMAGE_BYTES,
+): Promise<Buffer | null> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
     if (!res.ok) return null
-    return Buffer.from(await res.arrayBuffer())
+    const contentLength = res.headers.get("content-length")
+    if (contentLength && Number(contentLength) > maxBytes) return null
+    if (!res.body) {
+      const buf = Buffer.from(await res.arrayBuffer())
+      return buf.byteLength > maxBytes ? null : buf
+    }
+    const reader = res.body.getReader()
+    const chunks: Uint8Array[] = []
+    let total = 0
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (!value) continue
+      total += value.byteLength
+      if (total > maxBytes) {
+        await reader.cancel()
+        return null
+      }
+      chunks.push(value)
+    }
+    return Buffer.concat(chunks)
   } catch {
     return null
   }
