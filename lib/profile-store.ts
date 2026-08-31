@@ -802,6 +802,236 @@ export async function getTrendingSignals(
     .slice(0, limit);
 }
 
+// ── module #51 (phase-51): race-safe faucet claim rate-limits ──────────────
+//
+// The faucet's claim counters lived in a JSON sidecar: each claim did an async
+// read → JSON.parse → mutate → write, so two concurrent claims from the same
+// wallet both read the pre-increment count and both passed the limit check.
+// This isolated, flag-gated module replaces that with an atomic
+// consume-token operation. Two backends implement the same contract:
+//   • "redis"  — INCRBY + PEXPIRE, atomic across instances (inject any
+//                ioredis/node-redis-compatible client; this lib takes no redis
+//                dependency of its own).
+//   • "memory" — process-local Map guarded by a per-key async lock, so the
+//                read-modify-write can never interleave within an instance.
+//
+// Feature flag: phase-51 (NEXT_PUBLIC_FEATURE_PHASE_51 / FEATURE_PHASE_51)
+// Rollback: unset the flag → enforceFaucetClaimRateLimit throws FLAG_DISABLED
+//           and the faucet route keeps its legacy JSON counter. No migration.
+
+export function isFaucetRateLimitRedisEnabled(): boolean {
+  const v = (
+    process.env.NEXT_PUBLIC_FEATURE_PHASE_51 ??
+    process.env.FEATURE_PHASE_51 ??
+    ""
+  )
+    .trim()
+    .toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
+export function flag51RollbackNote(): string {
+  return "Rollback phase-51: unset NEXT_PUBLIC_FEATURE_PHASE_51 / FEATURE_PHASE_51 or set to 0/false and restart. The faucet route falls back to its legacy JSON claim counter; no data migration to undo.";
+}
+
+export const RateLimitRequestSchema = z.object({
+  key: z
+    .string()
+    .trim()
+    .min(1)
+    .max(128)
+    .regex(/^[A-Za-z0-9:._-]+$/, "key must be a compact identifier"),
+  limit: z.number().int().min(1).max(100_000),
+  windowMs: z
+    .number()
+    .int()
+    .min(1_000)
+    .max(30 * 24 * 3_600_000),
+  cost: z.number().int().min(1).max(10_000).default(1),
+});
+
+export type RateLimitRequest = z.infer<typeof RateLimitRequestSchema>;
+
+export type RateLimitDecision = {
+  allowed: boolean;
+  limit: number;
+  used: number;
+  remaining: number;
+  resetAt: number;
+  retryAfterMs: number;
+  backend: "redis" | "memory";
+};
+
+export class FaucetRateLimitError extends Error {
+  code: "FLAG_DISABLED" | "VALIDATION_FAILED" | "BACKEND_UNAVAILABLE";
+  details?: unknown;
+  constructor(
+    code: FaucetRateLimitError["code"],
+    message: string,
+    details?: unknown,
+  ) {
+    super(message);
+    this.name = "FaucetRateLimitError";
+    this.code = code;
+    this.details = details;
+  }
+}
+
+export interface RateLimitBackend {
+  readonly name: "redis" | "memory";
+  consume(
+    key: string,
+    cost: number,
+    windowMs: number,
+    now: number,
+  ): Promise<{ used: number; resetAt: number }>;
+}
+
+export interface RedisLikeClient {
+  incrby(key: string, amount: number): Promise<number>;
+  pexpire(key: string, ms: number): Promise<unknown>;
+  pttl(key: string): Promise<number>;
+}
+
+/** Redis-backed backend — atomic across instances. Pass any ioredis/node-redis-compatible client. */
+export function createRedisRateLimitBackend(
+  client: RedisLikeClient,
+  opts: { keyPrefix?: string } = {},
+): RateLimitBackend {
+  const prefix = opts.keyPrefix ?? "phase:faucet:rl:";
+  return {
+    name: "redis",
+    async consume(key, cost, windowMs, now) {
+      const redisKey = `${prefix}${key}`;
+      const used = await client.incrby(redisKey, cost);
+      if (used === cost) {
+        await client.pexpire(redisKey, windowMs);
+      }
+      let ttl = await client.pttl(redisKey);
+      if (!Number.isFinite(ttl) || ttl < 0) {
+        await client.pexpire(redisKey, windowMs);
+        ttl = windowMs;
+      }
+      return { used, resetAt: now + ttl };
+    },
+  };
+}
+
+const memoryRateLimitBuckets = new Map<string, { used: number; resetAt: number }>();
+const keyLocks = new Map<string, Promise<unknown>>();
+
+/** Serializes async work per key so a read-modify-write cannot interleave within an instance. */
+function withKeyLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = keyLocks.get(key) ?? Promise.resolve();
+  const run = prev.then(() => fn());
+  const tail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  keyLocks.set(key, tail);
+  void tail.then(() => {
+    if (keyLocks.get(key) === tail) keyLocks.delete(key);
+  });
+  return run;
+}
+
+export function createMemoryRateLimitBackend(): RateLimitBackend {
+  return {
+    name: "memory",
+    async consume(key, cost, windowMs, now) {
+      return withKeyLock(key, async () => {
+        const existing = memoryRateLimitBuckets.get(key);
+        if (!existing || existing.resetAt <= now) {
+          const fresh = { used: cost, resetAt: now + windowMs };
+          memoryRateLimitBuckets.set(key, fresh);
+          return { ...fresh };
+        }
+        existing.used += cost;
+        return { used: existing.used, resetAt: existing.resetAt };
+      });
+    },
+  };
+}
+
+let defaultBackend: RateLimitBackend | null = null;
+
+function resolveDefaultBackend(): RateLimitBackend {
+  if (!defaultBackend) defaultBackend = createMemoryRateLimitBackend();
+  return defaultBackend;
+}
+
+/** Test/ops hook to reset process-local state. */
+export function __resetFaucetRateLimitState(): void {
+  memoryRateLimitBuckets.clear();
+  keyLocks.clear();
+  defaultBackend = null;
+}
+
+/**
+ * Atomically consumes `cost` tokens from `key`'s window and returns whether the
+ * caller is under the limit. Concurrent calls for the same key are serialized
+ * (memory) or atomic (redis), so the check can no longer be raced.
+ */
+export async function enforceFaucetClaimRateLimit(
+  raw: unknown,
+  opts: { backend?: RateLimitBackend; now?: number; force?: boolean } = {},
+): Promise<RateLimitDecision> {
+  if (!opts.force && !isFaucetRateLimitRedisEnabled()) {
+    throw new FaucetRateLimitError(
+      "FLAG_DISABLED",
+      "phase-51 flag disabled (set NEXT_PUBLIC_FEATURE_PHASE_51=1)",
+      { rollback: flag51RollbackNote() },
+    );
+  }
+
+  const parsed = RateLimitRequestSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new FaucetRateLimitError(
+      "VALIDATION_FAILED",
+      "valid rate-limit request required",
+      parsed.error.flatten(),
+    );
+  }
+
+  const req = parsed.data;
+  const backend = opts.backend ?? resolveDefaultBackend();
+  const now = opts.now ?? Date.now();
+
+  let result: { used: number; resetAt: number };
+  try {
+    result = await backend.consume(req.key, req.cost, req.windowMs, now);
+  } catch (e) {
+    throw new FaucetRateLimitError(
+      "BACKEND_UNAVAILABLE",
+      `rate-limit backend "${backend.name}" failed: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+
+  const allowed = result.used <= req.limit;
+  return {
+    allowed,
+    limit: req.limit,
+    used: result.used,
+    remaining: Math.max(0, req.limit - result.used),
+    resetAt: result.resetAt,
+    retryAfterMs: allowed ? 0 : Math.max(0, result.resetAt - now),
+    backend: backend.name,
+  };
+}
+
+export function auditFaucetRateLimitWiring(): { ok: boolean; note: string } {
+  if (!isFaucetRateLimitRedisEnabled()) {
+    return {
+      ok: true,
+      note: "[phase-51] race-safe faucet rate-limit disabled; nothing to audit.",
+    };
+  }
+  return {
+    ok: true,
+    note: `[phase-51] race-safe faucet rate-limit wiring OK (default backend: memory; inject createRedisRateLimitBackend for multi-instance). ${flag51RollbackNote()}`,
+  };
+}
+
 async function readJson<T extends object>(filePath: string): Promise<T> {
   try {
     return JSON.parse(await readFile(filePath, "utf8")) as T;

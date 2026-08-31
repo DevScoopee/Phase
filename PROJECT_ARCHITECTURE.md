@@ -142,6 +142,8 @@ Owns:
 | `phase-122` | `NEXT_PUBLIC_FEATURE_PHASE_122` / `FEATURE_PHASE_122` | Off-chain metadata delta storage (reduce on-chain rent) | off | Unset var, restart — verify falls back to on-chain `token_uri`, off-chain files remain on disk (no ledger revert) |
 | `phase-123` | `NEXT_PUBLIC_FEATURE_PHASE_123` / `FEATURE_PHASE_123` | IPFS timeout fallback chain across providers | off | Unset var, restart — reverts to 8s sequential fallback; no data migration |
 | `phase-124` | `NEXT_PUBLIC_FEATURE_PHASE_124` / `FEATURE_PHASE_124` | Metadata version migration tool (v1→v2) | off | Unset var, restart — v2 payloads remain readable as v1 where additive; no destructive rewrite without `--apply` |
+| `phase-134` | `NEXT_PUBLIC_FEATURE_PHASE_134` / `FEATURE_PHASE_134` | Rate-limit-aware batch trustline submission to Horizon (bounded concurrency + 429/503 backoff) | off | Unset var, restart — each XDR submits immediately and sequentially with no retry (pre-phase-134 behavior) |
+| `phase-135` | `NEXT_PUBLIC_FEATURE_PHASE_135` / `FEATURE_PHASE_135` | Cached wallet/explore NFT ownership index (LRU) with stale-on-error fallback | off | Unset var, restart — no cache, no stale degrade; both routes revert to their pre-phase-135 behavior exactly |
 
 Flags are read via `lib/feature-flags.ts:isFeatureEnabled`. Client flags use `NEXT_PUBLIC_*`, server also accepts `FEATURE_*`. Zero regression when off.
 

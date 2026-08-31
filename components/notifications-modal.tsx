@@ -52,6 +52,12 @@ const PREFERENCE_TYPES: NotificationType[] = [
 
 const POLL_INTERVAL_MS = 30_000
 
+type ClaimFunnelSummary = {
+  totalEvents: number
+  overallConversion: number
+  stages: { stage: string; uniqueSubjects: number; conversionFromPrev: number | null }[]
+}
+
 const copy = {
   en: {
     title: "◆ NOTIFICATIONS",
@@ -214,6 +220,8 @@ export function NotificationsModal() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [preferences, setPreferences] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES)
+  // module #53 (phase-53): compact faucet claim-funnel readout, operator-facing, flag-gated.
+  const [funnel, setFunnel] = useState<ClaimFunnelSummary | null>(null)
 
   const fetchNotifications = useCallback(async () => {
     if (!address) return
@@ -225,10 +233,23 @@ export function NotificationsModal() {
         unread_count: number
         preferences?: NotificationPreferences
         gateway_auth_rotation_feature_enabled?: boolean
+        faucet_analytics_feature_enabled?: boolean
       }
       setNotifications(data.notifications)
       setUnreadCount(data.unread_count)
       setPreferences(data.preferences ?? DEFAULT_NOTIFICATION_PREFERENCES)
+
+      if (data.faucet_analytics_feature_enabled) {
+        try {
+          const funnelRes = await fetch(`/api/notifications?funnel=1`)
+          if (funnelRes.ok) {
+            const funnelData = (await funnelRes.json()) as { funnel?: ClaimFunnelSummary }
+            setFunnel(funnelData.funnel ?? null)
+          }
+        } catch { /* silent */ }
+      } else {
+        setFunnel(null)
+      }
     } catch { /* silent */ }
   }, [address])
 
@@ -375,6 +396,31 @@ export function NotificationsModal() {
             ))}
           </div>
         </div>
+
+        {/* Faucet claim funnel — module #53 (phase-53), operator readout */}
+        {funnel && funnel.stages.length > 0 && (
+          <div className="border-b border-violet-800/20 px-5 py-3">
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-violet-400/80">
+                {lang === "es" ? "Embudo de claims" : "Claim funnel"}
+              </span>
+              <span className="font-mono text-[8px] uppercase tracking-widest text-zinc-600">
+                {Math.round(funnel.overallConversion * 100)}% · {funnel.totalEvents} ev
+              </span>
+            </div>
+            <div className="flex flex-col gap-0.5">
+              {funnel.stages.map((s) => (
+                <div key={s.stage} className="flex items-center justify-between font-mono text-[9px] text-zinc-500">
+                  <span>{s.stage}</span>
+                  <span className="text-zinc-600">
+                    {s.uniqueSubjects}
+                    {s.conversionFromPrev != null ? ` · ${Math.round(s.conversionFromPrev * 100)}%` : ""}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* List */}
         <div className="flex-1 overflow-y-auto min-h-0">

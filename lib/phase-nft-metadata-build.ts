@@ -55,13 +55,31 @@ export function resolveIpfsFallbackConfig(overrides: Partial<IpfsFallbackConfig>
   return parsed.data
 }
 
+/** Reorders `gateways` by live health score (best first); unranked gateways keep their relative order at the end. */
+async function prioritizeGatewaysByHealth(gateways: readonly string[]): Promise<string[]> {
+  try {
+    const { getGatewayRanking } = await import("@/lib/gateway-health")
+    const ranking = getGatewayRanking().map((g) => g.replace(/\/+$/, ""))
+    if (ranking.length === 0) return [...gateways]
+    const ranked = gateways.filter((g) => ranking.includes(g.replace(/\/+$/, "")))
+    ranked.sort(
+      (a, b) => ranking.indexOf(a.replace(/\/+$/, "")) - ranking.indexOf(b.replace(/\/+$/, "")),
+    )
+    const unranked = gateways.filter((g) => !ranking.includes(g.replace(/\/+$/, "")))
+    return [...ranked, ...unranked]
+  } catch {
+    return [...gateways]
+  }
+}
+
 export async function fetchWithIpfsFallback(ipfsPath: string, opts: { config?: Partial<IpfsFallbackConfig>; signal?: AbortSignal } = {}): Promise<IpfsFallbackResult> {
   const clean = ipfsPath.replace(/^\/+/, "").trim()
   if (!clean) return { ok: false, error: "Empty IPFS path", perGateway: [] }
   const cfg = resolveIpfsFallbackConfig(opts.config)
   const perGateway: Array<{ gateway: string; error: string; latencyMs: number }> = []
+  const orderedGateways = await prioritizeGatewaysByHealth(cfg.gateways)
 
-  for (const base of cfg.gateways) {
+  for (const base of orderedGateways) {
     const url = `${base.replace(/\/+$/, "")}/${clean}`
     const start = Date.now()
     const controller = new AbortController()

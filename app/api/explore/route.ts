@@ -10,11 +10,19 @@ import { getAllWorldCollections } from "@/lib/narrative-world-store"
 import { isFeatureEnabled } from "@/lib/feature-flags"
 import {
   dedupeExploreItems,
+  isQuestExpiryEnabled,
   mapConcurrent,
   paginateExploreItems,
   truncateAddress,
   type ExploreItem,
 } from "@/lib/explore-domain"
+import {
+  getCachedExploreOwners,
+  setCachedExploreOwners,
+  isExploreOwnersEntryFresh,
+  isExploreOwnersCacheEnabled,
+  type ExploreOwner,
+} from "@/lib/explore-owners-cache"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -60,17 +68,41 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Scan all token IDs concurrently (bounded — see lib/explore-domain.mapConcurrent).
-    const ids = Array.from({ length: total }, (_, i) => i + 1)
-    const owners = await mapConcurrent(ids, 12, async (id) => {
-      try {
-        const owner = await fetchTokenOwnerAddress(contractId, id)
-        return owner ? { id, owner } : null
-      } catch {
-        return null
+    // phase-135: serve the raw owner scan from cache when fresh, and degrade
+    // to the last-known-good scan (instead of a 500) if a live scan fails.
+    const ownersCacheOn = isExploreOwnersCacheEnabled()
+    const cachedOwners = ownersCacheOn ? getCachedExploreOwners(contractId, scanCap) : null
+
+    let found: ExploreOwner[]
+    if (ownersCacheOn && cachedOwners && isExploreOwnersEntryFresh(cachedOwners)) {
+      found = cachedOwners.owners
+    } else {
+      const scanIds = Array.from({ length: total }, (_, i) => i + 1)
+      const runScan = () =>
+        mapConcurrent(scanIds, 12, async (id) => {
+          try {
+            const owner = await fetchTokenOwnerAddress(contractId, id)
+            return owner ? { id, owner } : null
+          } catch {
+            return null
+          }
+        }).then((owners) => owners.filter((x): x is ExploreOwner => x !== null))
+
+      if (!ownersCacheOn) {
+        found = await runScan()
+      } else {
+        try {
+          found = await runScan()
+          setCachedExploreOwners(contractId, scanCap, found)
+        } catch (e) {
+          if (cachedOwners) {
+            found = cachedOwners.owners
+          } else {
+            throw e
+          }
+        }
       }
-    })
-    const found = owners.filter((x): x is { id: number; owner: string } => x !== null)
+    }
 
     // Read world sidecar once — O(1) per request, not per item.
     const worldCollections = await getAllWorldCollections().catch(() => ({} as Record<string, { world_name: string }>))
@@ -122,7 +154,14 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { items, total: totalFound, page, perPage, content_hash_dedup_enabled: dedupeEnabled },
+      {
+        items,
+        total: totalFound,
+        page,
+        perPage,
+        content_hash_dedup_enabled: dedupeEnabled,
+        quest_expiry_windows_enabled: isQuestExpiryEnabled(),
+      },
       {
         headers: {
           ...CORS,

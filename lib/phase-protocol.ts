@@ -1544,13 +1544,18 @@ export function extractIpfsGatewaySubpath(uri: string): string | null {
   return sub.length > 0 ? sub : null
 }
 
-/** Lista de URLs HTTPS para `<img src>` (reintento gateway si la primera cae). */
+/**
+ * Lista de URLs HTTPS para `<img src>` (reintento gateway si la primera cae).
+ * El proxy propio (`/api/ipfs`) va primero: hace fallback multi-gateway y health
+ * scoring en el servidor, y cachea la respuesta. Los gateways públicos directos
+ * quedan como red de seguridad si el proxy mismo no responde.
+ */
 export function ipfsHttpsGatewayUrls(uri: string): string[] {
   const t = uri.trim()
   if (!t) return []
   const ipfsPath = extractIpfsGatewaySubpath(t)
   if (ipfsPath) {
-    const out: string[] = []
+    const out: string[] = [`/api/ipfs/${ipfsPath}`]
     for (const b of ipfsGatewayBasesOrdered()) {
       const u = `${b}/${ipfsPath}`
       if (!out.includes(u)) out.push(u)
