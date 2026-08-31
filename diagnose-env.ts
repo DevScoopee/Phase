@@ -174,3 +174,40 @@ if (validation.valid && tokenDiagnostic.isContract && !tokenDiagnostic.errors.le
   process.exit(1)
 }
 console.log("=".repeat(70))
+
+
+// 7. CSP Header Compliance Verification
+console.log("\n🔒 Content Security Policy (CSP) Compliance:")
+try {
+  const nextConfigPath = "./next.config.mjs"
+  const fs = require("fs")
+  if (fs.existsSync(nextConfigPath)) {
+    const configContent = fs.readFileSync(nextConfigPath, "utf8")
+    const hasCsp = configContent.includes("Content-Security-Policy")
+    if (hasCsp) {
+      console.log("   ✅ Content-Security-Policy header configured in next.config.mjs")
+      
+      // Check for key CSP directives
+      const hasDefaultSrc = /default-src\s+'self'/.test(configContent)
+      const hasScriptSrc = /script-src/.test(configContent)
+      const hasStyleSrc = /style-src/.test(configContent)
+      const hasImgSrc = /img-src/.test(configContent)
+      
+      if (hasDefaultSrc) console.log("   ✅ default-src directive present")
+      if (hasScriptSrc) console.log("   ✅ script-src directive present")
+      if (hasStyleSrc) console.log("   ✅ style-src directive present")
+      if (hasImgSrc) console.log("   ✅ img-src directive present")
+      
+      if (!hasDefaultSrc || !hasScriptSrc) {
+        console.warn("   ⚠️  WARNING: Some critical CSP directives may be missing")
+      }
+    } else {
+      console.error("   ❌ ERROR: No Content-Security-Policy header found in next.config.mjs")
+      console.error("      Add CSP headers to protect against XSS and injection attacks")
+    }
+  } else {
+    console.warn("   ⚠️  next.config.mjs not found")
+  }
+} catch (e) {
+  console.error("   ❌ ERROR checking CSP configuration:", e instanceof Error ? e.message : String(e))
+}

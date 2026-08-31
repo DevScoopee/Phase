@@ -105,7 +105,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         return null
       } catch (e) {
         const pe = parseError(e)
-        if (pe.code === -1 && pe.message === "No wallet has been connected.") {
+        if (pe.code === "-1" && pe.message === "No wallet has been connected.") {
           setAddress(null)
           return null
         }
@@ -134,7 +134,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     initStellarWalletKit()
-    const stop = kit.on(KitEventType.STATE_UPDATED, ({ payload }) => {
+    const stop = kit.on(KitEventType.STATE_UPDATED, ({ payload }: { payload: any }) => {
       try {
         if (userDisconnectedRef.current) return
         setAddress(payload.address ?? null)
@@ -263,6 +263,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       setHint(null)
       initStellarWalletKit()
       try {
+        if (!kit.authModal) {
+          throw new Error("authModal not available")
+        }
         const { address: next } = await kit.authModal()
         if (!userDisconnectedRef.current) {
           setAddress(next)
@@ -273,7 +276,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         const pe = parseError(e)
         setAddress(null)
-        if (pe.code !== -1) {
+        if (pe.code !== "-1") {
           setHint(pe.message || "Wallet connection failed")
         }
       } finally {
@@ -290,9 +293,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const openWalletPicker = useCallback((): Promise<string | null> => {
     userDisconnectedRef.current = false
     initStellarWalletKit()
+    if (!kit.authModal) {
+      return Promise.reject(new Error("authModal not available"))
+    }
     return kit
       .authModal()
-      .then(({ address: next }) => {
+      .then(({ address: next }: { address: any }) => {
         const g = typeof next === "string" ? next.trim() : ""
         if (!g) {
           setAddress(null)
@@ -305,7 +311,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       })
       .catch((e: unknown) => {
         const pe = parseError(e)
-        if (pe.code !== -1) {
+        if (pe.code !== "-1") {
           setHint(pe.message || "Wallet unavailable")
         }
         return null

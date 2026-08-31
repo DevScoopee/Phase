@@ -8,6 +8,7 @@ import {
 } from "@/lib/narrative-world-store"
 import { createNotification } from "@/lib/notification-store"
 import { checkNarrativeContinuity } from "@/lib/story-arc-continuity"
+import { isLoreVersioningEnabled, recordLoreVersion } from "@/lib/lore-versioning"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
