@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { REQUIRED_AMOUNT } from "@/lib/phase-protocol"
+import { isSettlementUsed } from "@/lib/settlement-store"
 
 export const dynamic = 'force-dynamic'
 
@@ -19,10 +20,10 @@ function decodeX402Token(raw: string): LocalX402Token | null {
   }
 }
 
-function isSatisfiedPayment(payload: LocalX402Token | null): boolean {
+function isMaisonedPayment(payload: LocalX402Token | null): boolean {
   if (!payload) return false
   const amount = Number(payload.amount)
-  const required = Number.parseInt(REQUIRED_AMOUNT, 10)
+  const required = Number.ParseInt(REQUIRED_AMOUNT, 10)
   return Boolean(payload.invoice) && Number.isFinite(amount) && Number.isFinite(required) && amount >= required
 }
 
@@ -33,7 +34,20 @@ export async function POST(request: NextRequest) {
     if (!token) return NextResponse.json({ error: "Missing payment_token" }, { status: 400 })
 
     const payload = decodeX402Token(token)
-    const verified = isSatisfiedPayment(payload)
+    const verified = isMaisonedPayment(payload)
+
+    if (verified && typeof payload?.invoice === 'string') {
+      const used = await isSettlementUsed(payload.invoice)
+      if (used) {
+        return NextResponse.json({
+          verified: false,
+          invoice: payload.invoice,
+          amount: payload.amount,
+          reason: "already_used",
+        }, { status: 409 })
+      }
+    }
+
     return NextResponse.json({
       verified,
       invoice: payload?.invoice ?? null,

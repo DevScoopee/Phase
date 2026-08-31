@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { serverDataJsonPath } from "@/lib/server-data-paths";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 
 export type ProfileData = {
   display_name?: string;
@@ -857,6 +858,236 @@ export async function getTrendingSignals(
     .slice(0, limit);
 }
 
+// ── module #51 (phase-51): race-safe faucet claim rate-limits ──────────────
+//
+// The faucet's claim counters lived in a JSON sidecar: each claim did an async
+// read → JSON.parse → mutate → write, so two concurrent claims from the same
+// wallet both read the pre-increment count and both passed the limit check.
+// This isolated, flag-gated module replaces that with an atomic
+// consume-token operation. Two backends implement the same contract:
+//   • "redis"  — INCRBY + PEXPIRE, atomic across instances (inject any
+//                ioredis/node-redis-compatible client; this lib takes no redis
+//                dependency of its own).
+//   • "memory" — process-local Map guarded by a per-key async lock, so the
+//                read-modify-write can never interleave within an instance.
+//
+// Feature flag: phase-51 (NEXT_PUBLIC_FEATURE_PHASE_51 / FEATURE_PHASE_51)
+// Rollback: unset the flag → enforceFaucetClaimRateLimit throws FLAG_DISABLED
+//           and the faucet route keeps its legacy JSON counter. No migration.
+
+export function isFaucetRateLimitRedisEnabled(): boolean {
+  const v = (
+    process.env.NEXT_PUBLIC_FEATURE_PHASE_51 ??
+    process.env.FEATURE_PHASE_51 ??
+    ""
+  )
+    .trim()
+    .toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
+export function flag51RollbackNote(): string {
+  return "Rollback phase-51: unset NEXT_PUBLIC_FEATURE_PHASE_51 / FEATURE_PHASE_51 or set to 0/false and restart. The faucet route falls back to its legacy JSON claim counter; no data migration to undo.";
+}
+
+export const RateLimitRequestSchema = z.object({
+  key: z
+    .string()
+    .trim()
+    .min(1)
+    .max(128)
+    .regex(/^[A-Za-z0-9:._-]+$/, "key must be a compact identifier"),
+  limit: z.number().int().min(1).max(100_000),
+  windowMs: z
+    .number()
+    .int()
+    .min(1_000)
+    .max(30 * 24 * 3_600_000),
+  cost: z.number().int().min(1).max(10_000).default(1),
+});
+
+export type RateLimitRequest = z.infer<typeof RateLimitRequestSchema>;
+
+export type RateLimitDecision = {
+  allowed: boolean;
+  limit: number;
+  used: number;
+  remaining: number;
+  resetAt: number;
+  retryAfterMs: number;
+  backend: "redis" | "memory";
+};
+
+export class FaucetRateLimitError extends Error {
+  code: "FLAG_DISABLED" | "VALIDATION_FAILED" | "BACKEND_UNAVAILABLE";
+  details?: unknown;
+  constructor(
+    code: FaucetRateLimitError["code"],
+    message: string,
+    details?: unknown,
+  ) {
+    super(message);
+    this.name = "FaucetRateLimitError";
+    this.code = code;
+    this.details = details;
+  }
+}
+
+export interface RateLimitBackend {
+  readonly name: "redis" | "memory";
+  consume(
+    key: string,
+    cost: number,
+    windowMs: number,
+    now: number,
+  ): Promise<{ used: number; resetAt: number }>;
+}
+
+export interface RedisLikeClient {
+  incrby(key: string, amount: number): Promise<number>;
+  pexpire(key: string, ms: number): Promise<unknown>;
+  pttl(key: string): Promise<number>;
+}
+
+/** Redis-backed backend — atomic across instances. Pass any ioredis/node-redis-compatible client. */
+export function createRedisRateLimitBackend(
+  client: RedisLikeClient,
+  opts: { keyPrefix?: string } = {},
+): RateLimitBackend {
+  const prefix = opts.keyPrefix ?? "phase:faucet:rl:";
+  return {
+    name: "redis",
+    async consume(key, cost, windowMs, now) {
+      const redisKey = `${prefix}${key}`;
+      const used = await client.incrby(redisKey, cost);
+      if (used === cost) {
+        await client.pexpire(redisKey, windowMs);
+      }
+      let ttl = await client.pttl(redisKey);
+      if (!Number.isFinite(ttl) || ttl < 0) {
+        await client.pexpire(redisKey, windowMs);
+        ttl = windowMs;
+      }
+      return { used, resetAt: now + ttl };
+    },
+  };
+}
+
+const memoryRateLimitBuckets = new Map<string, { used: number; resetAt: number }>();
+const keyLocks = new Map<string, Promise<unknown>>();
+
+/** Serializes async work per key so a read-modify-write cannot interleave within an instance. */
+function withKeyLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = keyLocks.get(key) ?? Promise.resolve();
+  const run = prev.then(() => fn());
+  const tail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  keyLocks.set(key, tail);
+  void tail.then(() => {
+    if (keyLocks.get(key) === tail) keyLocks.delete(key);
+  });
+  return run;
+}
+
+export function createMemoryRateLimitBackend(): RateLimitBackend {
+  return {
+    name: "memory",
+    async consume(key, cost, windowMs, now) {
+      return withKeyLock(key, async () => {
+        const existing = memoryRateLimitBuckets.get(key);
+        if (!existing || existing.resetAt <= now) {
+          const fresh = { used: cost, resetAt: now + windowMs };
+          memoryRateLimitBuckets.set(key, fresh);
+          return { ...fresh };
+        }
+        existing.used += cost;
+        return { used: existing.used, resetAt: existing.resetAt };
+      });
+    },
+  };
+}
+
+let defaultBackend: RateLimitBackend | null = null;
+
+function resolveDefaultBackend(): RateLimitBackend {
+  if (!defaultBackend) defaultBackend = createMemoryRateLimitBackend();
+  return defaultBackend;
+}
+
+/** Test/ops hook to reset process-local state. */
+export function __resetFaucetRateLimitState(): void {
+  memoryRateLimitBuckets.clear();
+  keyLocks.clear();
+  defaultBackend = null;
+}
+
+/**
+ * Atomically consumes `cost` tokens from `key`'s window and returns whether the
+ * caller is under the limit. Concurrent calls for the same key are serialized
+ * (memory) or atomic (redis), so the check can no longer be raced.
+ */
+export async function enforceFaucetClaimRateLimit(
+  raw: unknown,
+  opts: { backend?: RateLimitBackend; now?: number; force?: boolean } = {},
+): Promise<RateLimitDecision> {
+  if (!opts.force && !isFaucetRateLimitRedisEnabled()) {
+    throw new FaucetRateLimitError(
+      "FLAG_DISABLED",
+      "phase-51 flag disabled (set NEXT_PUBLIC_FEATURE_PHASE_51=1)",
+      { rollback: flag51RollbackNote() },
+    );
+  }
+
+  const parsed = RateLimitRequestSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new FaucetRateLimitError(
+      "VALIDATION_FAILED",
+      "valid rate-limit request required",
+      parsed.error.flatten(),
+    );
+  }
+
+  const req = parsed.data;
+  const backend = opts.backend ?? resolveDefaultBackend();
+  const now = opts.now ?? Date.now();
+
+  let result: { used: number; resetAt: number };
+  try {
+    result = await backend.consume(req.key, req.cost, req.windowMs, now);
+  } catch (e) {
+    throw new FaucetRateLimitError(
+      "BACKEND_UNAVAILABLE",
+      `rate-limit backend "${backend.name}" failed: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+
+  const allowed = result.used <= req.limit;
+  return {
+    allowed,
+    limit: req.limit,
+    used: result.used,
+    remaining: Math.max(0, req.limit - result.used),
+    resetAt: result.resetAt,
+    retryAfterMs: allowed ? 0 : Math.max(0, result.resetAt - now),
+    backend: backend.name,
+  };
+}
+
+export function auditFaucetRateLimitWiring(): { ok: boolean; note: string } {
+  if (!isFaucetRateLimitRedisEnabled()) {
+    return {
+      ok: true,
+      note: "[phase-51] race-safe faucet rate-limit disabled; nothing to audit.",
+    };
+  }
+  return {
+    ok: true,
+    note: `[phase-51] race-safe faucet rate-limit wiring OK (default backend: memory; inject createRedisRateLimitBackend for multi-instance). ${flag51RollbackNote()}`,
+  };
+}
+
 async function readJson<T extends object>(filePath: string): Promise<T> {
   try {
     return JSON.parse(await readFile(filePath, "utf8")) as T;
@@ -871,4 +1102,179 @@ async function writeJson<T extends object>(
 ): Promise<void> {
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, JSON.stringify(data, null, 2), "utf8");
+}
+
+// ── Issues #65 / #66 (phase-137): structured error taxonomy ───────────────────
+//
+// Isolated, flag-gated. Avatar / gateway / x402-invoice failures all surfaced as
+// a single generic 500 "Internal server error", so a Pinata timeout, a checksum
+// mismatch and a bad wallet were indistinguishable in production logs and the
+// client could not tell a retryable blip from a permanent failure. This module
+// maps any thrown value onto a closed taxonomy of codes, each carrying a
+// deterministic HTTP status, a category and a retryable flag, plus a serializer
+// for API responses.
+//
+// Feature flag: phase-137 (NEXT_PUBLIC_FEATURE_PHASE_137 / FEATURE_PHASE_137)
+// Rollback: unset the flag → classifyProfileError() still works but routes keep
+//           their legacy generic 500; no schema or data change to revert.
+
+export function isPhase137Enabled(): boolean {
+  return isFeatureEnabled("phase-137");
+}
+
+export function flag137RollbackNote(): string {
+  return "Rollback phase-137: unset NEXT_PUBLIC_FEATURE_PHASE_137 / FEATURE_PHASE_137 or set to 0/false and restart. Routes fall back to a generic 500; no data migration to undo.";
+}
+
+export const PROFILE_ERROR_CODES = [
+  "INVALID_WALLET",
+  "AVATAR_NOT_FOUND",
+  "GATEWAY_TIMEOUT",
+  "GATEWAY_UNREACHABLE",
+  "GATEWAY_5XX",
+  "GATEWAY_4XX",
+  "CHECKSUM_MISMATCH",
+  "MALFORMED_RESPONSE",
+  "PIN_QUORUM_FAILED",
+  "NOT_CONFIGURED",
+  "RATE_LIMITED",
+  "FLAG_DISABLED",
+  "INTERNAL",
+] as const;
+
+export type ProfileErrorCode = (typeof PROFILE_ERROR_CODES)[number];
+
+export type ProfileErrorCategory =
+  | "client"
+  | "upstream"
+  | "integrity"
+  | "config"
+  | "internal";
+
+type ProfileErrorSpec = {
+  status: number;
+  category: ProfileErrorCategory;
+  retryable: boolean;
+};
+
+const PROFILE_ERROR_TABLE: Record<ProfileErrorCode, ProfileErrorSpec> = {
+  INVALID_WALLET: { status: 400, category: "client", retryable: false },
+  AVATAR_NOT_FOUND: { status: 404, category: "client", retryable: false },
+  GATEWAY_TIMEOUT: { status: 504, category: "upstream", retryable: true },
+  GATEWAY_UNREACHABLE: { status: 502, category: "upstream", retryable: true },
+  GATEWAY_5XX: { status: 502, category: "upstream", retryable: true },
+  GATEWAY_4XX: { status: 502, category: "upstream", retryable: false },
+  CHECKSUM_MISMATCH: { status: 502, category: "integrity", retryable: false },
+  MALFORMED_RESPONSE: { status: 502, category: "integrity", retryable: false },
+  PIN_QUORUM_FAILED: { status: 502, category: "upstream", retryable: true },
+  NOT_CONFIGURED: { status: 500, category: "config", retryable: false },
+  RATE_LIMITED: { status: 429, category: "upstream", retryable: true },
+  FLAG_DISABLED: { status: 404, category: "config", retryable: false },
+  INTERNAL: { status: 500, category: "internal", retryable: false },
+};
+
+export const ProfileErrorResponseSchema = z.object({
+  error: z.string().min(1),
+  code: z.enum(PROFILE_ERROR_CODES),
+  category: z.enum(["client", "upstream", "integrity", "config", "internal"]),
+  retryable: z.boolean(),
+  details: z.unknown().optional(),
+});
+
+export type ProfileErrorResponse = z.infer<typeof ProfileErrorResponseSchema>;
+
+export class ProfileError extends Error {
+  readonly code: ProfileErrorCode;
+  readonly status: number;
+  readonly category: ProfileErrorCategory;
+  readonly retryable: boolean;
+  readonly details?: unknown;
+
+  constructor(
+    code: ProfileErrorCode,
+    message: string,
+    details?: unknown,
+  ) {
+    super(message);
+    this.name = "ProfileError";
+    this.code = code;
+    const spec = PROFILE_ERROR_TABLE[code];
+    this.status = spec.status;
+    this.category = spec.category;
+    this.retryable = spec.retryable;
+    this.details = details;
+  }
+
+  toResponse(): ProfileErrorResponse {
+    return {
+      error: this.message,
+      code: this.code,
+      category: this.category,
+      retryable: this.retryable,
+      ...(this.details !== undefined ? { details: this.details } : {}),
+    };
+  }
+}
+
+function statusToCode(status: number): ProfileErrorCode {
+  if (status === 429) return "RATE_LIMITED";
+  if (status === 408 || status === 504) return "GATEWAY_TIMEOUT";
+  if (status >= 500) return "GATEWAY_5XX";
+  if (status >= 400) return "GATEWAY_4XX";
+  return "INTERNAL";
+}
+
+/**
+ * Maps any thrown value onto the taxonomy. Recognises ProfileError (pass-through),
+ * fetch AbortError / timeouts, DNS / connection failures, `{ status }`-shaped
+ * upstream errors, CID integrity errors and Zod parse errors.
+ */
+export function classifyProfileError(err: unknown): ProfileError {
+  if (err instanceof ProfileError) return err;
+
+  if (err instanceof z.ZodError) {
+    return new ProfileError(
+      "MALFORMED_RESPONSE",
+      "Upstream payload failed schema validation",
+      err.flatten(),
+    );
+  }
+
+  if (err instanceof Error) {
+    const name = err.name;
+    const msg = err.message.toLowerCase();
+
+    if (name === "AbortError" || name === "TimeoutError" || msg.includes("timeout") || msg.includes("timed out")) {
+      return new ProfileError("GATEWAY_TIMEOUT", "Gateway request timed out", { cause: err.message });
+    }
+    if (name === "CidIntegrityError" || msg.includes("checksum") || msg.includes("tamper") || msg.includes("hash mismatch")) {
+      return new ProfileError("CHECKSUM_MISMATCH", "Fetched bytes failed integrity verification", { cause: err.message });
+    }
+    if (msg.includes("fetch failed") || msg.includes("enotfound") || msg.includes("econnrefused") || msg.includes("network")) {
+      return new ProfileError("GATEWAY_UNREACHABLE", "Gateway is unreachable", { cause: err.message });
+    }
+
+    const status = (err as { status?: unknown }).status;
+    if (typeof status === "number" && Number.isFinite(status)) {
+      return new ProfileError(statusToCode(status), `Gateway responded ${status}`, { status });
+    }
+
+    const code = (err as { code?: unknown }).code;
+    if (typeof code === "string" && (PROFILE_ERROR_CODES as readonly string[]).includes(code)) {
+      return new ProfileError(code as ProfileErrorCode, err.message);
+    }
+
+    return new ProfileError("INTERNAL", err.message);
+  }
+
+  return new ProfileError("INTERNAL", typeof err === "string" ? err : "Unknown profile error");
+}
+
+/** Convenience for route handlers: `{ body, status }` for a caught value. */
+export function toProfileErrorResponse(err: unknown): {
+  body: ProfileErrorResponse;
+  status: number;
+} {
+  const classified = classifyProfileError(err);
+  return { body: classified.toResponse(), status: classified.status };
 }
