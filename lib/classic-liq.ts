@@ -9,6 +9,7 @@ import {
 } from "@stellar/stellar-sdk"
 import { DEFAULT_LIQUIDITY_ASSET_CODE } from "@/lib/phase-contract-defaults"
 import { HORIZON_URL } from "@/lib/phase-protocol"
+import { isFeatureEnabled } from "@/lib/feature-flags"
 
 export type ClassicLiqAsset = {
   code: string
@@ -314,4 +315,109 @@ export async function verifyRePinnedCidIntegrity(
     const msg = e instanceof Error ? e.message : String(e)
     return { ok: false, error: msg, code: "VERIFY_FAILED" }
   }
+}
+
+// ─── phase-134: rate-limit-aware batch trustline submission ─────────────────
+// Each changeTrust submission previously hit Horizon individually and
+// immediately; a burst of onboarding wallets (or a caller retrying after a
+// 429) amplifies into cascading rate-limit failures. This module accepts one
+// or many signed XDRs per call, submits them through a small bounded
+// concurrency window, and retries 429/503 with exponential backoff + jitter.
+// Feature flag: phase-134 (NEXT_PUBLIC_FEATURE_PHASE_134 / FEATURE_PHASE_134)
+// Rollback: unset flag → each XDR submits immediately, sequentially, with no
+// retry — identical to pre-phase-134 behavior.
+
+export type TrustlineSubmitResult =
+  | { signedXdr: string; ok: true; hash: string; attempts: number }
+  | { signedXdr: string; ok: false; error: string; attempts: number; cause?: unknown }
+
+export type TrustlineBatchSubmitOptions = {
+  maxRetries?: number
+  baseDelayMs?: number
+  concurrency?: number
+  /** Injectable for tests; defaults to a real Horizon submitTransaction call. */
+  submit?: (signedXdr: string) => Promise<{ hash: string }>
+}
+
+function isPhase134Enabled(): boolean {
+  return isFeatureEnabled("phase-134")
+}
+
+function isRetryableHorizonError(e: unknown): boolean {
+  const status = (e as { response?: { status?: number } } | undefined)?.response?.status
+  return status === 429 || status === 503
+}
+
+async function defaultHorizonTrustlineSubmit(signedXdr: string): Promise<{ hash: string }> {
+  const { Horizon, Networks, TransactionBuilder } = await import("@stellar/stellar-sdk")
+  const server = new Horizon.Server(HORIZON_URL)
+  const tx = TransactionBuilder.fromXDR(signedXdr, Networks.TESTNET)
+  const submitted = await server.submitTransaction(tx)
+  return { hash: submitted.hash }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function submitTrustlineWithRetry(
+  signedXdr: string,
+  submit: (xdr: string) => Promise<{ hash: string }>,
+  maxRetries: number,
+  baseDelayMs: number,
+): Promise<TrustlineSubmitResult> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const { hash } = await submit(signedXdr)
+      return { signedXdr, ok: true, hash, attempts: attempt }
+    } catch (e) {
+      if (attempt > maxRetries || !isRetryableHorizonError(e)) {
+        return { signedXdr, ok: false, error: e instanceof Error ? e.message : String(e), attempts: attempt, cause: e }
+      }
+      const jitterMs = Math.random() * baseDelayMs
+      await sleep(baseDelayMs * 2 ** (attempt - 1) + jitterMs)
+    }
+  }
+}
+
+/**
+ * Submits one or more signed changeTrust XDRs to Horizon. When phase-134 is
+ * enabled, submissions run with bounded concurrency and exponential backoff
+ * on 429/503; when disabled, each XDR submits immediately and sequentially
+ * (legacy behavior, zero regression).
+ */
+export async function submitTrustlineBatch(
+  signedXdrs: readonly string[],
+  opts: TrustlineBatchSubmitOptions = {},
+): Promise<TrustlineSubmitResult[]> {
+  const submit = opts.submit ?? defaultHorizonTrustlineSubmit
+
+  if (!isPhase134Enabled()) {
+    const results: TrustlineSubmitResult[] = []
+    for (const signedXdr of signedXdrs) {
+      try {
+        const { hash } = await submit(signedXdr)
+        results.push({ signedXdr, ok: true, hash, attempts: 1 })
+      } catch (e) {
+        results.push({ signedXdr, ok: false, error: e instanceof Error ? e.message : String(e), attempts: 1, cause: e })
+      }
+    }
+    return results
+  }
+
+  const maxRetries = opts.maxRetries ?? 3
+  const baseDelayMs = opts.baseDelayMs ?? 500
+  const concurrency = Math.max(1, Math.min(opts.concurrency ?? 3, signedXdrs.length || 1))
+
+  const results: TrustlineSubmitResult[] = new Array(signedXdrs.length)
+  let nextIndex = 0
+  async function worker(): Promise<void> {
+    for (;;) {
+      const i = nextIndex++
+      if (i >= signedXdrs.length) return
+      results[i] = await submitTrustlineWithRetry(signedXdrs[i]!, submit, maxRetries, baseDelayMs)
+    }
+  }
+  await Promise.all(Array.from({ length: concurrency }, () => worker()))
+  return results
 }
