@@ -262,6 +262,22 @@ import { z } from "zod"
 
 export type { CidCacheEntry, CidIntegrityCheck } from "@/lib/cid-cache"
 
+// ─── phase-144 (Module #44): x402 dead-letter quarantine ────────────────────
+// Malformed x402 invoices / trustline payloads previously failed silently with
+// no audit trail. When phase-144 is on, the trustline route quarantines the
+// rejected payload into a review queue instead of dropping it.
+// NOTE: type-only re-export — the store imports node:fs and must NOT be bundled
+// into the client (trustline-button imports from this file). Server code uses
+// dynamic import("@/lib/x402-dead-letter").
+export type {
+  X402Invoice,
+  X402DeadLetterEntry,
+  DeadLetterReason,
+  DeadLetterStatus,
+  InvoiceClassification,
+  QuarantineResult,
+} from "@/lib/x402-dead-letter"
+
 /**
  * Trustline + CID integrity contract:
  * When pinning metadata for the liq asset (e.g., NFT image refreshed after

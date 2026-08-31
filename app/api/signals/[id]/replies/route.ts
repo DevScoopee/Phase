@@ -82,6 +82,27 @@ export async function POST(
     )
   }
 
+  // phase-156 (Module #56): reject posts from wallets on the governed deny-list.
+  // No-op when the flag is off. Wrapped so a store read failure never 500s the
+  // reply path.
+  if (isFaucetDenyListEnabled()) {
+    try {
+      if (await isWalletDenied(body.wallet)) {
+        const entry = await getWalletDenyEntry(body.wallet).catch(() => null)
+        return api.json(
+          {
+            error: "This wallet is excluded from posting.",
+            code: "WALLET_DENIED",
+            ...(entry ? { reason: entry.reason, entryId: entry.id } : {}),
+          },
+          { status: 403, event: "signals.reply.wallet_denied", metadata: { wallet: body.wallet } },
+        )
+      }
+    } catch (e) {
+      api.log("warn", "signals.reply.deny_check_failed", { error: e instanceof Error ? e.message : String(e) })
+    }
+  }
+
   // phase-116: validate attribution if provided (optional, additive)
   let attributionParsed: z.infer<typeof ContributorsArraySchema> | undefined
   if (isPhase116Enabled() && (body.attribution != null || body.contributors != null)) {

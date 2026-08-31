@@ -211,9 +211,17 @@ export function TrustlineButton({ address, onRequestConnect, onReady, className,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ signedXdr }),
       })
-      const payload = (await submitRes.json().catch(() => ({}))) as { error?: string; detail?: string; code?: string }
+      const payload = (await submitRes.json().catch(() => ({}))) as { error?: string; detail?: string; code?: string; deadLetterId?: string }
       if (!submitRes.ok) {
         // Mensajes de error más específicos basados en el código
+        if (payload.code === "QUARANTINED") {
+          // phase-144 (Module #44): malformed payload was filed in the review queue
+          throw new Error(
+            lang === "es"
+              ? `Solicitud con formato inválido: se archivó en la cola de revisión${payload.deadLetterId ? ` (ref ${payload.deadLetterId.slice(0, 8)})` : ""}. Un operador la revisará.`
+              : `Malformed request: filed in the review queue${payload.deadLetterId ? ` (ref ${payload.deadLetterId.slice(0, 8)})` : ""} for an operator to inspect.`,
+          )
+        }
         if (payload.code === "ACCOUNT_NOT_FOUND" || payload.error?.includes("not found")) {
           throw new Error(
             `Cuenta no encontrada\n\n` +
